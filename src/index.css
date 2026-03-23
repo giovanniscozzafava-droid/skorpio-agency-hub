@@ -102,6 +102,15 @@
     --fase-pubblicato: 217 91% 60%;
     --fase-scartata: 0 84% 60%;
 
+    /* Color shorthand tokens (used by ClientiTab, CLPDetailPanel, etc.) */
+    --clr-blue:   217 91% 60%;
+    --clr-green:  142 71% 45%;
+    --clr-amber:  38 92% 50%;
+    --clr-red:    0 84% 60%;
+    --clr-violet: 267 84% 60%;
+    --clr-cyan:   187 85% 43%;
+    --clr-pink:   327 87% 62%;
+
     /* Shadow */
     --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
     --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.08), 0 2px 4px -1px rgba(0,0,0,0.04);
