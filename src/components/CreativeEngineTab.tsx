@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
+import { sounds } from '../lib/sounds';
 import type { Cliente, TeamMember } from '../types';
 
 interface BrandRules {
