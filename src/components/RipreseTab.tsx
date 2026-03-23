@@ -463,6 +463,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
   const filtered = clips.filter(c => {
     if (filtroStato && c.stato !== filtroStato) return false;
     if (filtroCliente && c.cliente_id !== filtroCliente) return false;
+    if (filtroOperatore && c.operatore !== filtroOperatore) return false;
     if (search) {
       const s = search.toLowerCase();
       return (
