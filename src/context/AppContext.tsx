@@ -48,18 +48,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Quando arriva una session, carica il profilo team corrispondente
   useEffect(() => {
     if (!session) return;
-    // Cerca il team member collegato a questo auth_user_id
-    supabase
-      .from('team')
-      .select('*')
-      .eq('auth_user_id', session.user.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) {
-          setUtente(data as TeamMember);
+
+    const autoLink = async () => {
+      // 1. Cerca per auth_user_id già collegato
+      const { data: byUid } = await supabase
+        .from('team')
+        .select('*')
+        .eq('auth_user_id', session.user.id)
+        .maybeSingle();
+
+      if (byUid) {
+        setUtente(byUid as TeamMember);
+        return;
+      }
+
+      // 2. Prova auto-match: estrai il nome dall'email (es. giovanni@fuyue.it → "giovanni")
+      //    e cerca un team member il cui nome (case-insensitive) inizia con quella stringa
+      const emailLocal = (session.user.email ?? '').split('@')[0].toLowerCase().trim();
+      if (emailLocal) {
+        const { data: allTeam } = await supabase.from('team').select('*');
+        const match = (allTeam ?? []).find((m: any) =>
+          m.nome.toLowerCase().startsWith(emailLocal) ||
+          emailLocal.startsWith(m.nome.toLowerCase())
+        );
+
+        if (match && !match.auth_user_id) {
+          // Collega automaticamente
+          await supabase.from('team').update({ auth_user_id: session.user.id }).eq('id', match.id);
+          await supabase.from('profiles').upsert(
+            { auth_user_id: session.user.id, team_id: match.id },
+            { onConflict: 'auth_user_id' }
+          );
+          setUtente({ ...match, auth_user_id: session.user.id } as TeamMember);
+          return;
         }
-        // Se non trovato, l'utente vedrà la selezione profilo (SplashProfile)
-      });
+      }
+
+      // 3. Nessun match → SplashProfile (scelta manuale)
+    };
+
+    autoLink();
   }, [session]);
 
   const addToast = (msg: string, tipo: 'info' | 'success' | 'error' | 'warn' = 'info') => {
