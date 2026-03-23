@@ -26,7 +26,6 @@ async function getGoogleAccessToken(serviceAccountJson: string): Promise<string>
   const payloadB64 = encode(payload);
   const signingInput = `${headerB64}.${payloadB64}`;
 
-  // Import the RSA private key
   const pemBody = sa.private_key
     .replace('-----BEGIN PRIVATE KEY-----', '')
     .replace('-----END PRIVATE KEY-----', '')
@@ -53,7 +52,6 @@ async function getGoogleAccessToken(serviceAccountJson: string): Promise<string>
 
   const jwt = `${signingInput}.${sigB64}`;
 
-  // Exchange JWT for access token
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -68,6 +66,36 @@ async function getGoogleAccessToken(serviceAccountJson: string): Promise<string>
     throw new Error(`Token exchange failed: ${JSON.stringify(tokenData)}`);
   }
   return tokenData.access_token;
+}
+
+// Cerca una cartella per nome dentro un parent, restituisce l'id se trovata
+async function findFolder(accessToken: string, name: string, parentId: string): Promise<string | null> {
+  const q = encodeURIComponent(`name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`);
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, {
+    headers: { 'Authorization': `Bearer ${accessToken}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`Drive search error: ${JSON.stringify(data)}`);
+  return data.files?.length > 0 ? data.files[0].id : null;
+}
+
+// Crea una cartella
+async function createFolder(accessToken: string, name: string, parentId: string): Promise<string> {
+  const res = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`Drive create error [${res.status}]: ${JSON.stringify(data)}`);
+  return data.id;
+}
+
+// Trova o crea una cartella
+async function findOrCreateFolder(accessToken: string, name: string, parentId: string): Promise<string> {
+  const existing = await findFolder(accessToken, name, parentId);
+  if (existing) return existing;
+  return await createFolder(accessToken, name, parentId);
 }
 
 Deno.serve(async (req) => {
@@ -87,40 +115,18 @@ Deno.serve(async (req) => {
     const serviceAccountJson = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON');
     const parentFolderId = Deno.env.get('GOOGLE_DRIVE_PARENT_FOLDER_ID');
 
-    if (!serviceAccountJson) {
-      throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON non configurato');
-    }
-    if (!parentFolderId) {
-      throw new Error('GOOGLE_DRIVE_PARENT_FOLDER_ID non configurato');
-    }
+    if (!serviceAccountJson) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON non configurato');
+    if (!parentFolderId) throw new Error('GOOGLE_DRIVE_PARENT_FOLDER_ID non configurato');
 
-    // Get OAuth2 access token
     const accessToken = await getGoogleAccessToken(serviceAccountJson);
 
-    // Nome cartella: "Cliente - Titolo"
-    const folderName = `${cliente_nome || 'Senza cliente'} - ${titolo}`;
+    // Step 1: trova o crea la cartella cliente (es. "Gisko")
+    const clienteFolderName = cliente_nome || 'Senza cliente';
+    const clienteFolderId = await findOrCreateFolder(accessToken, clienteFolderName, parentFolderId);
 
-    // Crea la cartella su Google Drive
-    const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        name: folderName,
-        mimeType: 'application/vnd.google-apps.folder',
-        parents: [parentFolderId],
-      }),
-    });
-
-    const folderData = await createRes.json();
-    if (!createRes.ok) {
-      throw new Error(`Drive API error [${createRes.status}]: ${JSON.stringify(folderData)}`);
-    }
-
-    const folderId = folderData.id;
-    const folderUrl = `https://drive.google.com/drive/folders/${folderId}`;
+    // Step 2: crea la sottocartella col titolo del reel (es. "Provoleee") dentro la cartella cliente
+    const reelFolderId = await createFolder(accessToken, titolo, clienteFolderId);
+    const reelFolderUrl = `https://drive.google.com/drive/folders/${reelFolderId}`;
 
     // Aggiorna link_drive nel DB
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -134,7 +140,7 @@ Deno.serve(async (req) => {
         'Content-Type': 'application/json',
         'Prefer': 'return=representation',
       },
-      body: JSON.stringify({ link_drive: folderUrl }),
+      body: JSON.stringify({ link_drive: reelFolderUrl }),
     });
 
     if (!updateRes.ok) {
@@ -142,13 +148,13 @@ Deno.serve(async (req) => {
       throw new Error(`DB update failed: ${updateErr}`);
     }
 
-    console.log(`✅ Cartella Drive creata: ${folderName} → ${folderUrl}`);
+    console.log(`✅ Cartella Drive creata: ${clienteFolderName}/${titolo} → ${reelFolderUrl}`);
 
     return new Response(JSON.stringify({
       success: true,
-      folder_id: folderId,
-      folder_url: folderUrl,
-      folder_name: folderName,
+      folder_id: reelFolderId,
+      folder_url: reelFolderUrl,
+      folder_name: `${clienteFolderName}/${titolo}`,
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
