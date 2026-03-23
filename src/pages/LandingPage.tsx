@@ -566,8 +566,8 @@ export function LandingPage({ onAuthenticated }: LandingPageProps) {
       <section id="metrics" className="relative py-4">
         <div className="max-w-5xl mx-auto px-6">
           <div
-            className="grid grid-cols-2 md:grid-cols-4 divide-x rounded-2xl overflow-hidden"
-            style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', divideColor: 'rgba(255,255,255,0.07)' }}
+            className="grid grid-cols-2 md:grid-cols-4 rounded-2xl overflow-hidden"
+            style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}
           >
             {[
               { v: 1200, s: '+', l: 'Task completati' },
