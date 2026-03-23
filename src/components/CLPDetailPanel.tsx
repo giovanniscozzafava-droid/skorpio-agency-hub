@@ -189,7 +189,10 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
 
   const set = (k: keyof Contenuto, v: any) => {
     setForm(prev => ({ ...prev, [k]: v }));
-    // Auto-save con debounce
+    // La fase NON viene autosalvata: il cambio fase si salva solo con il tasto Salva
+    // (così prevFaseRef rimane stabile per il workflow automatico)
+    if (k === 'fase') return;
+    // Auto-save con debounce per gli altri campi
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => saveField(k, v), 800);
   };
