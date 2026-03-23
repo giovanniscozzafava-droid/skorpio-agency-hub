@@ -453,9 +453,9 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                         </div>
                       )}
 
-                      {/* Countdown dedicato per task Pubblicazione */}
+                      {/* Orologio live per task Pubblicazione con scadenza */}
                       {task.tipo === 'Pubblicazione' && task.scadenza && (
-                        <CountdownBadge task={task} />
+                        <LiveClock scadenza={task.scadenza} ora={task.ora} />
                       )}
                     </div>
                   );
