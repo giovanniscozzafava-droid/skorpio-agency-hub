@@ -91,13 +91,9 @@ Deno.serve(async (req) => {
     const subfolders = ['📹 Contenuti', '🖼️ Grafiche', '📋 Documenti', '📣 ADV'];
     await Promise.all(subfolders.map(name => createDriveFolder(accessToken, name, clientFolder.id)));
 
-    // Salva link_drive nella tabella clienti (campo note — aggiungiamo un campo dedicato in futuro)
-    // Per ora aggiorniamo un campo che possiamo usare per riferimento, usiamo note temporaneamente
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-    // Controlliamo se c'è già un campo link_drive nella tabella clienti — se non c'è usiamo le note
-    // Salviamo il link in una struttura separata nei metadati
     await fetch(`${supabaseUrl}/rest/v1/clienti?id=eq.${cliente_id}`, {
       method: 'PATCH',
       headers: {
@@ -106,7 +102,7 @@ Deno.serve(async (req) => {
         'Content-Type': 'application/json',
         'Prefer': 'return=minimal',
       },
-      body: JSON.stringify({ note: `[DRIVE:${clientFolder.url}]` }),
+      body: JSON.stringify({ link_drive: clientFolder.url }),
     });
 
     console.log(`✅ Cartella cliente creata: ${folderName} → ${clientFolder.url}`);
