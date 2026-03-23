@@ -7,7 +7,8 @@ interface AvatarProps {
   className?: string;
 }
 
-export function Avatar({ nome, colore, size = 32, className = '' }: AvatarProps) {
+export const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
+  function Avatar({ nome, colore, size = 32, className = '' }, ref) {
   const iniziale = nome.charAt(0).toUpperCase();
   return (
     <div
