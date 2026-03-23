@@ -469,17 +469,18 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t flex-shrink-0" style={{ borderColor: 'hsl(var(--border))' }}>
+        <div className="px-5 py-3 border-t flex-shrink-0 flex flex-col gap-2" style={{ borderColor: 'hsl(var(--border))' }}>
           <button
             onClick={() => {
-              // trigger logout dalla parent
-              document.dispatchEvent(new CustomEvent('skorpio:logout'));
+              // Scollega solo il profilo locale (senza fare signOut)
+              // utile se vuoi cambiare il membro senza uscire dall'account
+              useApp_logout_ref.current?.();
               onClose();
             }}
             className="w-full text-xs py-2.5 px-3 rounded-lg text-left font-medium transition-colors"
             style={{ color: '#EF4444', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}
           >
-            🚪 Cambia utente
+            🚪 Logout
           </button>
         </div>
       </div>
