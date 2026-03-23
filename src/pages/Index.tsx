@@ -43,13 +43,6 @@ function MainApp() {
     return new Date(t.scadenza) < oggi;
   }).length;
 
-  const Placeholder = ({ emoji, label }: { emoji: string; label: string }) => (
-    <div className="p-8 text-center text-muted-foreground">
-      <div className="text-5xl mb-4">{emoji}</div>
-      <p className="text-lg font-medium">{label}</p>
-      <p className="text-sm mt-1 opacity-60">In costruzione — prossimo aggiornamento</p>
-    </div>
-  );
 
   return (
     <div className="min-h-screen" style={{ background: 'hsl(var(--skorpio-bg))' }}>
