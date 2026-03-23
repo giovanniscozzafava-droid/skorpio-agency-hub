@@ -410,11 +410,12 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
   const [clips, setClips] = useState<LogRipresa[]>([]);
   const [contenuti, setContenuti] = useState<Record<string, Contenuto>>({});
   const [loading, setLoading] = useState(true);
-  const [filtroStato, setFiltroStato] = useState<string>('');  // '' = tutti
+  const [filtroStato, setFiltroStato] = useState<string>('');
   const [filtroCliente, setFiltroCliente] = useState('');
   const [search, setSearch] = useState('');
   const [showNuova, setShowNuova] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showReport, setShowReport] = useState(false);
 
   const loadClips = useCallback(async () => {
     const { data } = await supabase
@@ -424,7 +425,6 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
     setClips((data || []) as LogRipresa[]);
     setLoading(false);
 
-    // load related contenuti
     const ids = [...new Set((data || []).map((c: LogRipresa) => c.contenuto_id).filter(Boolean))] as string[];
     if (ids.length) {
       const { data: clps } = await supabase.from('contenuti').select('*').in('id', ids);
@@ -436,11 +436,27 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
 
   useEffect(() => { loadClips(); }, [loadClips]);
 
-  // Stats per stato
+  // Stats per stato globale
   const statCounts = STATI.reduce((acc, s) => {
     acc[s] = clips.filter(c => c.stato === s).length;
     return acc;
   }, {} as Record<string, number>);
+
+  // Mini-report per cliente: raggruppa clips per cliente_nome
+  const reportClienti = React.useMemo(() => {
+    const map: Record<string, { nome: string; clienteId: string; buona: number; grezza: number; daGirare: number; scartata: number; usata: number; totale: number }> = {};
+    clips.forEach(c => {
+      const key = c.cliente_nome || '(Senza cliente)';
+      if (!map[key]) map[key] = { nome: key, clienteId: c.cliente_id || '', buona: 0, grezza: 0, daGirare: 0, scartata: 0, usata: 0, totale: 0 };
+      map[key].totale++;
+      if (c.stato === 'Buona') map[key].buona++;
+      else if (c.stato === 'Grezza') map[key].grezza++;
+      else if (c.stato === 'Da girare') map[key].daGirare++;
+      else if (c.stato === 'Scartata') map[key].scartata++;
+      else if (c.stato === 'Usata') map[key].usata++;
+    });
+    return Object.values(map).sort((a, b) => b.totale - a.totale);
+  }, [clips]);
 
   // Filtered
   const filtered = clips.filter(c => {
@@ -458,22 +474,13 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
     return true;
   });
 
-  async function updateClip(id: string, patch: Partial<LogRipresa>) {
-    const { error } = await supabase.from('log_riprese').update(patch).eq('id', id);
-    if (error) { addToast('❌ Errore aggiornamento', 'error'); return; }
-    setClips(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
-  }
-
-  async function deleteClip(id: string) {
-    const { error } = await supabase.from('log_riprese').delete().eq('id', id);
-    if (error) { addToast('❌ Errore eliminazione', 'error'); return; }
-    setClips(prev => prev.filter(c => c.id !== id));
-    setDeletingId(null);
-    addToast('🗑️ Clip eliminata', 'warn');
-  }
-
-  const thCls = "px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap bg-muted/60 sticky top-0 z-10";
-  const tdCls = "px-3 py-2 text-sm text-foreground border-b border-border/50";
+  // Nome del cliente attivo nel filtro
+  const clienteAttivoNome = filtroCliente
+    ? (clienti.find(c => c.id === filtroCliente)?.nome || '')
+    : '';
+  const reportClienteAttivo = clienteAttivoNome
+    ? reportClienti.find(r => r.clienteId === filtroCliente)
+    : null;
 
   return (
     <div className="flex flex-col h-full">
@@ -490,12 +497,21 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
         </select>
 
         <select
-          className="border border-border rounded-md px-3 py-1.5 text-sm bg-background text-foreground focus:outline-none max-w-[180px]"
+          className="border border-border rounded-md px-3 py-1.5 text-sm bg-background text-foreground focus:outline-none max-w-[200px]"
           value={filtroCliente}
-          onChange={e => setFiltroCliente(e.target.value)}
+          onChange={e => { setFiltroCliente(e.target.value); }}
         >
           <option value="">Tutti i clienti</option>
-          {clienti.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+          {clienti
+            .filter(c => clips.some(cl => cl.cliente_id === c.id))
+            .map(c => {
+              const rep = reportClienti.find(r => r.clienteId === c.id);
+              return (
+                <option key={c.id} value={c.id}>
+                  {c.nome} ({rep?.totale || 0} clip)
+                </option>
+              );
+            })}
         </select>
 
         <input
@@ -509,7 +525,13 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
           {filtered.length} / {clips.length} clip
         </span>
 
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setShowReport(v => !v)}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-all ${showReport ? 'bg-[hsl(var(--clr-blue))] text-white border-[hsl(var(--clr-blue))]' : 'border-border hover:bg-muted text-foreground'}`}
+          >
+            📊 Report
+          </button>
           <button
             onClick={() => setShowNuova(true)}
             className="px-4 py-1.5 rounded-md bg-[hsl(var(--clr-blue))] text-white text-sm font-semibold hover:opacity-90 transition-opacity"
@@ -518,6 +540,90 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
           </button>
         </div>
       </div>
+
+      {/* Mini-report per cliente (collapsible) */}
+      {showReport && (
+        <div className="flex-shrink-0 border-b border-border bg-card/40 px-4 py-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">📊 Report clip per cliente</span>
+            <button onClick={() => setShowReport(false)} className="text-muted-foreground hover:text-foreground text-xs">✕ Chiudi</button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="text-left">
+                  <th className="py-1.5 pr-4 text-muted-foreground font-semibold">Cliente</th>
+                  <th className="py-1.5 px-3 text-center text-muted-foreground font-semibold">Tot.</th>
+                  <th className="py-1.5 px-3 text-center font-semibold" style={{ color: 'hsl(var(--clr-green))' }}>Buona</th>
+                  <th className="py-1.5 px-3 text-center font-semibold" style={{ color: 'hsl(var(--muted-foreground))' }}>Grezza</th>
+                  <th className="py-1.5 px-3 text-center font-semibold" style={{ color: 'hsl(var(--clr-blue))' }}>Usata</th>
+                  <th className="py-1.5 px-3 text-center font-semibold" style={{ color: 'hsl(var(--clr-red))' }}>Scartata</th>
+                  <th className="py-1.5 pl-3 text-left font-semibold text-muted-foreground">Qualità %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reportClienti.map(r => {
+                  const qualita = r.totale > 0 ? Math.round((r.buona / r.totale) * 100) : 0;
+                  const isActive = filtroCliente === r.clienteId;
+                  return (
+                    <tr
+                      key={r.nome}
+                      onClick={() => setFiltroCliente(isActive ? '' : r.clienteId)}
+                      className={`cursor-pointer border-t border-border/40 transition-colors ${isActive ? 'bg-[hsl(var(--clr-blue)/0.12)]' : 'hover:bg-muted/40'}`}
+                    >
+                      <td className="py-1.5 pr-4 font-medium text-foreground">
+                        {isActive && <span className="mr-1 text-[hsl(var(--clr-blue))]">▶</span>}
+                        {r.nome}
+                      </td>
+                      <td className="py-1.5 px-3 text-center font-bold text-foreground">{r.totale}</td>
+                      <td className="py-1.5 px-3 text-center font-semibold" style={{ color: 'hsl(var(--clr-green))' }}>{r.buona}</td>
+                      <td className="py-1.5 px-3 text-center text-muted-foreground">{r.grezza}</td>
+                      <td className="py-1.5 px-3 text-center" style={{ color: 'hsl(var(--clr-blue))' }}>{r.usata}</td>
+                      <td className="py-1.5 px-3 text-center" style={{ color: 'hsl(var(--clr-red))' }}>{r.scartata}</td>
+                      <td className="py-1.5 pl-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-24 h-1.5 rounded-full bg-muted overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all"
+                              style={{
+                                width: `${qualita}%`,
+                                background: qualita >= 70 ? 'hsl(var(--clr-green))' : qualita >= 40 ? 'hsl(var(--clr-amber))' : 'hsl(var(--clr-red))',
+                              }}
+                            />
+                          </div>
+                          <span className="text-muted-foreground">{qualita}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Inline banner se filtro cliente attivo */}
+      {filtroCliente && reportClienteAttivo && (
+        <div className="flex-shrink-0 flex items-center gap-4 px-4 py-2 border-b border-border bg-[hsl(var(--clr-blue)/0.06)]">
+          <span className="text-sm font-semibold text-[hsl(var(--clr-blue))]">🎬 {reportClienteAttivo.nome}</span>
+          <span className="text-xs text-muted-foreground">{reportClienteAttivo.totale} clip totali</span>
+          <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[hsl(var(--clr-green)/0.15)] text-[hsl(var(--clr-green))] border border-[hsl(var(--clr-green)/0.3)]">
+            ✓ {reportClienteAttivo.buona} Buone
+          </span>
+          <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-muted text-muted-foreground border border-border">
+            {reportClienteAttivo.grezza} Grezze
+          </span>
+          {reportClienteAttivo.usata > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[hsl(var(--clr-blue)/0.15)] text-[hsl(var(--clr-blue))] border border-[hsl(var(--clr-blue)/0.3)]">
+              {reportClienteAttivo.usata} Usate
+            </span>
+          )}
+          <button onClick={() => setFiltroCliente('')} className="ml-auto text-xs text-muted-foreground hover:text-foreground underline">
+            ✕ Reset
+          </button>
+        </div>
+      )}
 
       {/* Stats bar */}
       <div className="flex-shrink-0 flex flex-wrap gap-2 px-4 py-2.5 border-b border-border bg-card/60">
@@ -538,8 +644,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
               }}
             >
               {s}
-              <span className={`rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-bold
-                ${active ? 'bg-white/30' : ''}`}
+              <span className={`rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-bold ${active ? 'bg-white/30' : ''}`}
                 style={!active ? { background: cfg.text + '22' } : undefined}
               >
                 {count}
