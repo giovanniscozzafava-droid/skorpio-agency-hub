@@ -534,6 +534,25 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
             })}
         </select>
 
+        {/* Filtro operatore */}
+        <select
+          className="border border-border rounded-md px-3 py-1.5 text-sm bg-background text-foreground focus:outline-none max-w-[160px]"
+          value={filtroOperatore}
+          onChange={e => setFiltroOperatore(e.target.value)}
+        >
+          <option value="">Tutti gli operatori</option>
+          {team
+            .filter(t => clips.some(cl => cl.operatore === t.nome))
+            .map(t => {
+              const count = clips.filter(cl => cl.operatore === t.nome).length;
+              return (
+                <option key={t.id} value={t.nome}>
+                  {t.nome} ({count})
+                </option>
+              );
+            })}
+        </select>
+
         <input
           className="border border-border rounded-md px-3 py-1.5 text-sm bg-background text-foreground focus:outline-none w-44"
           placeholder="🔍 Cerca clip…"
