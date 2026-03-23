@@ -678,10 +678,20 @@ export function LandingPage({ onAuthenticated }: LandingPageProps) {
           {/* Two-column feature list */}
           <div className="grid md:grid-cols-2 gap-x-16">
             <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-              {features.slice(0, 3).map((f, i) => <FeatureItem key={i} {...f} />)}
+              {features.slice(0, 3).map((f, i) => (
+                <FeatureItem key={i} {...f}
+                  visible={featureVisible[i]}
+                  refCallback={el => { featureRefs.current[i] = el; }}
+                />
+              ))}
             </div>
             <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-              {features.slice(3).map((f, i) => <FeatureItem key={i} {...f} />)}
+              {features.slice(3).map((f, i) => (
+                <FeatureItem key={i + 3} {...f}
+                  visible={featureVisible[i + 3]}
+                  refCallback={el => { featureRefs.current[i + 3] = el; }}
+                />
+              ))}
             </div>
           </div>
         </div>
