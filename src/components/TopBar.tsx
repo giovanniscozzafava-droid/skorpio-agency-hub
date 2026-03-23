@@ -13,7 +13,7 @@ interface TopBarProps {
 }
 
 export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamChange }: TopBarProps) {
-  const { utente, setUtente, tab, setTab } = useApp();
+  const { utente, tab, setTab, logout } = useApp();
   const [orologio, setOrologio] = useState(new Date());
   const [showImpostazioni, setShowImpostazioni] = useState(false);
 
@@ -21,13 +21,6 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
     const t = setInterval(() => setOrologio(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
-
-  // Ascolta evento logout dal pannello impostazioni
-  useEffect(() => {
-    const fn = () => setUtente(null);
-    document.addEventListener('skorpio:logout', fn);
-    return () => document.removeEventListener('skorpio:logout', fn);
-  }, [setUtente]);
 
   const isAdmin = utente?.ruolo === 'Admin';
 

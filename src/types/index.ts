@@ -5,6 +5,7 @@ export type TeamMember = {
   colore: string;
   ruolo: 'Admin' | 'Team';
   avatar_url: string;
+  auth_user_id?: string | null;
   created_at: string;
 };
 
