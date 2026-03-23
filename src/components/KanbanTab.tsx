@@ -229,6 +229,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       .eq('id', dragItem);
 
     if (error) {
+      sounds.errore();
       addToast('Errore nel salvataggio', 'error');
       isMyAction.current = false;
       loadTasks();
@@ -236,6 +237,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       sounds.taskCompletato();
       addToast('✅ Task completato!', 'success');
     } else {
+      sounds.drop();
       addToast(`↕️ Spostato → ${nuovoStato}`, 'info');
     }
     setDragItem(null);

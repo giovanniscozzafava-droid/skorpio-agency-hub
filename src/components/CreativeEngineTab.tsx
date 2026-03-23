@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
+import { sounds } from '../lib/sounds';
 import type { Cliente, TeamMember } from '../types';
 
 interface BrandRules {
@@ -146,7 +147,8 @@ export function CreativeEngineTab({ clienti, team }: Props) {
     setLoading(true);
     setRisultati([]);
     setStats(null);
-    aiCounterRef.current = null; // reset counter per nuovo batch
+    aiCounterRef.current = null;
+    sounds.aiGenera();
     try {
       const { data, error } = await supabase.functions.invoke('generate-content', {
         body: {
@@ -161,13 +163,16 @@ export function CreativeEngineTab({ clienti, team }: Props) {
       });
       if (error) throw new Error(error.message);
       if (data.error) {
+        sounds.errore();
         addToast(`❌ ${data.error}`, 'error');
         return;
       }
       setRisultati(data.contenuti || []);
       setStats(data.tokens);
+      sounds.taskCompletato();
       addToast(`✨ ${data.contenuti?.length || 0} contenuti generati!`, 'success');
     } catch (e: any) {
+      sounds.errore();
       addToast(`❌ Errore: ${e.message}`, 'error');
     } finally {
       setLoading(false);
@@ -196,7 +201,8 @@ export function CreativeEngineTab({ clienti, team }: Props) {
       .select()
       .single();
 
-    if (error) { addToast(`❌ Errore salvataggio: ${error.message}`, 'error'); return; }
+    if (error) { sounds.errore(); addToast(`❌ Errore salvataggio: ${error.message}`, 'error'); return; }
+    sounds.salva();
     setRisultati(prev => prev.map((r, i) => i === idx ? { ...r, _saved: true } : r));
     addToast(`✅ ${newCLP.id_display} salvato in Contenuti!`, 'success');
   };
@@ -208,6 +214,7 @@ export function CreativeEngineTab({ clienti, team }: Props) {
       await salvaCLP(nonSalvati[i], idx);
       await new Promise(r => setTimeout(r, 200));
     }
+    sounds.taskCompletato();
     addToast(`✅ ${nonSalvati.length} contenuti salvati!`, 'success');
   };
 

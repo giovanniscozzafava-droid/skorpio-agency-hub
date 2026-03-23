@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
+import { sounds } from '../lib/sounds';
 import type { Task, TeamMember } from '../types';
 import { Avatar } from './Avatar';
 
@@ -48,6 +49,8 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
       .single();
     setSaving(false);
     if (!error && data) {
+      if (nuovoStato === 'Completato') sounds.taskCompletato();
+      else sounds.salva();
       onUpdate(data as Task);
       addToast(`Stato cambiato → ${nuovoStato}`, 'success');
     }
@@ -55,6 +58,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
 
   const handleArchivia = async () => {
     if (!confirm(`Archiviare il task ${task.id_display}?`)) return;
+    sounds.elimina();
     await supabase.from('task').update({ stato: 'Archiviato' }).eq('id', task.id);
     onDelete(task.id);
     addToast('Task archiviato', 'info');
@@ -70,6 +74,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
       .select()
       .single();
     if (!error && data) {
+      sounds.salva();
       onUpdate(data as Task);
       setNota('');
       addToast('Nota aggiunta', 'success');
