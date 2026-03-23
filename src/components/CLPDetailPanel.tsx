@@ -423,6 +423,128 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
             <LabelInput label="🕐 Ora pubblicaz." field="ora_pubblicazione" type="time" />
           </div>
 
+          {/* ─── RIPRESE ─── */}
+          <Section title="RIPRESE" />
+
+          <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'hsl(var(--border))' }}>
+            {/* Header riprese */}
+            <div className="flex items-center justify-between px-3 py-2"
+              style={{ background: 'hsl(var(--muted))' }}>
+              <span className="text-xs font-semibold" style={{ color: 'hsl(var(--muted-foreground))' }}>
+                🎬 {clips.length} clip{clips.length !== 1 ? 's' : ''} collegate
+              </span>
+              <button
+                onClick={() => setShowAddClip(v => !v)}
+                className="text-xs px-2.5 py-1 rounded-md font-semibold transition-all"
+                style={{ background: showAddClip ? 'hsl(var(--muted-foreground))' : 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))' }}
+              >
+                {showAddClip ? '✕ Annulla' : '+ Aggiungi clip'}
+              </button>
+            </div>
+
+            {/* Form aggiunta clip */}
+            {showAddClip && (
+              <div className="p-3 border-b space-y-2" style={{ borderColor: 'hsl(var(--border))', background: 'hsl(var(--card))' }}>
+                <div>
+                  <label className="sk-label">Codici Sony <span className="font-normal opacity-60">(separati da virgola)</span></label>
+                  <input
+                    className="sk-input w-full text-sm"
+                    placeholder="es: C7876, C7877"
+                    value={clipForm.codici}
+                    onChange={e => setClipForm(f => ({ ...f, codici: e.target.value }))}
+                    autoFocus
+                  />
+                  {clipForm.codici && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {clipForm.codici.split(',').map(s => s.trim()).filter(Boolean).map(code => (
+                        <span key={code} className="px-2 py-0.5 rounded-full text-[11px] font-medium"
+                          style={{ background: 'hsl(214 80% 55% / 0.12)', color: 'hsl(214 70% 45%)', border: '1px solid hsl(214 80% 55% / 0.3)' }}>
+                          {code}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="sk-label">Stato</label>
+                    <select className="sk-select w-full text-sm" value={clipForm.stato}
+                      onChange={e => setClipForm(f => ({ ...f, stato: e.target.value as LogRipresa['stato'] }))}>
+                      {STATI_CLIP.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="sk-label">Formato</label>
+                    <select className="sk-select w-full text-sm" value={clipForm.formato}
+                      onChange={e => setClipForm(f => ({ ...f, formato: e.target.value }))}>
+                      <option value="">—</option>
+                      {FORMATI_CLIP.map(f => <option key={f} value={f}>{f}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="sk-label">Operatore</label>
+                    <select className="sk-select w-full text-sm" value={clipForm.operatore}
+                      onChange={e => setClipForm(f => ({ ...f, operatore: e.target.value }))}>
+                      <option value="">—</option>
+                      {team.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <button
+                  onClick={handleAddClips}
+                  disabled={addingClip || !clipForm.codici.trim()}
+                  className="sk-btn-primary w-full text-sm"
+                >
+                  {addingClip ? '⏳ Inserimento…' : `✅ Inserisci clip${['Idea', 'Script'].includes(form.fase) ? ' → porta a Girato' : ''}`}
+                </button>
+              </div>
+            )}
+
+            {/* Lista clip */}
+            {clips.length === 0 ? (
+              <div className="px-3 py-4 text-center text-xs" style={{ color: 'hsl(var(--muted-foreground))' }}>
+                Nessuna clip collegata
+              </div>
+            ) : (
+              <div className="divide-y" style={{ borderColor: 'hsl(var(--border))' }}>
+                {clips.map(clip => {
+                  const cfg = STATO_CLIP_CFG[clip.stato] || STATO_CLIP_CFG['Grezza'];
+                  return (
+                    <div key={clip.id} className="flex items-center gap-2 px-3 py-2">
+                      <span className="font-mono text-xs font-bold flex-shrink-0"
+                        style={{ color: 'hsl(var(--muted-foreground))' }}>
+                        {clip.id_clip}
+                      </span>
+                      <select
+                        className="text-[11px] font-semibold border rounded-full px-2 py-0.5 cursor-pointer focus:outline-none flex-shrink-0"
+                        style={{ background: cfg.bg, color: cfg.text, borderColor: cfg.border }}
+                        value={clip.stato}
+                        onChange={e => handleClipStatoChange(clip.id, e.target.value as LogRipresa['stato'])}
+                      >
+                        {STATI_CLIP.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                      {clip.operatore && (
+                        <span className="text-xs flex-shrink-0" style={{ color: 'hsl(var(--muted-foreground))' }}>
+                          {clip.operatore}
+                        </span>
+                      )}
+                      {clip.formato && (
+                        <span className="text-xs truncate flex-1" style={{ color: 'hsl(var(--muted-foreground))' }}>
+                          {clip.formato}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => handleDeleteClip(clip.id)}
+                        className="ml-auto flex-shrink-0 text-xs opacity-30 hover:opacity-80 transition-opacity"
+                        title="Rimuovi clip"
+                      >✕</button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {/* ─── NOTE & LINK ─── */}
           <Section title="NOTE E LINK" />
 
