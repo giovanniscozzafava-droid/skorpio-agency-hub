@@ -306,8 +306,27 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
       const vecchiaFase = prevFaseRef.current;
       prevFaseRef.current = nuovaFase;
 
-      // Completa task pubblicazione di Elisa
-      await completaTaskPerContenuto(contenuto.id, 'Pubblicazione');
+      // Aggiorna scadenza sul task Pubblicazione attivo (per il countdown in Kanban)
+      if (dataStr) {
+        const { data: pubTasks } = await supabase
+          .from('task')
+          .select('id')
+          .eq('id_contenuto', contenuto.id)
+          .eq('tipo', 'Pubblicazione')
+          .neq('stato', 'Completato')
+          .neq('stato', 'Archiviato');
+        if (pubTasks && pubTasks.length > 0) {
+          await supabase
+            .from('task')
+            .update({ scadenza: dataStr, ora: oraStr })
+            .in('id', pubTasks.map(t => t.id));
+        }
+      }
+
+      // Completa task pubblicazione di Elisa (solo se Pubblicato, non Programmato)
+      if (nuovaFase === 'Pubblicato') {
+        await completaTaskPerContenuto(contenuto.id, 'Pubblicazione');
+      }
 
       // Se programmato, aggiungi evento in calendario
       if (nuovaFase === 'Programmato' && dataStr) {

@@ -7,6 +7,67 @@ import { Avatar } from './Avatar';
 import { TaskDetailPanel } from './TaskDetailPanel';
 import { NuovoTaskModal } from './NuovoTaskModal';
 
+// ─── Countdown per task Pubblicazione con scadenza ────────────────────────────
+function useCountdown(scadenza: string | null, ora: string | null): string | null {
+  const [remaining, setRemaining] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!scadenza) { setRemaining(null); return; }
+
+    const calc = () => {
+      const target = new Date(`${scadenza}T${ora ? ora.slice(0, 5) : '23:59'}:00`);
+      const diff = target.getTime() - Date.now();
+      if (diff <= 0) { setRemaining('⏰ SCADUTO'); return; }
+      const days = Math.floor(diff / 86400000);
+      const hours = Math.floor((diff % 86400000) / 3600000);
+      const mins = Math.floor((diff % 3600000) / 60000);
+      if (days > 0) setRemaining(`${days}g ${hours}h`);
+      else if (hours > 0) setRemaining(`${hours}h ${mins}m`);
+      else setRemaining(`${mins}m`);
+    };
+
+    calc();
+    const id = setInterval(calc, 60000);
+    return () => clearInterval(id);
+  }, [scadenza, ora]);
+
+  return remaining;
+}
+
+function CountdownBadge({ task }: { task: Task }) {
+  const countdown = useCountdown(task.scadenza, task.ora);
+  if (!countdown) return null;
+
+  const target = task.scadenza
+    ? new Date(`${task.scadenza}T${task.ora ? task.ora.slice(0, 5) : '23:59'}:00`)
+    : null;
+  const diff = target ? target.getTime() - Date.now() : Infinity;
+  const isScaduto = diff <= 0;
+  const isUrgent = diff > 0 && diff < 24 * 3600000; // < 24h
+  const isWarning = diff > 0 && diff < 72 * 3600000; // < 3 giorni
+
+  const bg = isScaduto ? 'hsl(0 80% 55% / 0.12)' : isUrgent ? 'hsl(0 80% 55% / 0.10)' : isWarning ? 'hsl(38 92% 50% / 0.10)' : 'hsl(214 80% 55% / 0.10)';
+  const color = isScaduto ? 'hsl(0 70% 45%)' : isUrgent ? 'hsl(0 70% 45%)' : isWarning ? 'hsl(32 95% 40%)' : 'hsl(214 70% 45%)';
+  const border = isScaduto ? 'hsl(0 80% 55% / 0.35)' : isUrgent ? 'hsl(0 80% 55% / 0.30)' : isWarning ? 'hsl(38 92% 50% / 0.30)' : 'hsl(214 80% 55% / 0.25)';
+  const icon = isScaduto ? '🔴' : isUrgent ? '🔴' : isWarning ? '🟡' : '🟢';
+
+  return (
+    <div
+      className="mt-2 flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-semibold"
+      style={{ background: bg, border: `1px solid ${border}`, color }}
+    >
+      <span className="flex items-center gap-1">
+        <span>{icon}</span>
+        <span>PUBBLICAZIONE</span>
+      </span>
+      <span className="font-mono tabular-nums tracking-tight"
+        style={{ fontVariantNumeric: 'tabular-nums' }}>
+        {isScaduto ? countdown : `⏱ ${countdown}`}
+      </span>
+    </div>
+  );
+}
+
 const COLONNE = [
   { stato: 'Da fare', colore: '#F59E0B', bg: '#FFFBEB', border: '#F59E0B', icona: '📋' },
   { stato: 'In lavorazione', colore: '#3B82F6', bg: '#EFF6FF', border: '#3B82F6', icona: '⚡' },
@@ -382,7 +443,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                         </p>
                       )}
 
-                      {scad && (
+                      {scad && task.tipo !== 'Pubblicazione' && (
                         <div
                           className="inline-flex items-center text-xs px-1.5 py-0.5 rounded mt-1.5 font-medium"
                           style={{ background: scad.bg, color: scad.colore }}
@@ -390,6 +451,11 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                           {scad.label}
                           {task.ora && <span className="ml-1 opacity-70">{task.ora.slice(0, 5)}</span>}
                         </div>
+                      )}
+
+                      {/* Countdown dedicato per task Pubblicazione */}
+                      {task.tipo === 'Pubblicazione' && task.scadenza && (
+                        <CountdownBadge task={task} />
                       )}
                     </div>
                   );
