@@ -603,10 +603,88 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
             <LabelInput label="📷 Data ripresa" field="data_ripresa" type="date" />
             <LabelInput label="⏰ Scadenza" field="data_scadenza" type="date" />
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            <LabelInput label="📱 Data pubblicaz." field="data_pubblicazione" type="date" />
-            <LabelInput label="🕐 Ora pubblicaz." field="ora_pubblicazione" type="time" />
-          </div>
+
+          {/* ─── PUBBLICAZIONE (Elisa) ─── */}
+          {['Montato', 'Revisione', 'Programmato', 'Pubblicato'].includes(form.fase) && (
+            <>
+              <Section title="📱 PUBBLICAZIONE" />
+              <div className="rounded-lg border p-3 space-y-3" style={{ background: 'hsl(271 80% 97%)', borderColor: 'hsl(271 60% 80%)' }}>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'hsl(271 60% 45%)' }}>
+                    🟣 Programma o pubblica
+                  </span>
+                  {form.fase === 'Programmato' && (
+                    <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: 'hsl(271 60% 80%)', color: 'hsl(271 60% 30%)' }}>
+                      📅 Programmato
+                    </span>
+                  )}
+                  {form.fase === 'Pubblicato' && (
+                    <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: 'hsl(142 60% 80%)', color: 'hsl(142 60% 30%)' }}>
+                      🚀 Pubblicato
+                    </span>
+                  )}
+                </div>
+
+                {/* Data pubblicazione con datepicker */}
+                <div>
+                  <label className="sk-label">📅 Data pubblicazione</label>
+                  <Popover open={pubCalOpen} onOpenChange={setPubCalOpen}>
+                    <PopoverTrigger asChild>
+                      <button
+                        className={cn(
+                          'sk-input w-full text-sm text-left flex items-center gap-2',
+                          !pubDate && 'opacity-50'
+                        )}
+                      >
+                        <CalendarIcon className="h-3.5 w-3.5 flex-shrink-0" />
+                        {pubDate ? format(pubDate, 'dd/MM/yyyy') : 'Scegli data…'}
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start" style={{ zIndex: 9999 }}>
+                      <Calendar
+                        mode="single"
+                        selected={pubDate}
+                        onSelect={d => { setPubDate(d); setPubCalOpen(false); }}
+                        initialFocus
+                        className={cn('p-3 pointer-events-auto')}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* Ora */}
+                <div>
+                  <label className="sk-label">🕐 Ora pubblicazione</label>
+                  <input
+                    type="time"
+                    className="sk-input w-full text-sm"
+                    value={pubOra}
+                    onChange={e => setPubOra(e.target.value)}
+                  />
+                </div>
+
+                {/* Bottoni azione */}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={() => handleProgramma('Programmato')}
+                    disabled={savingPub || !pubDate}
+                    className="flex-1 text-xs px-3 py-2 rounded-lg font-semibold transition-all disabled:opacity-40"
+                    style={{ background: 'hsl(271 60% 55%)', color: 'white' }}
+                  >
+                    {savingPub ? '⏳…' : '📅 Programma'}
+                  </button>
+                  <button
+                    onClick={() => handleProgramma('Pubblicato')}
+                    disabled={savingPub}
+                    className="flex-1 text-xs px-3 py-2 rounded-lg font-semibold transition-all disabled:opacity-40"
+                    style={{ background: 'hsl(142 60% 45%)', color: 'white' }}
+                  >
+                    {savingPub ? '⏳…' : '🚀 Pubblica ora'}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
 
           {/* ─── RIPRESE ─── */}
           <Section title="RIPRESE" />
