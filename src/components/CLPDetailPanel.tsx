@@ -97,6 +97,19 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
     if (!error && data) {
       onUpdate(data as Contenuto);
       addToast('CLP salvato ✅', 'success');
+
+      // 📁 Se la fase è passata a Montato e non c'è ancora link Drive → crea cartella
+      if (form.fase === 'Montato' && contenuto.fase !== 'Montato' && !contenuto.link_drive) {
+        addToast('📁 Creazione cartella Drive…', 'info');
+        const url = await createDriveFolder(form);
+        if (url) {
+          const { data: fresh } = await supabase.from('contenuti').select('*').eq('id', contenuto.id).single();
+          if (fresh) onUpdate(fresh as Contenuto);
+          addToast('📁 Cartella Drive creata!', 'success');
+        } else {
+          addToast('⚠️ Errore creazione cartella Drive', 'warn');
+        }
+      }
     }
   };
 
