@@ -661,6 +661,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
       </div>
 
       {/* Table */}
+
       <div className="flex-1 overflow-auto">
         {loading ? (
           <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
