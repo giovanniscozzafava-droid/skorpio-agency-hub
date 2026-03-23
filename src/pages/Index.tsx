@@ -70,7 +70,7 @@ function MainApp() {
         )}
         {tab === 'clienti' && <ClientiTab />}
         {tab === 'riprese' && <RipreseTab clienti={clienti} team={team} />}
-        {tab === 'chat' && <Placeholder emoji="💬" label="Chat" />}
+        {tab === 'chat' && <ChatTab team={team} />}
       </div>
       <ToastContainer />
     </div>
