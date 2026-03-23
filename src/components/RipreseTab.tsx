@@ -252,6 +252,22 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
       return;
     }
 
+    // Aggiorna il CLP a "Girato" solo se la fase attuale è precedente (Idea o Script)
+    if (contenutoId) {
+      const { data: clpData } = await supabase
+        .from('contenuti')
+        .select('fase')
+        .eq('id', contenutoId)
+        .single();
+      const fasePrecedente = ['Idea', 'Script'];
+      if (clpData && fasePrecedente.includes(clpData.fase)) {
+        await supabase
+          .from('contenuti')
+          .update({ fase: 'Girato' })
+          .eq('id', contenutoId);
+      }
+    }
+
     addToast(`✅ ${rawCodes.length} clip inserita${rawCodes.length > 1 ? 'e' : ''}!`, 'success');
     onCreated();
     onClose();
