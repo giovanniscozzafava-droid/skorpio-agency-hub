@@ -47,14 +47,15 @@ function MainApp() {
 
 
   return (
-    <div className="min-h-screen" style={{ background: 'hsl(var(--skorpio-bg))' }}>
+    <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'hsl(var(--skorpio-bg))' }}>
       <TopBar
         team={team}
         taskCounts={{ daFare, urgenti, scaduti }}
         onViewPersona={setPersonaView}
         personaView={personaView}
       />
-      <div className="skorpio-main">
+      {/* pt-[100px] accounts for fixed topbar (56px) + tab bar (44px) */}
+      <div className="flex-1 overflow-hidden min-h-0 pt-[100px]">
         {tab === 'kanban' && (
           <KanbanTab team={team} clienti={clienti} personaView={personaView} />
         )}
