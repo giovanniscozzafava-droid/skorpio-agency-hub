@@ -83,8 +83,8 @@ Deno.serve(async (req) => {
 
     const accessToken = await getGoogleAccessToken(serviceAccountJson);
 
-    // Crea la cartella principale del cliente: "ID_DISPLAY - Nome Cliente"
-    const folderName = `${id_display || cliente_id} - ${cliente_nome}`;
+    // Crea la cartella principale del cliente: solo nome
+    const folderName = cliente_nome;
     const clientFolder = await createDriveFolder(accessToken, folderName, parentFolderId);
 
     // Crea sottocartelle standard
