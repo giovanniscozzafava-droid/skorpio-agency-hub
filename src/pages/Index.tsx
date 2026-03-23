@@ -54,7 +54,8 @@ function MainApp() {
         onViewPersona={setPersonaView}
         personaView={personaView}
       />
-      <div className="flex-1 overflow-hidden min-h-0">
+      {/* pt-[100px] accounts for fixed topbar (56px) + tab bar (44px) */}
+      <div className="flex-1 overflow-hidden min-h-0 pt-[100px]">
         {tab === 'kanban' && (
           <KanbanTab team={team} clienti={clienti} personaView={personaView} />
         )}
