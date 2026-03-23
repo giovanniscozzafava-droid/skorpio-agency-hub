@@ -2,104 +2,417 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+/* =====================================================
+   SKORPIO — Design System
+   Fuyue Digital Agency Internal Tool
+   ===================================================== */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Background */
+    --background: 210 20% 98%;
+    --foreground: 222 47% 11%;
 
+    /* Cards & Surfaces */
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 222 47% 11%;
+    --card-border: 214 32% 91%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 222 47% 11%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* Brand Primary — Blu Notte */
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --primary-dark: 221 83% 53%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* Secondary — Amber accents */
+    --secondary: 45 93% 47%;
+    --secondary-foreground: 0 0% 100%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    /* Muted */
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    /* Accent */
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    /* Destructive */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    /* Borders & Inputs */
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 217 91% 60%;
 
+    /* Radius */
     --radius: 0.5rem;
 
+    /* Sidebar */
     --sidebar-background: 0 0% 98%;
-
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 240 5.9% 10%;
-
+    --sidebar-foreground: 240 5% 26%;
+    --sidebar-primary: 240 6% 10%;
     --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
+    --sidebar-accent: 240 5% 96%;
+    --sidebar-accent-foreground: 240 6% 10%;
     --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217 91% 60%;
 
-    --sidebar-ring: 217.2 91.2% 59.8%;
-  }
+    /* SKORPIO Custom Tokens */
+    --skorpio-bg: 210 20% 98%;
+    --skorpio-surface: 0 0% 100%;
+    --skorpio-border: 214 32% 91%;
+    --skorpio-text-primary: 222 47% 11%;
+    --skorpio-text-secondary: 215 16% 40%;
+    --skorpio-text-tertiary: 215 14% 60%;
 
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    /* Top Bar */
+    --topbar-bg: 222 47% 11%;
+    --topbar-fg: 0 0% 100%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    /* Priorità */
+    --priority-high: 0 84% 60%;
+    --priority-medium: 38 92% 50%;
+    --priority-low: 142 71% 45%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    /* Stati task */
+    --stato-da-fare-bg: 45 100% 96%;
+    --stato-da-fare-border: 38 92% 50%;
+    --stato-in-lavorazione-bg: 214 100% 97%;
+    --stato-in-lavorazione-border: 217 91% 60%;
+    --stato-in-revisione-bg: 270 100% 97%;
+    --stato-in-revisione-border: 267 84% 60%;
+    --stato-completato-bg: 142 100% 96%;
+    --stato-completato-border: 142 71% 45%;
+    --stato-non-accettato-bg: 0 100% 97%;
+    --stato-non-accettato-border: 0 84% 60%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    /* Fasi CLP */
+    --fase-idea: 215 14% 60%;
+    --fase-script: 38 92% 50%;
+    --fase-girato: 142 71% 45%;
+    --fase-pre-montato: 187 85% 43%;
+    --fase-montato: 267 84% 60%;
+    --fase-revisione: 327 87% 62%;
+    --fase-programmato: 270 67% 47%;
+    --fase-pubblicato: 217 91% 60%;
+    --fase-scartata: 0 84% 60%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Shadow */
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.08), 0 2px 4px -1px rgba(0,0,0,0.04);
+    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -2px rgba(0,0,0,0.04);
+    --shadow-panel: -4px 0 20px rgba(0,0,0,0.08);
   }
 }
 
 @layer base {
   * {
     @apply border-border;
+    box-sizing: border-box;
+  }
+
+  html {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   }
 
   body {
     @apply bg-background text-foreground;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(214 32% 85%);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(215 16% 60%);
+  }
+}
+
+@layer components {
+  /* ---- SKORPIO Layout ---- */
+  .skorpio-topbar {
+    @apply fixed top-0 left-0 right-0 z-50 flex items-center gap-3 px-4 h-14;
+    background: hsl(var(--topbar-bg));
+    color: hsl(var(--topbar-fg));
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  }
+
+  .skorpio-tabbar {
+    @apply fixed top-14 left-0 right-0 z-40 flex items-center gap-0 px-2 h-11 overflow-x-auto;
+    background: hsl(var(--topbar-bg));
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .skorpio-tab {
+    @apply flex items-center gap-1.5 px-3 h-9 text-sm font-medium rounded-md cursor-pointer transition-all duration-150 whitespace-nowrap select-none;
+    color: rgba(255,255,255,0.6);
+  }
+
+  .skorpio-tab:hover {
+    color: rgba(255,255,255,0.9);
+    background: rgba(255,255,255,0.08);
+  }
+
+  .skorpio-tab.active {
+    color: hsl(var(--topbar-fg));
+    background: rgba(255,255,255,0.15);
+  }
+
+  .skorpio-main {
+    @apply pt-[100px] min-h-screen;
+    background: hsl(var(--skorpio-bg));
+  }
+
+  /* ---- Cards ---- */
+  .sk-card {
+    @apply rounded-lg bg-card border;
+    border-color: hsl(var(--skorpio-border));
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* ---- Task Card ---- */
+  .task-card {
+    @apply sk-card p-3 cursor-pointer transition-all duration-150 select-none;
+  }
+  .task-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+  }
+  .task-card.dragging {
+    opacity: 0.5;
+    transform: rotate(2deg);
+  }
+
+  /* ---- Detail Panel ---- */
+  .detail-panel {
+    @apply fixed top-0 right-0 h-full z-50 bg-card overflow-y-auto;
+    width: 360px;
+    box-shadow: var(--shadow-panel);
+    border-left: 1px solid hsl(var(--skorpio-border));
+    transform: translateX(100%);
+    transition: transform 200ms ease;
+  }
+  .detail-panel.open {
+    transform: translateX(0);
+  }
+
+  /* ---- Modal ---- */
+  .sk-modal-overlay {
+    @apply fixed inset-0 z-50 flex items-center justify-center p-4;
+    background: rgba(0,0,0,0.4);
+    backdrop-filter: blur(2px);
+  }
+
+  .sk-modal {
+    @apply bg-card rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto;
+    box-shadow: var(--shadow-lg);
+    border: 1px solid hsl(var(--skorpio-border));
+  }
+
+  /* ---- Badge fase CLP ---- */
+  .fase-badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
+  }
+
+  /* ---- Avatar ---- */
+  .sk-avatar {
+    @apply rounded-full flex items-center justify-center font-bold text-white flex-shrink-0;
+  }
+
+  /* ---- Input ---- */
+  .sk-input {
+    @apply w-full rounded-md border px-3 py-2 text-sm transition-colors outline-none;
+    border-color: hsl(var(--skorpio-border));
+    background: hsl(var(--card));
+    color: hsl(var(--skorpio-text-primary));
+  }
+  .sk-input:focus {
+    border-color: hsl(var(--primary));
+    box-shadow: 0 0 0 2px hsl(var(--primary) / 0.15);
+  }
+
+  .sk-select {
+    @apply sk-input appearance-none pr-8 cursor-pointer;
+  }
+
+  .sk-textarea {
+    @apply sk-input resize-none;
+  }
+
+  .sk-label {
+    @apply block text-xs font-medium mb-1;
+    color: hsl(var(--skorpio-text-secondary));
+  }
+
+  /* ---- Button variants ---- */
+  .sk-btn {
+    @apply inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium transition-all duration-150 cursor-pointer select-none;
+  }
+
+  .sk-btn-primary {
+    @apply sk-btn;
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
+  .sk-btn-primary:hover {
+    background: hsl(var(--primary-dark));
+  }
+
+  .sk-btn-ghost {
+    @apply sk-btn;
+    color: hsl(var(--skorpio-text-secondary));
+  }
+  .sk-btn-ghost:hover {
+    background: hsl(var(--muted));
+  }
+
+  .sk-btn-danger {
+    @apply sk-btn;
+    background: hsl(var(--destructive) / 0.1);
+    color: hsl(var(--destructive));
+  }
+  .sk-btn-danger:hover {
+    background: hsl(var(--destructive) / 0.2);
+  }
+
+  /* ---- Kanban column ---- */
+  .kanban-col {
+    @apply rounded-xl flex flex-col;
+    min-width: 260px;
+    max-height: calc(100vh - 140px);
+  }
+
+  .kanban-col-header {
+    @apply flex items-center justify-between px-3 py-2.5 rounded-t-xl font-semibold text-sm;
+  }
+
+  .kanban-col-body {
+    @apply flex-1 overflow-y-auto p-2 space-y-2 rounded-b-xl;
+  }
+
+  .kanban-drop-target {
+    border: 2px dashed hsl(var(--primary));
+    background: hsl(var(--primary) / 0.04);
+  }
+
+  /* ---- Sidebar contatti chat ---- */
+  .chat-contact {
+    @apply flex items-center gap-3 p-3 cursor-pointer rounded-lg transition-colors;
+  }
+  .chat-contact:hover {
+    background: hsl(var(--muted));
+  }
+  .chat-contact.active {
+    background: hsl(var(--primary) / 0.08);
+  }
+
+  /* ---- Messaggio chat ---- */
+  .chat-bubble-own {
+    @apply max-w-xs rounded-2xl rounded-br-sm px-4 py-2.5 text-sm;
+    background: hsl(var(--primary));
+    color: white;
+    margin-left: auto;
+  }
+  .chat-bubble-other {
+    @apply max-w-xs rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm;
+    background: hsl(210 40% 95%);
+    color: hsl(var(--skorpio-text-primary));
+  }
+
+  /* ---- Calendario ---- */
+  .cal-cell {
+    @apply min-h-[90px] border-r border-b border-border p-1.5 cursor-pointer transition-colors;
+  }
+  .cal-cell:hover {
+    background: hsl(var(--primary) / 0.04);
+  }
+  .cal-cell.today {
+    background: hsl(var(--primary) / 0.06);
+  }
+  .cal-cell.other-month {
+    background: hsl(210 20% 97%);
+  }
+
+  /* ---- Stats counter ---- */
+  .stat-pill {
+    @apply inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold;
+  }
+
+  /* ---- Progress bar ---- */
+  .sk-progress {
+    @apply h-1.5 rounded-full overflow-hidden;
+    background: hsl(var(--muted));
+  }
+  .sk-progress-bar {
+    @apply h-full rounded-full transition-all;
+  }
+
+  /* ---- Spinner ---- */
+  .sk-spinner {
+    @apply inline-block w-5 h-5 border-2 border-current rounded-full;
+    border-top-color: transparent;
+    animation: spin 0.6s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* ---- Slide in animation ---- */
+  @keyframes slideInRight {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  .animate-slide-in-right {
+    animation: slideInRight 200ms ease forwards;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 200ms ease forwards;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 250ms ease forwards;
+  }
+
+  /* ---- Toast ---- */
+  .sk-toast-container {
+    @apply fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none;
+  }
+
+  .sk-toast {
+    @apply pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium;
+    background: hsl(var(--topbar-bg));
+    color: white;
+    box-shadow: var(--shadow-lg);
+    animation: slideUp 200ms ease forwards;
+    min-width: 280px;
+    max-width: 380px;
   }
 }
