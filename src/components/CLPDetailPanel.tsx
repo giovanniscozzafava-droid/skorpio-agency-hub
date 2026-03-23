@@ -4,6 +4,31 @@ import { useApp } from '../context/AppContext';
 import type { Contenuto, FaseCLP, TeamMember, Cliente } from '../types';
 import { FASE_CONFIG } from './ContenutiTab';
 
+async function createDriveFolder(contenuto: Contenuto): Promise<string | null> {
+  try {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    const res = await fetch(`${supabaseUrl}/functions/v1/create-drive-folder`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseKey}`,
+        'apikey': supabaseKey,
+      },
+      body: JSON.stringify({
+        contenuto_id: contenuto.id,
+        titolo: contenuto.titolo,
+        cliente_nome: contenuto.cliente_nome,
+        id_display: contenuto.id_display,
+      }),
+    });
+    const result = await res.json();
+    return result.success ? result.folder_url : null;
+  } catch {
+    return null;
+  }
+}
+
 const FASI: FaseCLP[] = ['Idea', 'Script', 'Girato', 'Pre montato', 'Montato', 'Revisione', 'Programmato', 'Pubblicato', 'Scartata'];
 const CANALI = ['Instagram', 'Facebook', 'Instagram/Facebook', 'TikTok', 'LinkedIn', 'YouTube', 'Altro'];
 const TIPI = ['Reel', 'Post', 'Carosello', 'Story', 'Video', 'Short', 'Altro'];
