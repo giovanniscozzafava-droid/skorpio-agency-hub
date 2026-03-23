@@ -595,11 +595,11 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
               <tbody>
                 {reportClienti.map(r => {
                   const qualita = r.totale > 0 ? Math.round((r.buona / r.totale) * 100) : 0;
-                  const isActive = filtroCliente === r.clienteId;
-                  return (
-                    <tr
-                      key={r.nome}
-                      onClick={() => setFiltroCliente(isActive ? '' : r.clienteId)}
+                  const isActive = filtroCliente === r.nome;
+                   return (
+                     <tr
+                       key={r.nome}
+                       onClick={() => setFiltroCliente(isActive ? '' : r.nome)}
                       className={`cursor-pointer border-t border-border/40 transition-colors ${isActive ? 'bg-[hsl(var(--clr-blue)/0.12)]' : 'hover:bg-muted/40'}`}
                     >
                       <td className="py-1.5 pr-4 font-medium text-foreground">
