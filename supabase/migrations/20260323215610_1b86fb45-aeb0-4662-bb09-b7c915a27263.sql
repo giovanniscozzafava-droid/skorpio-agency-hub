@@ -1,0 +1,1 @@
+ALTER TABLE public.clienti ADD COLUMN IF NOT EXISTS link_drive text DEFAULT ''
