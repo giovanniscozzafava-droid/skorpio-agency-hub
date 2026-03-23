@@ -146,6 +146,7 @@ export function CreativeEngineTab({ clienti, team }: Props) {
     setLoading(true);
     setRisultati([]);
     setStats(null);
+    aiCounterRef.current = null; // reset counter per nuovo batch
     try {
       const { data, error } = await supabase.functions.invoke('generate-content', {
         body: {
@@ -210,20 +211,30 @@ export function CreativeEngineTab({ clienti, team }: Props) {
     addToast(`✅ ${nonSalvati.length} contenuti salvati!`, 'success');
   };
 
+  const aiCounterRef = React.useRef<number | null>(null);
+
   const generaIdDisplay = async (): Promise<string> => {
-    // Genera un ID AI display unico
-    const { data } = await supabase.from('contenuti').select('id_display').ilike('id_display', '%-AI-%').order('created_at', { ascending: false }).limit(1);
-    if (data && data.length > 0) {
-      const last = data[0].id_display;
-      const match = last.match(/(\d+)$/);
-      if (match) {
-        const nextNum = parseInt(match[1]) + 1;
-        const cliente = clienteSelezionato?.nome?.toUpperCase().replace(/\s+/g, '-').slice(0, 8) || 'AI';
-        return `${cliente}-AI-${String(nextNum).padStart(3, '0')}`;
-      }
+    const clientePrefix = clienteSelezionato?.nome?.toUpperCase().replace(/\s+/g, '-').slice(0, 8) || 'AI';
+    // Se abbiamo già un contatore locale (batch save), incrementiamo senza riqueryare
+    if (aiCounterRef.current !== null) {
+      aiCounterRef.current += 1;
+      return `${clientePrefix}-AI-${String(aiCounterRef.current).padStart(3, '0')}`;
     }
-    const cliente = clienteSelezionato?.nome?.toUpperCase().replace(/\s+/g, '-').slice(0, 8) || 'AI';
-    return `${cliente}-AI-001`;
+    // Prima volta: leggi il massimo corrente dal DB
+    const { data } = await supabase
+      .from('contenuti')
+      .select('id_display')
+      .ilike('id_display', '%-AI-%')
+      .order('id_display', { ascending: false })
+      .limit(50);
+
+    let maxNum = 0;
+    (data || []).forEach((row: { id_display: string }) => {
+      const match = row.id_display.match(/(\d+)$/);
+      if (match) maxNum = Math.max(maxNum, parseInt(match[1]));
+    });
+    aiCounterRef.current = maxNum + 1;
+    return `${clientePrefix}-AI-${String(aiCounterRef.current).padStart(3, '0')}`;
   };
 
   const mapFormato = (f: string): string => {
