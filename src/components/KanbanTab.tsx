@@ -49,7 +49,7 @@ function LiveClock({ scadenza, ora }: { scadenza: string; ora: string | null }) 
       <span className="flex items-center gap-1.5">
         <span>{icon}</span>
         <span className="uppercase tracking-wide" style={{ fontSize: '0.65rem' }}>
-          {isScaduto ? 'SCADUTO' : 'alla pub.'}
+          {isScaduto ? 'SCADUTO' : '⏱'}
         </span>
       </span>
       <span
@@ -443,7 +443,10 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                         </p>
                       )}
 
-                      {scad && task.tipo !== 'Pubblicazione' && (
+                      {/* Orologio live per tutti i task con scadenza */}
+                      {task.scadenza ? (
+                        <LiveClock scadenza={task.scadenza} ora={task.ora} />
+                      ) : scad ? (
                         <div
                           className="inline-flex items-center text-xs px-1.5 py-0.5 rounded mt-1.5 font-medium"
                           style={{ background: scad.bg, color: scad.colore }}
@@ -451,12 +454,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                           {scad.label}
                           {task.ora && <span className="ml-1 opacity-70">{task.ora.slice(0, 5)}</span>}
                         </div>
-                      )}
-
-                      {/* Orologio live per task Pubblicazione con scadenza */}
-                      {task.tipo === 'Pubblicazione' && task.scadenza && (
-                        <LiveClock scadenza={task.scadenza} ora={task.ora} />
-                      )}
+                      ) : null}
                     </div>
                   );
                 })}
