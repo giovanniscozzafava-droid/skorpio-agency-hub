@@ -5,10 +5,21 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-// Build a signed JWT for Google Service Account OAuth2
+// Mappa tipo contenuto → sottocartella cliente
+function getSubfolderForTipo(tipo: string | null): string {
+  const t = (tipo || '').toLowerCase();
+  if (t === 'grafica' || t === 'grafiche' || t === 'foto' || t === 'carosello' || t === 'post') {
+    return '🖼️ Grafiche';
+  }
+  if (t === 'adv' || t === 'advertising' || t === 'sponsorizzato') {
+    return '📣 ADV';
+  }
+  // Reel, Video, Short, Story, Altro → Contenuti
+  return '📹 Contenuti';
+}
+
 async function getGoogleAccessToken(serviceAccountJson: string): Promise<string> {
   const sa = JSON.parse(serviceAccountJson);
-
   const now = Math.floor(Date.now() / 1000);
   const header = { alg: 'RS256', typ: 'JWT' };
   const payload = {
@@ -33,20 +44,13 @@ async function getGoogleAccessToken(serviceAccountJson: string): Promise<string>
   const derBuffer = Uint8Array.from(atob(pemBody), c => c.charCodeAt(0));
 
   const privateKey = await crypto.subtle.importKey(
-    'pkcs8',
-    derBuffer,
+    'pkcs8', derBuffer,
     { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    false,
-    ['sign']
+    false, ['sign']
   );
 
   const encoder = new TextEncoder();
-  const signature = await crypto.subtle.sign(
-    'RSASSA-PKCS1-v1_5',
-    privateKey,
-    encoder.encode(signingInput)
-  );
-
+  const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', privateKey, encoder.encode(signingInput));
   const sigB64 = btoa(String.fromCharCode(...new Uint8Array(signature)))
     .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 
@@ -55,20 +59,15 @@ async function getGoogleAccessToken(serviceAccountJson: string): Promise<string>
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-      assertion: jwt,
-    }),
+    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt }),
   });
 
   const tokenData = await tokenRes.json();
-  if (!tokenRes.ok) {
-    throw new Error(`Token exchange failed: ${JSON.stringify(tokenData)}`);
-  }
+  if (!tokenRes.ok) throw new Error(`Token exchange failed: ${JSON.stringify(tokenData)}`);
   return tokenData.access_token;
 }
 
-// Cerca una cartella per nome dentro un parent, restituisce l'id se trovata
+// Cerca cartella per nome dentro un parent
 async function findFolder(accessToken: string, name: string, parentId: string): Promise<string | null> {
   const q = encodeURIComponent(`name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`);
   const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, {
@@ -104,7 +103,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { contenuto_id, titolo, cliente_nome, id_display } = await req.json();
+    const { contenuto_id, titolo, cliente_nome, tipo, id_display } = await req.json();
 
     if (!contenuto_id || !titolo) {
       return new Response(JSON.stringify({ error: 'contenuto_id e titolo sono obbligatori' }), {
@@ -120,13 +119,17 @@ Deno.serve(async (req) => {
 
     const accessToken = await getGoogleAccessToken(serviceAccountJson);
 
-    // Step 1: trova o crea la cartella cliente (es. "Gisko")
+    // Step 1: trova o crea cartella cliente (es. "Gisko")
     const clienteFolderName = cliente_nome || 'Senza cliente';
     const clienteFolderId = await findOrCreateFolder(accessToken, clienteFolderName, parentFolderId);
 
-    // Step 2: crea la sottocartella col titolo del reel (es. "Provoleee") dentro la cartella cliente
-    const reelFolderId = await createFolder(accessToken, titolo, clienteFolderId);
-    const reelFolderUrl = `https://drive.google.com/drive/folders/${reelFolderId}`;
+    // Step 2: determina sottocartella in base al tipo (es. "📹 Contenuti", "🖼️ Grafiche", "📣 ADV")
+    const subfolderName = getSubfolderForTipo(tipo);
+    const subFolderId = await findOrCreateFolder(accessToken, subfolderName, clienteFolderId);
+
+    // Step 3: crea cartella col titolo dentro la sottocartella (es. "Provoleee")
+    const contentFolderId = await createFolder(accessToken, titolo, subFolderId);
+    const contentFolderUrl = `https://drive.google.com/drive/folders/${contentFolderId}`;
 
     // Aggiorna link_drive nel DB
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -140,7 +143,7 @@ Deno.serve(async (req) => {
         'Content-Type': 'application/json',
         'Prefer': 'return=representation',
       },
-      body: JSON.stringify({ link_drive: reelFolderUrl }),
+      body: JSON.stringify({ link_drive: contentFolderUrl }),
     });
 
     if (!updateRes.ok) {
@@ -148,13 +151,14 @@ Deno.serve(async (req) => {
       throw new Error(`DB update failed: ${updateErr}`);
     }
 
-    console.log(`✅ Cartella Drive creata: ${clienteFolderName}/${titolo} → ${reelFolderUrl}`);
+    const fullPath = `${clienteFolderName}/${subfolderName}/${titolo}`;
+    console.log(`✅ Cartella Drive creata: ${fullPath} → ${contentFolderUrl}`);
 
     return new Response(JSON.stringify({
       success: true,
-      folder_id: reelFolderId,
-      folder_url: reelFolderUrl,
-      folder_name: `${clienteFolderName}/${titolo}`,
+      folder_id: contentFolderId,
+      folder_url: contentFolderUrl,
+      folder_path: fullPath,
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
