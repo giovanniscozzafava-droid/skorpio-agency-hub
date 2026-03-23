@@ -9,6 +9,7 @@ import { ClientiTab } from '../components/ClientiTab';
 import { RipreseTab } from '../components/RipreseTab';
 import { CalendarioTab } from '../components/CalendarioTab';
 import { CreativeEngineTab } from '../components/CreativeEngineTab';
+import { ChatTab } from '../components/ChatTab';
 import type { TeamMember, Cliente, Task } from '../types';
 import { supabase } from '../lib/supabase';
 
