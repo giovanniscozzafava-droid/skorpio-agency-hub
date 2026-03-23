@@ -54,7 +54,7 @@ function MainApp() {
         onViewPersona={setPersonaView}
         personaView={personaView}
       />
-      <div className="skorpio-main">
+      <div className="flex-1 overflow-hidden min-h-0">
         {tab === 'kanban' && (
           <KanbanTab team={team} clienti={clienti} personaView={personaView} />
         )}
