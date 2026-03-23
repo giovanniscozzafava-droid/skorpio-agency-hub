@@ -98,13 +98,64 @@ function Counter({ target, suffix = '' }: { target: number; suffix?: string }) {
 }
 
 /* ─────────────────────────────────────────
+   useStaggerReveal — Intersection Observer hook
+───────────────────────────────────────── */
+function useStaggerReveal(count: number, options?: { threshold?: number; delay?: number }) {
+  const refs = useRef<(HTMLDivElement | null)[]>([]);
+  const [visible, setVisible] = useState<boolean[]>(Array(count).fill(false));
+
+  useEffect(() => {
+    const obs = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const idx = refs.current.indexOf(entry.target as HTMLDivElement);
+            if (idx !== -1) {
+              setTimeout(() => {
+                setVisible(prev => {
+                  const next = [...prev];
+                  next[idx] = true;
+                  return next;
+                });
+              }, idx * (options?.delay ?? 80));
+            }
+            obs.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: options?.threshold ?? 0.15 }
+    );
+
+    refs.current.forEach(el => { if (el) obs.observe(el); });
+    return () => obs.disconnect();
+  }, [count, options?.delay, options?.threshold]);
+
+  return { refs, visible };
+}
+
+/* ─────────────────────────────────────────
    Feature row item
 ───────────────────────────────────────── */
-interface FeatureProps { icon: React.ReactNode; title: string; desc: string; tag?: string; }
-function FeatureItem({ icon, title, desc, tag }: FeatureProps) {
+interface FeatureProps {
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+  tag?: string;
+  visible?: boolean;
+  refCallback?: (el: HTMLDivElement | null) => void;
+}
+function FeatureItem({ icon, title, desc, tag, visible = true, refCallback }: FeatureProps) {
   return (
-    <div className="group flex items-start gap-5 py-7 border-b last:border-b-0 transition-all duration-200 hover:pl-1"
-      style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+    <div
+      ref={refCallback}
+      className="group flex items-start gap-5 py-7 border-b last:border-b-0 transition-all duration-200 hover:pl-1"
+      style={{
+        borderColor: 'rgba(255,255,255,0.06)',
+        opacity: visible ? 1 : 0,
+        transform: visible ? 'translateY(0)' : 'translateY(22px)',
+        transition: 'opacity 0.55s ease, transform 0.55s ease',
+      }}
+    >
       <div className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-200 group-hover:scale-105"
         style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', color: '#93C5FD' }}>
         {icon}
@@ -152,7 +203,26 @@ export function LandingPage({ onAuthenticated }: LandingPageProps) {
   const [success, setSuccess] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [heroVisible, setHeroVisible] = useState(false);
   const authRef = useRef<HTMLDivElement>(null);
+
+  // Hero entrance on mount
+  useEffect(() => {
+    const t = requestAnimationFrame(() => setHeroVisible(true));
+    return () => cancelAnimationFrame(t);
+  }, []);
+
+  const features = [
+    { icon: <IconKanban />, title: 'Kanban Board Realtime', desc: 'Drag & drop con aggiornamenti istantanei per tutto il team. Badge "NUOVO" e notifiche sonore per ogni cambio di stato.' },
+    { icon: <IconCalendar />, title: 'Calendario Automatico', desc: 'Ogni task con scadenza viene sincronizzato automaticamente nel calendario. Nessun doppio inserimento, zero dispersione.' },
+    { icon: <IconFilm />, title: 'Pipeline Contenuti', desc: 'Traccia ogni contenuto dalla fase Idea fino alla Pubblicazione. Script, riprese, montaggio, revisione: tutto in un posto.', tag: 'Video' },
+    { icon: <IconAI />, title: 'Creative Engine AI', desc: 'Genera script, hook e caption personalizzati per cliente in secondi. Basato sui Brand Rules dell\'agenzia.', tag: 'AI' },
+    { icon: <IconChat />, title: 'Chat con Emoji Reaction', desc: 'Messaggistica interna con reaction, creazione task da messaggi e notifiche sonore in realtime.' },
+    { icon: <IconUsers />, title: 'CRM Clienti', desc: 'Pacchetti, quote reel e grafiche, stato abbonamenti, contatti. Tutto il portafoglio clienti sotto controllo.' },
+  ];
+
+  // Stagger reveal for feature items
+  const { refs: featureRefs, visible: featureVisible } = useStaggerReveal(features.length, { delay: 100 });
 
   useEffect(() => {
     const fn = () => setScrolled(window.scrollY > 30);
@@ -216,15 +286,6 @@ export function LandingPage({ onAuthenticated }: LandingPageProps) {
     'disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98]',
     'flex items-center justify-center gap-2',
   ].join(' ');
-
-  const features = [
-    { icon: <IconKanban />, title: 'Kanban Board Realtime', desc: 'Drag & drop con aggiornamenti istantanei per tutto il team. Badge "NUOVO" e notifiche sonore per ogni cambio di stato.' },
-    { icon: <IconCalendar />, title: 'Calendario Automatico', desc: 'Ogni task con scadenza viene sincronizzato automaticamente nel calendario. Nessun doppio inserimento, zero dispersione.' },
-    { icon: <IconFilm />, title: 'Pipeline Contenuti', desc: 'Traccia ogni contenuto dalla fase Idea fino alla Pubblicazione. Script, riprese, montaggio, revisione: tutto in un posto.', tag: 'Video' },
-    { icon: <IconAI />, title: 'Creative Engine AI', desc: 'Genera script, hook e caption personalizzati per cliente in secondi. Basato sui Brand Rules dell\'agenzia.', tag: 'AI' },
-    { icon: <IconChat />, title: 'Chat con Emoji Reaction', desc: 'Messaggistica interna con reaction, creazione task da messaggi e notifiche sonore in realtime.' },
-    { icon: <IconUsers />, title: 'CRM Clienti', desc: 'Pacchetti, quote reel e grafiche, stato abbonamenti, contatti. Tutto il portafoglio clienti sotto controllo.' },
-  ];
 
   /* ────────────────────────────────────
      RENDER
@@ -305,7 +366,11 @@ export function LandingPage({ onAuthenticated }: LandingPageProps) {
           {/* ── Left: Copy ── */}
           <div className="space-y-8 max-w-xl">
             {/* Eyebrow */}
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2.5" style={{
+              opacity: heroVisible ? 1 : 0,
+              transform: heroVisible ? 'translateY(0)' : 'translateY(28px)',
+              transition: 'opacity 0.7s ease 0.05s, transform 0.7s ease 0.05s',
+            }}>
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold tracking-wide uppercase"
                 style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.25)', color: '#93C5FD' }}>
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse flex-shrink-0" />
@@ -318,7 +383,11 @@ export function LandingPage({ onAuthenticated }: LandingPageProps) {
             </div>
 
             {/* Headline */}
-            <div>
+            <div style={{
+              opacity: heroVisible ? 1 : 0,
+              transform: heroVisible ? 'translateY(0)' : 'translateY(36px)',
+              transition: 'opacity 0.75s ease 0.18s, transform 0.75s ease 0.18s',
+            }}>
               <h1 className="font-black leading-[1.04] tracking-tight" style={{ fontSize: 'clamp(44px,5.5vw,72px)' }}>
                 <span className="block" style={{ color: 'rgba(255,255,255,0.92)' }}>Il sistema operativo</span>
                 <span className="block" style={{ color: 'rgba(255,255,255,0.92)' }}>della tua</span>
@@ -338,7 +407,11 @@ export function LandingPage({ onAuthenticated }: LandingPageProps) {
             </div>
 
             {/* CTA */}
-            <div className="flex flex-wrap items-center gap-4 pt-1">
+            <div className="flex flex-wrap items-center gap-4 pt-1" style={{
+              opacity: heroVisible ? 1 : 0,
+              transform: heroVisible ? 'translateY(0)' : 'translateY(24px)',
+              transition: 'opacity 0.7s ease 0.36s, transform 0.7s ease 0.36s',
+            }}>
               <button
                 onClick={scrollToAuth}
                 className="flex items-center gap-2.5 px-7 py-3.5 rounded-xl font-semibold text-[15px] transition-all duration-200 hover:brightness-110 hover:shadow-lg"
@@ -361,7 +434,11 @@ export function LandingPage({ onAuthenticated }: LandingPageProps) {
             </div>
 
             {/* Trust row */}
-            <div className="flex items-center gap-6 pt-2">
+            <div className="flex items-center gap-6 pt-2" style={{
+              opacity: heroVisible ? 1 : 0,
+              transform: heroVisible ? 'translateY(0)' : 'translateY(16px)',
+              transition: 'opacity 0.65s ease 0.52s, transform 0.65s ease 0.52s',
+            }}>
               <div className="flex items-center gap-1.5 text-[12px] font-medium" style={{ color: 'rgba(255,255,255,0.35)' }}>
                 <IconShield />
                 End-to-end encrypted
@@ -601,10 +678,20 @@ export function LandingPage({ onAuthenticated }: LandingPageProps) {
           {/* Two-column feature list */}
           <div className="grid md:grid-cols-2 gap-x-16">
             <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-              {features.slice(0, 3).map((f, i) => <FeatureItem key={i} {...f} />)}
+              {features.slice(0, 3).map((f, i) => (
+                <FeatureItem key={i} {...f}
+                  visible={featureVisible[i]}
+                  refCallback={el => { featureRefs.current[i] = el; }}
+                />
+              ))}
             </div>
             <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-              {features.slice(3).map((f, i) => <FeatureItem key={i} {...f} />)}
+              {features.slice(3).map((f, i) => (
+                <FeatureItem key={i + 3} {...f}
+                  visible={featureVisible[i + 3]}
+                  refCallback={el => { featureRefs.current[i + 3] = el; }}
+                />
+              ))}
             </div>
           </div>
         </div>
