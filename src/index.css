@@ -183,7 +183,11 @@
   }
 
   .skorpio-main {
-    @apply pt-[100px] min-h-screen;
+    padding-top: 100px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     background: hsl(var(--skorpio-bg));
   }
 
