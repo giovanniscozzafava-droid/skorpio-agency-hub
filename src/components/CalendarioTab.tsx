@@ -119,21 +119,28 @@ interface DayMenuProps {
   onClose: () => void;
 }
 function DayMenu({ x, y, utente, onNewTask, onPickCLP, onSlot, onClose }: DayMenuProps) {
+  const ref = React.useRef<HTMLDivElement>(null);
+
   useEffect(() => {
-    const handler = () => onClose();
-    document.addEventListener('click', handler, { capture: true });
-    return () => document.removeEventListener('click', handler, { capture: true });
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    // Use mousedown so click events on buttons inside are not swallowed
+    setTimeout(() => document.addEventListener('mousedown', handler), 0);
+    return () => document.removeEventListener('mousedown', handler);
   }, [onClose]);
 
   return (
     <div
+      ref={ref}
       style={{
         position: 'fixed', top: y, left: x, zIndex: 1000,
         background: 'white', border: '1px solid hsl(var(--border))',
         borderRadius: 8, boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
         minWidth: 200, padding: 4
       }}
-      onClick={e => e.stopPropagation()}
     >
       <button
         onClick={() => { onClose(); onNewTask(); }}
