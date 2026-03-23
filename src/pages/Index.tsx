@@ -8,6 +8,16 @@ import { ContenutiTab } from '../components/ContenutiTab';
 import type { TeamMember, Cliente, Task } from '../types';
 import { supabase } from '../lib/supabase';
 
+function Placeholder({ emoji, label }: { emoji: string; label: string }) {
+  return (
+    <div className="p-8 text-center text-muted-foreground">
+      <div className="text-5xl mb-4">{emoji}</div>
+      <p className="text-lg font-medium">{label}</p>
+      <p className="text-sm mt-1 opacity-60">In costruzione — prossimo aggiornamento</p>
+    </div>
+  );
+}
+
 function MainApp() {
   const { utente, tab } = useApp();
   const [team, setTeam] = useState<TeamMember[]>([]);
