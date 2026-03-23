@@ -7,6 +7,7 @@ import { KanbanTab } from '../components/KanbanTab';
 import { ContenutiTab } from '../components/ContenutiTab';
 import { ClientiTab } from '../components/ClientiTab';
 import { RipreseTab } from '../components/RipreseTab';
+import { CalendarioTab } from '../components/CalendarioTab';
 import type { TeamMember, Cliente, Task } from '../types';
 import { supabase } from '../lib/supabase';
 
@@ -59,7 +60,7 @@ function MainApp() {
         {tab === 'kanban' && (
           <KanbanTab team={team} clienti={clienti} personaView={personaView} />
         )}
-        {tab === 'calendario' && <Placeholder emoji="📅" label="Calendario" />}
+        {tab === 'calendario' && <CalendarioTab team={team} clienti={clienti} />}
         {tab === 'creative' && <Placeholder emoji="🤖" label="Creative Engine" />}
         {tab === 'contenuti' && (
           <ContenutiTab team={team} clienti={clienti} />
