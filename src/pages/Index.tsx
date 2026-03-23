@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AppProvider, useApp } from '../context/AppContext';
-import { SplashScreen } from '../components/SplashScreen';
+import { LandingPage } from './LandingPage';
+import { SplashProfile } from '../components/SplashProfile';
 import { TopBar } from '../components/TopBar';
 import { ToastContainer } from '../components/ToastContainer';
 import { KanbanTab } from '../components/KanbanTab';
@@ -11,20 +12,10 @@ import { CalendarioTab } from '../components/CalendarioTab';
 import { CreativeEngineTab } from '../components/CreativeEngineTab';
 import { ChatPopup } from '../components/ChatPopup';
 import type { TeamMember, Cliente, Task } from '../types';
-import { supabase } from '../lib/supabase';
-
-function Placeholder({ emoji, label }: { emoji: string; label: string }) {
-  return (
-    <div className="p-8 text-center text-muted-foreground">
-      <div className="text-5xl mb-4">{emoji}</div>
-      <p className="text-lg font-medium">{label}</p>
-      <p className="text-sm mt-1 opacity-60">In costruzione — prossimo aggiornamento</p>
-    </div>
-  );
-}
+import { supabase } from '../integrations/supabase/client';
 
 function MainApp() {
-  const { utente, tab } = useApp();
+  const { utente, session, tab } = useApp();
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [clienti, setClienti] = useState<Cliente[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -37,7 +28,11 @@ function MainApp() {
     supabase.from('task').select('*').neq('stato', 'Archiviato').then(({ data }) => setTasks(data || []));
   }, [utente]);
 
-  if (!utente) return <SplashScreen />;
+  // 1. Non autenticato → Landing Page
+  if (!session) return <LandingPage onAuthenticated={() => {}} />;
+
+  // 2. Autenticato ma profilo non ancora collegato → scelta profilo team
+  if (!utente) return <SplashProfile />;
 
   const oggi = new Date(); oggi.setHours(0, 0, 0, 0);
   const myTasks = utente.ruolo === 'Admin' ? tasks : tasks.filter(t => t.assegnato_a === utente.nome);
@@ -48,7 +43,6 @@ function MainApp() {
     return new Date(t.scadenza) < oggi;
   }).length;
 
-
   return (
     <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'hsl(var(--skorpio-bg))' }}>
       <TopBar
@@ -58,7 +52,6 @@ function MainApp() {
         personaView={personaView}
         onTeamChange={setTeam}
       />
-      {/* pt-[100px] accounts for fixed topbar (56px) + tab bar (44px) */}
       <div className="flex-1 overflow-hidden min-h-0 pt-[100px]">
         {tab === 'kanban' && (
           <KanbanTab team={team} clienti={clienti} personaView={personaView} />
