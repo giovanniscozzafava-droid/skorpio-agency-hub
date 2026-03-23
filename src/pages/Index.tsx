@@ -55,6 +55,7 @@ function MainApp() {
         taskCounts={{ daFare, urgenti, scaduti }}
         onViewPersona={setPersonaView}
         personaView={personaView}
+        onTeamChange={setTeam}
       />
       {/* pt-[100px] accounts for fixed topbar (56px) + tab bar (44px) */}
       <div className="flex-1 overflow-hidden min-h-0 pt-[100px]">

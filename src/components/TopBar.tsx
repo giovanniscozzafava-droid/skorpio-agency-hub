@@ -2,23 +2,32 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import type { TeamMember } from '../types';
 import { Avatar } from './Avatar';
+import { ImpostazioniPanel } from './ImpostazioniPanel';
 
 interface TopBarProps {
   team: TeamMember[];
   taskCounts: { daFare: number; urgenti: number; scaduti: number };
   onViewPersona: (nome: string | null) => void;
   personaView: string | null;
+  onTeamChange: (team: TeamMember[]) => void;
 }
 
-export function TopBar({ team, taskCounts, onViewPersona, personaView }: TopBarProps) {
+export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamChange }: TopBarProps) {
   const { utente, setUtente, tab, setTab } = useApp();
   const [orologio, setOrologio] = useState(new Date());
-  const [showProfile, setShowProfile] = useState(false);
+  const [showImpostazioni, setShowImpostazioni] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => setOrologio(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  // Ascolta evento logout dal pannello impostazioni
+  useEffect(() => {
+    const fn = () => setUtente(null);
+    document.addEventListener('skorpio:logout', fn);
+    return () => document.removeEventListener('skorpio:logout', fn);
+  }, [setUtente]);
 
   const isAdmin = utente?.ruolo === 'Admin';
 
@@ -59,7 +68,7 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView }: TopBarP
           )}
         </div>
 
-        {/* Admin: avatar team per filtrare */}
+        {/* Admin: avatar team per filtrare kanban */}
         {isAdmin && tab === 'kanban' && (
           <div className="flex items-center gap-1 mx-3">
             <button
@@ -96,47 +105,20 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView }: TopBarP
           {orologio.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
         </div>
 
-        {/* Utente loggato */}
+        {/* Utente loggato → apre Impostazioni */}
         <button
-          onClick={() => setShowProfile(v => !v)}
+          onClick={() => setShowImpostazioni(v => !v)}
           className="flex items-center gap-2 px-2 py-1 rounded-lg transition-colors flex-shrink-0"
-          style={{ background: showProfile ? 'rgba(255,255,255,0.12)' : 'transparent' }}
+          style={{ background: showImpostazioni ? 'rgba(255,255,255,0.15)' : 'transparent' }}
+          title="Impostazioni"
         >
           <Avatar nome={utente?.nome || '?'} colore={utente?.colore || '#64748B'} size={28} />
           <div className="text-left hidden sm:block">
             <p className="text-xs font-semibold text-white leading-none">{utente?.nome}</p>
             <p className="text-xs leading-none mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>{utente?.label}</p>
           </div>
+          <span className="text-xs ml-1 hidden sm:block" style={{ color: 'rgba(255,255,255,0.35)' }}>⚙️</span>
         </button>
-
-        {/* Profile dropdown */}
-        {showProfile && (
-          <div
-            className="absolute right-2 top-16 w-64 rounded-xl p-4 z-50"
-            style={{
-              background: 'hsl(222 47% 11%)',
-              border: '1px solid rgba(255,255,255,0.12)',
-              boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
-            }}
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <Avatar nome={utente?.nome || '?'} colore={utente?.colore || '#64748B'} size={44} />
-              <div>
-                <p className="font-semibold text-white">{utente?.nome}</p>
-                <p className="text-xs" style={{ color: utente?.colore }}>{utente?.label}</p>
-                <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>{utente?.ruolo}</p>
-              </div>
-            </div>
-            <hr style={{ borderColor: 'rgba(255,255,255,0.1)' }} className="mb-3" />
-            <button
-              onClick={() => { setUtente(null); setShowProfile(false); }}
-              className="w-full text-sm py-2 px-3 rounded-lg text-left transition-colors"
-              style={{ color: '#F87171', background: 'rgba(239,68,68,0.1)' }}
-            >
-              🚪 Cambia utente
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Tab bar */}
@@ -151,6 +133,17 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView }: TopBarP
           </button>
         ))}
       </div>
+
+      {/* Pannello Impostazioni */}
+      {showImpostazioni && (
+        <ImpostazioniPanel
+          team={team}
+          onTeamChange={(newTeam) => {
+            onTeamChange(newTeam);
+          }}
+          onClose={() => setShowImpostazioni(false)}
+        />
+      )}
     </>
   );
 }
