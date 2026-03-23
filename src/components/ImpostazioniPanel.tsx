@@ -27,7 +27,7 @@ interface MembroForm {
 const EMPTY_FORM: MembroForm = { nome: '', label: '', colore: '#3B82F6', ruolo: 'Team' };
 
 export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
-  const { utente, addToast } = useApp();
+  const { utente, addToast, logout } = useApp();
   const isAdmin = utente?.ruolo === 'Admin';
   const panelRef = useRef<HTMLDivElement>(null);
 
