@@ -412,6 +412,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
   const [loading, setLoading] = useState(true);
   const [filtroStato, setFiltroStato] = useState<string>('');
   const [filtroCliente, setFiltroCliente] = useState('');
+  const [filtroOperatore, setFiltroOperatore] = useState('');
   const [search, setSearch] = useState('');
   const [showNuova, setShowNuova] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
