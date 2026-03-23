@@ -255,6 +255,26 @@ function DetailPanel({ cliente, onClose, onUpdate, onDelete }: DetailPanelProps)
         {/* scrollable body */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-1">
 
+          {/* ─── Google Drive ─── */}
+          {(form as any).link_drive ? (
+            <div className="rounded-xl p-3 border mb-2" style={{ background: 'hsl(214 100% 98%)', borderColor: 'hsl(214 80% 85%)' }}>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(214 60% 40%)' }}>📁 Google Drive</span>
+              </div>
+              <a
+                href={(form as any).link_drive}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all"
+                style={{ background: '#e8f0fe', color: '#1a73e8', border: '1px solid #c5d8fd' }}
+              >
+                <span>📂</span>
+                <span className="flex-1 truncate">{form.id_display} – {form.nome}</span>
+                <span className="text-xs opacity-60">↗ Apri</span>
+              </a>
+            </div>
+          ) : null}
+
           {/* Stato & Pacchetto */}
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -483,10 +503,42 @@ function NuovoClienteModal({ onClose, onCreated }: { onClose: () => void; onCrea
       .select()
       .single();
 
+    if (error || !data) { addToast('❌ Errore creazione cliente', 'error'); setLoading(false); return; }
+
+    // ─── Crea cartella Drive automaticamente ───
+    addToast('📁 Creo cartella Drive…', 'info');
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const driveRes = await fetch(`${supabaseUrl}/functions/v1/create-client-drive-folder`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseKey}`,
+          'apikey': supabaseKey,
+        },
+        body: JSON.stringify({
+          cliente_id: data.id,
+          cliente_nome: data.nome,
+          id_display: data.id_display,
+        }),
+      });
+      const driveResult = await driveRes.json();
+      if (driveResult.success) {
+        addToast(`📁 Cartella Drive creata per ${data.nome}!`, 'success');
+        // Ricarica il cliente aggiornato con link_drive
+        const { data: fresh } = await supabase.from('clienti').select('*').eq('id', data.id).single();
+        onCreated((fresh || data) as Cliente);
+      } else {
+        addToast(`⚠️ Drive: ${driveResult.error}`, 'warn');
+        onCreated(data as Cliente);
+      }
+    } catch {
+      addToast('⚠️ Errore cartella Drive (cliente creato)', 'warn');
+      onCreated(data as Cliente);
+    }
+
     setLoading(false);
-    if (error || !data) { addToast('❌ Errore creazione cliente', 'error'); return; }
-    addToast(`✅ Cliente ${data.nome} creato!`, 'success');
-    onCreated(data as Cliente);
     onClose();
   }
 

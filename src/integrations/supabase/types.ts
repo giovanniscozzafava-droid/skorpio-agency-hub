@@ -227,6 +227,7 @@ export type Database = {
           id: string
           id_display: string
           indirizzo: string | null
+          link_drive: string | null
           nome: string
           note: string | null
           p_iva: string | null
@@ -253,6 +254,7 @@ export type Database = {
           id?: string
           id_display?: string
           indirizzo?: string | null
+          link_drive?: string | null
           nome: string
           note?: string | null
           p_iva?: string | null
@@ -279,6 +281,7 @@ export type Database = {
           id?: string
           id_display?: string
           indirizzo?: string | null
+          link_drive?: string | null
           nome?: string
           note?: string | null
           p_iva?: string | null
