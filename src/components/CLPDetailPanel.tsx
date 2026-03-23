@@ -98,10 +98,11 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
       onUpdate(data as Contenuto);
       addToast('CLP salvato ✅', 'success');
 
-      // 📁 Se la fase è passata a Montato e non c'è ancora link Drive → crea cartella
-      if (form.fase === 'Montato' && contenuto.fase !== 'Montato' && !contenuto.link_drive) {
+      // 📁 Se la fase è Montato e non c'è ancora link Drive → crea cartella
+      const updatedData = data as Contenuto;
+      if (form.fase === 'Montato' && !updatedData.link_drive) {
         addToast('📁 Creazione cartella Drive…', 'info');
-        const url = await createDriveFolder(form);
+        const url = await createDriveFolder(updatedData);
         if (url) {
           const { data: fresh } = await supabase.from('contenuti').select('*').eq('id', contenuto.id).single();
           if (fresh) onUpdate(fresh as Contenuto);
