@@ -9,7 +9,73 @@ interface LandingPageProps {
   onAuthenticated: () => void;
 }
 
-/* ── animated counter ── */
+/* ─────────────────────────────────────────
+   SVG Icons
+───────────────────────────────────────── */
+const IconKanban = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="4" height="7" rx="1"/>
+  </svg>
+);
+const IconCalendar = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+  </svg>
+);
+const IconFilm = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/>
+  </svg>
+);
+const IconAI = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+  </svg>
+);
+const IconChat = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+  </svg>
+);
+const IconUsers = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
+  </svg>
+);
+const IconShield = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+  </svg>
+);
+const IconArrow = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+  </svg>
+);
+const IconCheck = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="20 6 9 17 4 12"/>
+  </svg>
+);
+const IconChevronDown = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="6 9 12 15 18 9"/>
+  </svg>
+);
+const IconEye = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+  </svg>
+);
+const IconEyeOff = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
+  </svg>
+);
+
+/* ─────────────────────────────────────────
+   Animated counter
+───────────────────────────────────────── */
 function Counter({ target, suffix = '' }: { target: number; suffix?: string }) {
   const [val, setVal] = useState(0);
   const ref = useRef<HTMLSpanElement>(null);
@@ -18,87 +84,69 @@ function Counter({ target, suffix = '' }: { target: number; suffix?: string }) {
       if (!e.isIntersecting) return;
       obs.disconnect();
       let start = 0;
-      const step = Math.ceil(target / 60);
+      const step = Math.max(1, Math.ceil(target / 50));
       const t = setInterval(() => {
         start = Math.min(start + step, target);
         setVal(start);
         if (start >= target) clearInterval(t);
-      }, 16);
-    }, { threshold: 0.4 });
+      }, 20);
+    }, { threshold: 0.5 });
     if (ref.current) obs.observe(ref.current);
     return () => obs.disconnect();
   }, [target]);
   return <span ref={ref}>{val.toLocaleString('it-IT')}{suffix}</span>;
 }
 
-/* ── feature card ── */
-function FeatureCard({
-  icon, title, desc, color,
-}: { icon: string; title: string; desc: string; color: string }) {
+/* ─────────────────────────────────────────
+   Feature row item
+───────────────────────────────────────── */
+interface FeatureProps { icon: React.ReactNode; title: string; desc: string; tag?: string; }
+function FeatureItem({ icon, title, desc, tag }: FeatureProps) {
   return (
-    <div
-      className="group relative rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1"
-      style={{
-        background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        backdropFilter: 'blur(12px)',
-      }}
-    >
-      <div
-        className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-        style={{ background: `radial-gradient(ellipse at top left, ${color}10, transparent 70%)` }}
-      />
-      <div
-        className="w-11 h-11 rounded-xl flex items-center justify-center text-xl mb-4"
-        style={{ background: `${color}18`, border: `1px solid ${color}30` }}
-      >
+    <div className="group flex items-start gap-5 py-7 border-b last:border-b-0 transition-all duration-200 hover:pl-1"
+      style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+      <div className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-200 group-hover:scale-105"
+        style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', color: '#93C5FD' }}>
         {icon}
       </div>
-      <h3 className="text-white font-semibold text-base mb-2">{title}</h3>
-      <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.45)' }}>{desc}</p>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2.5 mb-1.5">
+          <h3 className="text-white font-semibold text-[15px]">{title}</h3>
+          {tag && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full tracking-wide"
+              style={{ background: 'rgba(16,185,129,0.15)', color: '#6EE7B7', border: '1px solid rgba(16,185,129,0.25)' }}>
+              {tag}
+            </span>
+          )}
+        </div>
+        <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.4)' }}>{desc}</p>
+      </div>
     </div>
   );
 }
 
-/* ── testimonial ── */
-function Testimonial({ text, name, role, color }: { text: string; name: string; role: string; color: string }) {
+/* ─────────────────────────────────────────
+   Stat block
+───────────────────────────────────────── */
+function StatBlock({ value, suffix, label }: { value: number; suffix: string; label: string }) {
   return (
-    <div
-      className="rounded-2xl p-6"
-      style={{
-        background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.07)',
-      }}
-    >
-      <div className="flex gap-1 mb-4">
-        {[...Array(5)].map((_, i) => (
-          <span key={i} style={{ color: '#F59E0B', fontSize: 14 }}>★</span>
-        ))}
+    <div className="text-center py-6 px-4">
+      <div className="text-4xl font-black text-white mb-1 tabular-nums">
+        <Counter target={value} suffix={suffix} />
       </div>
-      <p className="text-sm leading-relaxed mb-5 italic" style={{ color: 'rgba(255,255,255,0.6)' }}>
-        "{text}"
-      </p>
-      <div className="flex items-center gap-3">
-        <div
-          className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white"
-          style={{ backgroundColor: color }}
-        >
-          {name.charAt(0)}
-        </div>
-        <div>
-          <p className="text-white text-sm font-semibold">{name}</p>
-          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>{role}</p>
-        </div>
-      </div>
+      <div className="text-xs uppercase tracking-widest font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>{label}</div>
     </div>
   );
 }
 
+/* ─────────────────────────────────────────
+   Main component
+───────────────────────────────────────── */
 export function LandingPage({ onAuthenticated }: LandingPageProps) {
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -107,31 +155,31 @@ export function LandingPage({ onAuthenticated }: LandingPageProps) {
   const authRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 40);
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    const fn = () => setScrolled(window.scrollY > 30);
+    window.addEventListener('scroll', fn, { passive: true });
+    return () => window.removeEventListener('scroll', fn);
   }, []);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) { sounds.login(); onAuthenticated(); }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
+      if (s) { sounds.login(); onAuthenticated(); }
     });
     return () => subscription.unsubscribe();
   }, [onAuthenticated]);
 
   const reset = () => { setError(''); setSuccess(''); };
 
-  async function handleLogin(e: React.FormEvent) {
+  async function onLogin(e: React.FormEvent) {
     e.preventDefault(); reset(); setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
-    if (error) setError(error.message === 'Invalid login credentials' ? 'Email o password errata.' : error.message);
+    if (error) setError(error.message === 'Invalid login credentials' ? 'Email o password non corretti.' : error.message);
     else { sounds.login(); onAuthenticated(); }
   }
 
-  async function handleSignup(e: React.FormEvent) {
+  async function onSignup(e: React.FormEvent) {
     e.preventDefault(); reset();
-    if (password !== confirmPassword) { setError('Le password non coincidono.'); return; }
+    if (password !== confirmPw) { setError('Le password non coincidono.'); return; }
     if (password.length < 8) { setError('Password di almeno 8 caratteri.'); return; }
     setLoading(true);
     const { error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: window.location.origin } });
@@ -140,496 +188,555 @@ export function LandingPage({ onAuthenticated }: LandingPageProps) {
     else { setSuccess('Controlla la tua email per confermare l\'account.'); setMode('login'); }
   }
 
-  async function handleForgot(e: React.FormEvent) {
+  async function onForgot(e: React.FormEvent) {
     e.preventDefault(); reset(); setLoading(true);
     const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/reset-password` });
     setLoading(false);
     if (error) setError(error.message);
-    else setSuccess('Link di reset inviato. Controlla la tua email.');
+    else setSuccess('Link di reset inviato alla tua email.');
   }
 
-  async function handleGoogle() {
+  async function onGoogle() {
     reset(); setLoading(true);
-    const result = await lovable.auth.signInWithOAuth('google', { redirect_uri: window.location.origin });
+    const res = await lovable.auth.signInWithOAuth('google', { redirect_uri: window.location.origin });
     setLoading(false);
-    if (result && 'error' in result && result.error) setError('Errore con Google Sign-In.');
+    if (res && 'error' in res && res.error) setError('Errore con Google Sign-In. Riprova.');
   }
 
-  const scrollToAuth = () => {
-    authRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  };
+  const scrollToAuth = () => authRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-  const inp = `w-full px-4 py-3 rounded-xl border outline-none text-sm transition-all bg-white/5 border-white/15 text-white placeholder-white/30 focus:border-white/50 focus:bg-white/8`;
-  const btn = `w-full py-3 rounded-xl font-bold text-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]`;
+  /* ── shared styles ── */
+  const INP = [
+    'w-full px-4 py-3 rounded-xl text-sm outline-none transition-all',
+    'bg-white/5 border border-white/10 text-white placeholder-white/25',
+    'focus:border-blue-400/60 focus:bg-white/7',
+  ].join(' ');
+  const BTN_PRIMARY = [
+    'w-full py-3 rounded-xl font-semibold text-sm transition-all duration-200',
+    'disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98]',
+    'flex items-center justify-center gap-2',
+  ].join(' ');
 
   const features = [
-    { icon: '📋', title: 'Kanban Avanzato', desc: 'Board realtime con drag & drop, priorità, scadenze e notifiche push per ogni membro del team.', color: '#3B82F6' },
-    { icon: '📅', title: 'Calendario Integrato', desc: 'Tutti i task con scadenza finiscono automaticamente nel calendario. Nessun appuntamento perso.', color: '#8B5CF6' },
-    { icon: '🎬', title: 'Gestione Contenuti', desc: 'Pipeline completa: idea → script → riprese → montaggio → pubblicazione con tracciamento fasi.', color: '#EC4899' },
-    { icon: '🤖', title: 'Creative Engine AI', desc: 'Genera script, hook e caption personalizzati per ogni cliente in pochi secondi con AI avanzata.', color: '#10B981' },
-    { icon: '💬', title: 'Chat Realtime', desc: 'Messaggi istantanei con emoji reaction, creazione task da messaggi e notifiche sonore.', color: '#F59E0B' },
-    { icon: '📊', title: 'Dashboard Clienti', desc: 'Monitora pacchetti, quote reel/grafiche, stato abbonamenti e tutto il CRM in un solo posto.', color: '#EF4444' },
+    { icon: <IconKanban />, title: 'Kanban Board Realtime', desc: 'Drag & drop con aggiornamenti istantanei per tutto il team. Badge "NUOVO" e notifiche sonore per ogni cambio di stato.' },
+    { icon: <IconCalendar />, title: 'Calendario Automatico', desc: 'Ogni task con scadenza viene sincronizzato automaticamente nel calendario. Nessun doppio inserimento, zero dispersione.' },
+    { icon: <IconFilm />, title: 'Pipeline Contenuti', desc: 'Traccia ogni contenuto dalla fase Idea fino alla Pubblicazione. Script, riprese, montaggio, revisione: tutto in un posto.', tag: 'Video' },
+    { icon: <IconAI />, title: 'Creative Engine AI', desc: 'Genera script, hook e caption personalizzati per cliente in secondi. Basato sui Brand Rules dell\'agenzia.', tag: 'AI' },
+    { icon: <IconChat />, title: 'Chat con Emoji Reaction', desc: 'Messaggistica interna con reaction, creazione task da messaggi e notifiche sonore in realtime.' },
+    { icon: <IconUsers />, title: 'CRM Clienti', desc: 'Pacchetti, quote reel e grafiche, stato abbonamenti, contatti. Tutto il portafoglio clienti sotto controllo.' },
   ];
 
-  const stats = [
-    { value: 1200, suffix: '+', label: 'Task completati' },
-    { value: 48, suffix: '', label: 'Clienti gestiti' },
-    { value: 99, suffix: '%', label: 'Uptime garantito' },
-    { value: 6, suffix: 'x', label: 'Produttività media' },
-  ];
-
-  const testimonials = [
-    { text: 'Skorpio ha rivoluzionato il nostro flusso di lavoro. Adesso ogni contenuto ha una timeline precisa e nessuno si perde più un task.', name: 'Giovanni', role: 'Creative Director', color: '#3B82F6' },
-    { text: 'Il Creative Engine AI ci fa risparmiare ore ogni settimana. Gli script vengono fuori già ottimizzati per il cliente.', name: 'Martina', role: 'Social Media Manager', color: '#EC4899' },
-    { text: 'La chat con task integrati è una bomba. Prima usavamo 3 app diverse, ora tutto è in Skorpio.', name: 'Luca', role: 'Video Editor', color: '#10B981' },
-  ];
-
+  /* ────────────────────────────────────
+     RENDER
+  ──────────────────────────────────── */
   return (
-    <div className="min-h-screen text-white" style={{ background: '#050914' }}>
+    <div className="min-h-screen" style={{ background: '#07080f', color: 'white', fontFamily: "'Inter', sans-serif" }}>
 
-      {/* ── NAVBAR ── */}
-      <nav
-        className="fixed top-0 left-0 right-0 z-50 transition-all duration-300"
+      {/* ════ NAVBAR ════ */}
+      <header
+        className="fixed top-0 left-0 right-0 z-50 transition-all duration-500"
         style={{
-          background: scrolled ? 'rgba(5,9,20,0.92)' : 'transparent',
-          backdropFilter: scrolled ? 'blur(20px)' : 'none',
+          background: scrolled ? 'rgba(7,8,15,0.88)' : 'transparent',
+          backdropFilter: scrolled ? 'blur(20px) saturate(180%)' : 'none',
           borderBottom: scrolled ? '1px solid rgba(255,255,255,0.06)' : 'none',
         }}
       >
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-6 h-[62px] flex items-center justify-between">
+          {/* Logo */}
           <div className="flex items-center gap-3">
-            <span className="text-2xl select-none">🦂</span>
-            <span className="text-xl font-extrabold tracking-tight">SKORPIO</span>
-            <span
-              className="text-xs font-semibold px-2 py-0.5 rounded-full ml-1"
-              style={{ background: 'hsl(217 91% 60% / 0.2)', color: 'hsl(217 91% 70%)' }}
-            >
-              v2.0
-            </span>
+            <div className="relative w-8 h-8">
+              <svg viewBox="0 0 32 32" fill="none" className="w-full h-full">
+                <rect width="32" height="32" rx="8" fill="rgba(59,130,246,0.15)" stroke="rgba(59,130,246,0.4)" strokeWidth="1"/>
+                <path d="M8 10 L16 8 L24 10 L22 18 L16 24 L10 18 Z" stroke="#93C5FD" strokeWidth="1.5" fill="none"/>
+                <circle cx="16" cy="16" r="2.5" fill="#3B82F6"/>
+              </svg>
+            </div>
+            <span className="font-bold text-[17px] tracking-tight">SKORPIO</span>
           </div>
-          <div className="hidden md:flex items-center gap-8 text-sm" style={{ color: 'rgba(255,255,255,0.55)' }}>
-            <a href="#features" className="hover:text-white transition-colors">Features</a>
-            <a href="#stats" className="hover:text-white transition-colors">Statistiche</a>
-            <a href="#team" className="hover:text-white transition-colors">Team</a>
-          </div>
+
+          {/* Nav links */}
+          <nav className="hidden md:flex items-center gap-7 text-[13px] font-medium" style={{ color: 'rgba(255,255,255,0.45)' }}>
+            <a href="#features" className="hover:text-white transition-colors">Funzionalità</a>
+            <a href="#metrics" className="hover:text-white transition-colors">Metriche</a>
+            <a href="#about" className="hover:text-white transition-colors">Chi siamo</a>
+          </nav>
+
+          {/* CTA */}
           <button
             onClick={scrollToAuth}
-            className="px-5 py-2 rounded-xl text-sm font-semibold transition-all duration-200 hover:scale-105"
-            style={{ background: 'hsl(217 91% 60%)', color: 'white' }}
+            className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 hover:scale-105"
+            style={{ background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.35)', color: '#93C5FD' }}
           >
-            Accedi →
+            Accedi <IconArrow />
           </button>
         </div>
-      </nav>
+      </header>
 
-      {/* ── HERO ── */}
-      <section className="relative min-h-screen flex items-center justify-center px-6 pt-16 overflow-hidden">
-        {/* Background mesh */}
+      {/* ════ HERO ════ */}
+      <section className="relative min-h-screen flex items-center px-6 pt-[62px] overflow-hidden">
+
+        {/* Background geometry */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          <div
-            className="absolute rounded-full blur-[140px] opacity-20"
-            style={{ width: 700, height: 700, top: '-10%', left: '-15%', background: 'hsl(217 91% 60%)' }}
-          />
-          <div
-            className="absolute rounded-full blur-[100px] opacity-10"
-            style={{ width: 500, height: 500, bottom: '5%', right: '-10%', background: 'hsl(280 70% 60%)' }}
-          />
-          <div
-            className="absolute rounded-full blur-[80px] opacity-8"
-            style={{ width: 300, height: 300, top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'hsl(45 93% 47%)' }}
-          />
-          {/* Grid overlay */}
-          <div
-            className="absolute inset-0"
-            style={{
-              backgroundImage: `linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)`,
-              backgroundSize: '60px 60px',
-            }}
-          />
+          {/* Large primary glow */}
+          <div className="absolute" style={{
+            width: 900, height: 900, top: '-20%', left: '-20%',
+            background: 'radial-gradient(circle, rgba(59,130,246,0.12) 0%, transparent 70%)',
+          }} />
+          {/* Right accent */}
+          <div className="absolute" style={{
+            width: 600, height: 600, bottom: '-10%', right: '-15%',
+            background: 'radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%)',
+          }} />
+          {/* Grid */}
+          <div className="absolute inset-0" style={{
+            backgroundImage: `linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)`,
+            backgroundSize: '72px 72px',
+            maskImage: 'radial-gradient(ellipse 80% 60% at 50% 50%, black 40%, transparent 100%)',
+          }} />
+          {/* Horizontal line accent */}
+          <div className="absolute left-0 right-0" style={{
+            top: '58%', height: '1px',
+            background: 'linear-gradient(90deg, transparent 0%, rgba(59,130,246,0.25) 20%, rgba(99,102,241,0.25) 80%, transparent 100%)',
+          }} />
         </div>
 
-        <div className="relative max-w-7xl mx-auto w-full grid lg:grid-cols-2 gap-16 items-center py-24">
-          {/* Left — copy */}
-          <div className="space-y-8">
-            {/* Badge */}
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold"
-              style={{ background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.3)', color: '#93C5FD' }}>
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-              Fuyue Digital Agency — Gestionale Interno
+        <div className="relative max-w-6xl mx-auto w-full grid lg:grid-cols-[1fr_420px] gap-12 xl:gap-20 items-center py-20 lg:py-32">
+
+          {/* ── Left: Copy ── */}
+          <div className="space-y-8 max-w-xl">
+            {/* Eyebrow */}
+            <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold tracking-wide uppercase"
+                style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.25)', color: '#93C5FD' }}>
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse flex-shrink-0" />
+                Fuyue Digital Agency
+              </div>
+              <div className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold tracking-wide uppercase"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.35)' }}>
+                v2.0
+              </div>
             </div>
 
             {/* Headline */}
             <div>
-              <h1 className="text-5xl lg:text-7xl font-black leading-[1.05] tracking-tight">
-                <span className="block">Il cervello</span>
-                <span className="block">della tua</span>
-                <span
-                  className="block"
-                  style={{
-                    background: 'linear-gradient(135deg, hsl(217 91% 65%), hsl(280 70% 65%))',
+              <h1 className="font-black leading-[1.04] tracking-tight" style={{ fontSize: 'clamp(44px,5.5vw,72px)' }}>
+                <span className="block" style={{ color: 'rgba(255,255,255,0.92)' }}>Il sistema operativo</span>
+                <span className="block" style={{ color: 'rgba(255,255,255,0.92)' }}>della tua</span>
+                <span className="block relative inline-block">
+                  <span style={{
+                    background: 'linear-gradient(130deg, #60A5FA 0%, #818CF8 50%, #A78BFA 100%)',
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
-                  }}
-                >
-                  agenzia.
+                  }}>
+                    agenzia creativa.
+                  </span>
                 </span>
               </h1>
-              <p className="mt-6 text-lg lg:text-xl leading-relaxed max-w-lg" style={{ color: 'rgba(255,255,255,0.55)' }}>
-                Kanban, calendario, clienti, contenuti, AI e chat — tutto in un'unica piattaforma pensata per i team creativi che vogliono muoversi veloci.
+              <p className="mt-6 text-[17px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                Kanban, calendar, contenuti, AI e team chat — tutto integrato in un'unica piattaforma costruita per chi produce contenuti ogni giorno.
               </p>
             </div>
 
-            {/* CTA row */}
-            <div className="flex flex-wrap gap-4">
+            {/* CTA */}
+            <div className="flex flex-wrap items-center gap-4 pt-1">
               <button
                 onClick={scrollToAuth}
-                className="flex items-center gap-2.5 px-7 py-4 rounded-xl font-bold text-base transition-all duration-200 hover:scale-105 hover:shadow-lg"
+                className="flex items-center gap-2.5 px-7 py-3.5 rounded-xl font-semibold text-[15px] transition-all duration-200 hover:brightness-110 hover:shadow-lg"
                 style={{
-                  background: 'linear-gradient(135deg, hsl(217 91% 60%), hsl(217 91% 50%))',
+                  background: 'linear-gradient(135deg, #3B82F6, #6366F1)',
                   color: 'white',
-                  boxShadow: '0 0 40px hsl(217 91% 60% / 0.35)',
+                  boxShadow: '0 0 32px rgba(59,130,246,0.35)',
                 }}
               >
-                🚀 Accedi ora
+                Accedi alla piattaforma
+                <IconArrow />
               </button>
               <a
                 href="#features"
-                className="flex items-center gap-2 px-7 py-4 rounded-xl font-semibold text-base transition-all duration-200 hover:bg-white/8"
-                style={{ border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.7)' }}
+                className="flex items-center gap-2 text-[14px] font-medium transition-colors hover:text-white"
+                style={{ color: 'rgba(255,255,255,0.45)' }}
               >
-                Scopri le feature ↓
+                Scopri le funzionalità <IconChevronDown />
               </a>
             </div>
 
-            {/* Social proof strip */}
+            {/* Trust row */}
             <div className="flex items-center gap-6 pt-2">
-              <div className="flex -space-x-2.5">
-                {['#3B82F6', '#EC4899', '#10B981', '#F59E0B', '#8B5CF6'].map((c, i) => (
-                  <div key={i} className="w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold text-white"
-                    style={{ backgroundColor: c, borderColor: '#050914' }}>
-                    {['G', 'M', 'L', 'A', 'S'][i]}
-                  </div>
-                ))}
+              <div className="flex items-center gap-1.5 text-[12px] font-medium" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                <IconShield />
+                End-to-end encrypted
               </div>
-              <div>
-                <div className="flex gap-0.5 mb-0.5">
-                  {[...Array(5)].map((_, i) => <span key={i} style={{ color: '#F59E0B', fontSize: 12 }}>★</span>)}
-                </div>
-                <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>Usato ogni giorno dal team Fuyue</p>
+              <div className="w-px h-4" style={{ background: 'rgba(255,255,255,0.1)' }} />
+              <div className="text-[12px] font-medium" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                Realtime sync
+              </div>
+              <div className="w-px h-4" style={{ background: 'rgba(255,255,255,0.1)' }} />
+              <div className="text-[12px] font-medium" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                99% uptime
               </div>
             </div>
           </div>
 
-          {/* Right — Auth form */}
-          <div ref={authRef} className="w-full max-w-md mx-auto lg:mx-0 lg:ml-auto">
-            {/* Glow */}
+          {/* ── Right: Auth card ── */}
+          <div ref={authRef} className="w-full">
             <div
-              className="absolute inset-0 rounded-3xl blur-3xl opacity-20 pointer-events-none"
-              style={{ background: 'hsl(217 91% 60%)', transform: 'scale(0.8)' }}
-            />
-            <div
-              className="relative rounded-3xl p-8"
+              className="relative rounded-2xl overflow-hidden"
               style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                backdropFilter: 'blur(24px)',
-                boxShadow: '0 32px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.08)',
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.09)',
+                backdropFilter: 'blur(32px)',
+                boxShadow: '0 40px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05) inset',
               }}
             >
-              {/* Header */}
-              <div className="flex items-center gap-3 mb-6">
-                <div className="text-3xl select-none">🦂</div>
-                <div>
-                  <h2 className="text-lg font-extrabold text-white tracking-tight">SKORPIO</h2>
-                  <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>Portale Accesso Team</p>
-                </div>
-              </div>
+              {/* Top stripe */}
+              <div className="h-[3px]" style={{ background: 'linear-gradient(90deg, #3B82F6, #6366F1, #8B5CF6)' }} />
 
-              {/* Tabs */}
-              {mode !== 'forgot' && (
-                <div className="flex rounded-xl p-1 mb-6" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                  {(['login', 'signup'] as Mode[]).map(m => (
-                    <button key={m} onClick={() => { setMode(m); reset(); }}
-                      className="flex-1 py-2 rounded-lg text-xs font-bold transition-all duration-200"
-                      style={{
-                        background: mode === m ? 'hsl(217 91% 60%)' : 'transparent',
-                        color: mode === m ? 'white' : 'rgba(255,255,255,0.4)',
-                      }}>
-                      {m === 'login' ? 'Accedi' : 'Registrati'}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {mode === 'forgot' && (
-                <div className="mb-5">
-                  <button onClick={() => { setMode('login'); reset(); }}
-                    className="flex items-center gap-1.5 text-xs mb-3 hover:opacity-80 transition-opacity"
-                    style={{ color: 'rgba(255,255,255,0.45)' }}>
-                    ← Torna al login
-                  </button>
-                  <h3 className="text-white font-bold text-base">Reset Password</h3>
-                  <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                    Inserisci la tua email per ricevere il link.
+              <div className="p-7">
+                {/* Header */}
+                <div className="mb-6">
+                  <div className="flex items-center gap-2.5 mb-1">
+                    <div className="w-6 h-6">
+                      <svg viewBox="0 0 32 32" fill="none" className="w-full h-full">
+                        <rect width="32" height="32" rx="8" fill="rgba(59,130,246,0.15)" stroke="rgba(59,130,246,0.4)" strokeWidth="1"/>
+                        <path d="M8 10 L16 8 L24 10 L22 18 L16 24 L10 18 Z" stroke="#93C5FD" strokeWidth="1.5" fill="none"/>
+                        <circle cx="16" cy="16" r="2.5" fill="#3B82F6"/>
+                      </svg>
+                    </div>
+                    <span className="font-bold text-white text-[15px] tracking-tight">SKORPIO</span>
+                  </div>
+                  <p className="text-[12px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                    {mode === 'login' ? 'Accedi al tuo account' : mode === 'signup' ? 'Crea un nuovo account' : 'Recupera la password'}
                   </p>
                 </div>
-              )}
 
-              {error && (
-                <div className="mb-4 px-3 py-2.5 rounded-xl text-xs font-medium"
-                  style={{ background: 'hsl(0 84% 60% / 0.15)', color: 'hsl(0 84% 70%)', border: '1px solid hsl(0 84% 60% / 0.3)' }}>
-                  ⚠️ {error}
-                </div>
-              )}
-              {success && (
-                <div className="mb-4 px-3 py-2.5 rounded-xl text-xs font-medium"
-                  style={{ background: 'hsl(142 71% 45% / 0.15)', color: 'hsl(142 71% 55%)', border: '1px solid hsl(142 71% 45% / 0.3)' }}>
-                  ✅ {success}
-                </div>
-              )}
-
-              {mode === 'login' && (
-                <form onSubmit={handleLogin} className="space-y-3">
-                  <input type="email" className={inp} placeholder="Email" value={email}
-                    onChange={e => setEmail(e.target.value)} required autoComplete="email" />
-                  <div className="relative">
-                    <input type={showPw ? 'text' : 'password'} className={inp}
-                      placeholder="Password" value={password} onChange={e => setPassword(e.target.value)}
-                      required autoComplete="current-password" />
-                    <button type="button" onClick={() => setShowPw(v => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-xs opacity-40 hover:opacity-80" style={{ color: 'white' }}>
-                      {showPw ? '🙈' : '👁️'}
-                    </button>
+                {/* Mode tabs */}
+                {mode !== 'forgot' && (
+                  <div className="flex rounded-lg p-0.5 mb-5 gap-0.5" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                    {(['login', 'signup'] as Mode[]).map(m => (
+                      <button
+                        key={m}
+                        onClick={() => { setMode(m); reset(); }}
+                        className="flex-1 py-2 rounded-md text-[12px] font-semibold transition-all duration-200"
+                        style={{
+                          background: mode === m ? 'rgba(59,130,246,0.2)' : 'transparent',
+                          color: mode === m ? '#93C5FD' : 'rgba(255,255,255,0.35)',
+                          border: mode === m ? '1px solid rgba(59,130,246,0.3)' : '1px solid transparent',
+                        }}
+                      >
+                        {m === 'login' ? 'Accedi' : 'Registrati'}
+                      </button>
+                    ))}
                   </div>
-                  <div className="text-right">
-                    <button type="button" onClick={() => { setMode('forgot'); reset(); }}
-                      className="text-xs hover:opacity-80 transition-opacity" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                      Password dimenticata?
-                    </button>
-                  </div>
-                  <button type="submit" disabled={loading} className={`${btn} mt-2`}
-                    style={{ background: 'hsl(217 91% 60%)', color: 'white' }}>
-                    {loading ? '⏳ Accesso…' : '🔐 Accedi'}
-                  </button>
-                </form>
-              )}
+                )}
 
-              {mode === 'signup' && (
-                <form onSubmit={handleSignup} className="space-y-3">
-                  <input type="email" className={inp} placeholder="Email" value={email}
-                    onChange={e => setEmail(e.target.value)} required autoComplete="email" />
-                  <div className="relative">
-                    <input type={showPw ? 'text' : 'password'} className={inp}
-                      placeholder="Password (min. 8 caratteri)" value={password}
-                      onChange={e => setPassword(e.target.value)} required autoComplete="new-password" />
-                    <button type="button" onClick={() => setShowPw(v => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-xs opacity-40 hover:opacity-80" style={{ color: 'white' }}>
-                      {showPw ? '🙈' : '👁️'}
-                    </button>
-                  </div>
-                  <input type={showPw ? 'text' : 'password'} className={inp}
-                    placeholder="Conferma password" value={confirmPassword}
-                    onChange={e => setConfirmPassword(e.target.value)} required autoComplete="new-password" />
-                  <button type="submit" disabled={loading} className={`${btn} mt-2`}
-                    style={{ background: 'hsl(217 91% 60%)', color: 'white' }}>
-                    {loading ? '⏳ Registrazione…' : '✨ Crea Account'}
-                  </button>
-                </form>
-              )}
-
-              {mode === 'forgot' && (
-                <form onSubmit={handleForgot} className="space-y-3">
-                  <input type="email" className={inp} placeholder="La tua email" value={email}
-                    onChange={e => setEmail(e.target.value)} required autoComplete="email" />
-                  <button type="submit" disabled={loading} className={`${btn} mt-2`}
-                    style={{ background: 'hsl(217 91% 60%)', color: 'white' }}>
-                    {loading ? '⏳ Invio…' : '📧 Invia link reset'}
-                  </button>
-                </form>
-              )}
-
-              {mode !== 'forgot' && (
-                <>
-                  <div className="flex items-center gap-3 my-4">
-                    <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.08)' }} />
-                    <span className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>oppure</span>
-                    <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.08)' }} />
-                  </div>
-                  <button onClick={handleGoogle} disabled={loading}
-                    className={`${btn} flex items-center justify-center gap-2.5`}
-                    style={{ background: 'rgba(255,255,255,0.06)', color: 'white', border: '1px solid rgba(255,255,255,0.12)' }}>
-                    <svg width="17" height="17" viewBox="0 0 24 24">
-                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                {mode === 'forgot' && (
+                  <button
+                    onClick={() => { setMode('login'); reset(); }}
+                    className="flex items-center gap-1.5 text-[12px] mb-4 hover:text-white transition-colors"
+                    style={{ color: 'rgba(255,255,255,0.4)' }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="15 18 9 12 15 6"/>
                     </svg>
-                    Continua con Google
+                    Torna al login
                   </button>
-                </>
-              )}
+                )}
 
-              {/* Security badge */}
-              <div className="flex items-center justify-center gap-1.5 mt-5 text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>
-                <svg width="11" height="11" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z" />
-                </svg>
-                Accesso protetto da crittografia end-to-end
+                {/* Alerts */}
+                {error && (
+                  <div className="mb-4 px-3.5 py-3 rounded-lg text-[12px] font-medium flex items-start gap-2"
+                    style={{ background: 'rgba(239,68,68,0.1)', color: '#FCA5A5', border: '1px solid rgba(239,68,68,0.25)' }}>
+                    <svg className="flex-shrink-0 mt-0.5" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    {error}
+                  </div>
+                )}
+                {success && (
+                  <div className="mb-4 px-3.5 py-3 rounded-lg text-[12px] font-medium flex items-start gap-2"
+                    style={{ background: 'rgba(16,185,129,0.1)', color: '#6EE7B7', border: '1px solid rgba(16,185,129,0.25)' }}>
+                    <IconCheck />
+                    {success}
+                  </div>
+                )}
+
+                {/* ── Login form ── */}
+                {mode === 'login' && (
+                  <form onSubmit={onLogin} className="space-y-3">
+                    <input type="email" className={INP} placeholder="Email" value={email}
+                      onChange={e => setEmail(e.target.value)} required autoComplete="email" />
+                    <div className="relative">
+                      <input type={showPw ? 'text' : 'password'} className={INP} placeholder="Password"
+                        value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password" />
+                      <button type="button" onClick={() => setShowPw(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 transition-opacity hover:opacity-80"
+                        style={{ color: 'rgba(255,255,255,0.3)' }}>
+                        {showPw ? <IconEyeOff /> : <IconEye />}
+                      </button>
+                    </div>
+                    <div className="flex justify-end">
+                      <button type="button" onClick={() => { setMode('forgot'); reset(); }}
+                        className="text-[11px] hover:text-white transition-colors" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                        Password dimenticata?
+                      </button>
+                    </div>
+                    <button type="submit" disabled={loading} className={BTN_PRIMARY}
+                      style={{ background: 'linear-gradient(135deg,#3B82F6,#6366F1)', color: 'white', boxShadow: '0 0 24px rgba(59,130,246,0.3)' }}>
+                      {loading
+                        ? <><svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" opacity=".25"/><path d="M12 2a10 10 0 0 1 10 10" /></svg> Accesso in corso…</>
+                        : 'Accedi'}
+                    </button>
+                  </form>
+                )}
+
+                {/* ── Signup form ── */}
+                {mode === 'signup' && (
+                  <form onSubmit={onSignup} className="space-y-3">
+                    <input type="email" className={INP} placeholder="Email" value={email}
+                      onChange={e => setEmail(e.target.value)} required autoComplete="email" />
+                    <div className="relative">
+                      <input type={showPw ? 'text' : 'password'} className={INP} placeholder="Password (min. 8 caratteri)"
+                        value={password} onChange={e => setPassword(e.target.value)} required autoComplete="new-password" />
+                      <button type="button" onClick={() => setShowPw(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 transition-opacity hover:opacity-80"
+                        style={{ color: 'rgba(255,255,255,0.3)' }}>
+                        {showPw ? <IconEyeOff /> : <IconEye />}
+                      </button>
+                    </div>
+                    <input type={showPw ? 'text' : 'password'} className={INP} placeholder="Conferma password"
+                      value={confirmPw} onChange={e => setConfirmPw(e.target.value)} required autoComplete="new-password" />
+                    <button type="submit" disabled={loading} className={BTN_PRIMARY}
+                      style={{ background: 'linear-gradient(135deg,#3B82F6,#6366F1)', color: 'white', boxShadow: '0 0 24px rgba(59,130,246,0.3)' }}>
+                      {loading ? 'Registrazione…' : 'Crea account'}
+                    </button>
+                  </form>
+                )}
+
+                {/* ── Forgot form ── */}
+                {mode === 'forgot' && (
+                  <form onSubmit={onForgot} className="space-y-3">
+                    <p className="text-[12px] mb-3" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                      Inserisci la tua email e ti invieremo un link per reimpostare la password.
+                    </p>
+                    <input type="email" className={INP} placeholder="La tua email" value={email}
+                      onChange={e => setEmail(e.target.value)} required autoComplete="email" />
+                    <button type="submit" disabled={loading} className={BTN_PRIMARY}
+                      style={{ background: 'linear-gradient(135deg,#3B82F6,#6366F1)', color: 'white' }}>
+                      {loading ? 'Invio in corso…' : 'Invia link di reset'}
+                    </button>
+                  </form>
+                )}
+
+                {/* Divider + Google */}
+                {mode !== 'forgot' && (
+                  <>
+                    <div className="flex items-center gap-3 my-4">
+                      <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.07)' }} />
+                      <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.2)' }}>oppure continua con</span>
+                      <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.07)' }} />
+                    </div>
+                    <button
+                      onClick={onGoogle} disabled={loading}
+                      className={`${BTN_PRIMARY} border`}
+                      style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.75)', borderColor: 'rgba(255,255,255,0.1)' }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                      </svg>
+                      Google
+                    </button>
+                  </>
+                )}
+
+                {/* Security note */}
+                <div className="flex items-center justify-center gap-1.5 mt-5 text-[11px]" style={{ color: 'rgba(255,255,255,0.18)' }}>
+                  <IconShield />
+                  Accesso protetto · Dati crittografati
+                </div>
               </div>
             </div>
           </div>
         </div>
+      </section>
 
-        {/* Scroll indicator */}
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 animate-bounce">
-          <span className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>Scopri di più</span>
-          <div className="w-5 h-8 rounded-full flex items-start justify-center pt-1.5"
-            style={{ border: '1px solid rgba(255,255,255,0.15)' }}>
-            <div className="w-1 h-2 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: '0.2s' }} />
+      {/* ════ METRICS ════ */}
+      <section id="metrics" className="relative py-4">
+        <div className="max-w-5xl mx-auto px-6">
+          <div
+            className="grid grid-cols-2 md:grid-cols-4 rounded-2xl overflow-hidden"
+            style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}
+          >
+            {[
+              { v: 1200, s: '+', l: 'Task completati' },
+              { v: 48, s: '', l: 'Clienti attivi' },
+              { v: 99, s: '%', l: 'Uptime' },
+              { v: 6, s: '×', l: 'Produttività' },
+            ].map((m, i) => <StatBlock key={i} value={m.v} suffix={m.s} label={m.l} />)}
           </div>
         </div>
       </section>
 
-      {/* ── STATS ── */}
-      <section id="stats" className="py-20 px-6 relative">
+      {/* ════ FEATURES ════ */}
+      <section id="features" className="py-28 px-6 relative">
         <div className="absolute inset-0 pointer-events-none"
-          style={{ background: 'linear-gradient(to bottom, transparent, rgba(59,130,246,0.04), transparent)' }} />
-        <div className="max-w-5xl mx-auto grid grid-cols-2 lg:grid-cols-4 gap-8">
-          {stats.map((s, i) => (
-            <div key={i} className="text-center">
-              <div className="text-4xl lg:text-5xl font-black mb-2"
-                style={{ background: 'linear-gradient(135deg, #fff, rgba(255,255,255,0.6))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                <Counter target={s.value} suffix={s.suffix} />
-              </div>
-              <p className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>{s.label}</p>
+          style={{ background: 'radial-gradient(ellipse 60% 40% at 50% 50%, rgba(59,130,246,0.04) 0%, transparent 100%)' }} />
+        <div className="max-w-6xl mx-auto relative">
+          {/* Section header */}
+          <div className="max-w-xl mb-16">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] font-semibold tracking-wide uppercase mb-5"
+              style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)', color: '#A5B4FC' }}>
+              Funzionalità
             </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ── FEATURES ── */}
-      <section id="features" className="py-24 px-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold mb-5"
-              style={{ background: 'rgba(139,92,246,0.12)', border: '1px solid rgba(139,92,246,0.3)', color: '#C4B5FD' }}>
-              ⚡ Feature principali
-            </div>
-            <h2 className="text-4xl lg:text-5xl font-black mb-4">
-              Tutto quello di cui<br />
-              <span style={{ background: 'linear-gradient(135deg, hsl(217 91% 65%), hsl(280 70% 65%))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                un'agenzia ha bisogno.
-              </span>
+            <h2 className="text-3xl md:text-4xl font-black leading-tight mb-4" style={{ color: 'rgba(255,255,255,0.9)' }}>
+              Tutto ciò di cui<br />un'agenzia ha bisogno.
             </h2>
-            <p className="text-lg max-w-xl mx-auto" style={{ color: 'rgba(255,255,255,0.45)' }}>
-              Niente fogli Excel, niente app separate. Tutto in una piattaforma costruita per chi crea contenuti.
+            <p className="text-[15px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.4)' }}>
+              Progettato per team che producono contenuti quotidianamente. Zero fogli di calcolo, zero dispersione, zero strumenti separati.
             </p>
           </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {features.map((f, i) => <FeatureCard key={i} {...f} />)}
+
+          {/* Two-column feature list */}
+          <div className="grid md:grid-cols-2 gap-x-16">
+            <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+              {features.slice(0, 3).map((f, i) => <FeatureItem key={i} {...f} />)}
+            </div>
+            <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+              {features.slice(3).map((f, i) => <FeatureItem key={i} {...f} />)}
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ── HOW IT WORKS ── */}
-      <section className="py-24 px-6 relative">
-        <div className="absolute inset-0 pointer-events-none"
-          style={{ background: 'radial-gradient(ellipse at center, rgba(59,130,246,0.06) 0%, transparent 70%)' }} />
+      {/* ════ HOW IT WORKS ════ */}
+      <section className="py-24 px-6">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-16">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold mb-5"
-              style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', color: '#6EE7B7' }}>
-              🗺️ Come funziona
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] font-semibold tracking-wide uppercase mb-5"
+              style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', color: '#6EE7B7' }}>
+              Come funziona
             </div>
-            <h2 className="text-4xl font-black mb-4">Semplice da usare.<br />Potente per crescere.</h2>
+            <h2 className="text-3xl md:text-4xl font-black" style={{ color: 'rgba(255,255,255,0.9)' }}>
+              In tre passi.
+            </h2>
           </div>
-          <div className="grid md:grid-cols-3 gap-8 relative">
-            {/* connecting line */}
-            <div className="hidden md:block absolute top-10 left-[16.67%] right-[16.67%] h-px"
-              style={{ background: 'linear-gradient(90deg, transparent, rgba(59,130,246,0.4), rgba(139,92,246,0.4), transparent)' }} />
+
+          <div className="relative grid md:grid-cols-3 gap-6">
+            {/* Connector line */}
+            <div className="hidden md:block absolute top-[38px] left-[calc(16.67%+24px)] right-[calc(16.67%+24px)] h-px"
+              style={{ background: 'linear-gradient(90deg, transparent, rgba(59,130,246,0.35), rgba(99,102,241,0.35), transparent)' }} />
             {[
-              { n: '01', icon: '🔐', title: 'Accedi', desc: 'Login con email/password o Google. Il sistema ti riconosce automaticamente come membro del team.' },
-              { n: '02', icon: '📋', title: 'Organizza', desc: 'Crea task, assegna ai colleghi, imposta priorità e scadenze. Il calendario si aggiorna da solo.' },
-              { n: '03', icon: '🚀', title: 'Pubblica', desc: 'Usa l\'AI per generare script e caption, traccia le riprese, e pubblica contenuti di qualità.' },
+              {
+                n: '01', title: 'Accedi',
+                desc: 'Login sicuro con email/password o Google. Il sistema rileva automaticamente il tuo profilo team dall\'email.',
+              },
+              {
+                n: '02', title: 'Organizza',
+                desc: 'Crea task, assegna colleghi, imposta priorità e scadenze. Il calendario si sincronizza in automatico.',
+              },
+              {
+                n: '03', title: 'Pubblica',
+                desc: 'Usa l\'AI per generare script e caption, traccia il workflow di produzione e pubblica contenuti di qualità.',
+              },
             ].map((s, i) => (
-              <div key={i} className="relative flex flex-col items-center text-center p-8 rounded-2xl"
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                <div
-                  className="w-12 h-12 rounded-xl flex items-center justify-center text-xl mb-4 relative z-10"
-                  style={{ background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)' }}
-                >
-                  {s.icon}
+              <div key={i} className="relative p-7 rounded-2xl text-center"
+                style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className="relative mx-auto w-12 h-12 rounded-full flex items-center justify-center mb-5"
+                  style={{ background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.25)' }}>
+                  <span className="text-[13px] font-black" style={{ color: '#93C5FD' }}>{s.n}</span>
                 </div>
-                <span className="absolute top-6 right-6 text-xs font-black opacity-15">{s.n}</span>
-                <h3 className="text-white font-bold text-lg mb-2">{s.title}</h3>
-                <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.45)' }}>{s.desc}</p>
+                <h3 className="text-white font-bold text-[16px] mb-2">{s.title}</h3>
+                <p className="text-[13px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.4)' }}>{s.desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── TESTIMONIALS ── */}
-      <section id="team" className="py-24 px-6">
+      {/* ════ ABOUT / TEAM ════ */}
+      <section id="about" className="py-24 px-6">
         <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-16">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold mb-5"
-              style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.3)', color: '#FCD34D' }}>
-              💬 Il team dice
-            </div>
-            <h2 className="text-4xl font-black">Chi lo usa ogni giorno.</h2>
-          </div>
-          <div className="grid md:grid-cols-3 gap-5">
-            {testimonials.map((t, i) => <Testimonial key={i} {...t} />)}
-          </div>
-        </div>
-      </section>
-
-      {/* ── CTA BANNER ── */}
-      <section className="py-24 px-6">
-        <div className="max-w-4xl mx-auto relative">
           <div
-            className="rounded-3xl p-12 text-center relative overflow-hidden"
+            className="relative rounded-3xl overflow-hidden p-10 md:p-14"
             style={{
-              background: 'linear-gradient(135deg, rgba(59,130,246,0.15), rgba(139,92,246,0.15))',
-              border: '1px solid rgba(59,130,246,0.25)',
+              background: 'linear-gradient(135deg, rgba(59,130,246,0.08) 0%, rgba(99,102,241,0.06) 50%, rgba(139,92,246,0.06) 100%)',
+              border: '1px solid rgba(59,130,246,0.18)',
             }}
           >
-            <div className="absolute inset-0 rounded-3xl"
-              style={{ background: 'radial-gradient(ellipse at center, rgba(59,130,246,0.1) 0%, transparent 70%)' }} />
-            <div className="relative">
-              <div className="text-5xl mb-6 select-none">🦂</div>
-              <h2 className="text-4xl lg:text-5xl font-black mb-4">Pronto a salire a bordo?</h2>
-              <p className="text-lg mb-8 max-w-xl mx-auto" style={{ color: 'rgba(255,255,255,0.55)' }}>
-                Accedi con le tue credenziali o crea un nuovo account. Il tuo profilo team ti aspetta.
-              </p>
-              <button
-                onClick={scrollToAuth}
-                className="inline-flex items-center gap-2.5 px-8 py-4 rounded-xl font-bold text-base transition-all duration-200 hover:scale-105"
-                style={{
-                  background: 'linear-gradient(135deg, hsl(217 91% 60%), hsl(217 91% 50%))',
-                  color: 'white',
-                  boxShadow: '0 0 50px hsl(217 91% 60% / 0.4)',
-                }}
-              >
-                🚀 Entra in Skorpio
-              </button>
+            {/* Background decoration */}
+            <div className="absolute top-0 right-0 w-80 h-80 pointer-events-none"
+              style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%)', transform: 'translate(30%,-30%)' }} />
+
+            <div className="relative grid md:grid-cols-2 gap-10 items-center">
+              <div>
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] font-semibold tracking-wide uppercase mb-6"
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.45)' }}>
+                  Il team
+                </div>
+                <h2 className="text-3xl md:text-4xl font-black leading-tight mb-5" style={{ color: 'rgba(255,255,255,0.9)' }}>
+                  Costruito<br />dal team.<br />Per il team.
+                </h2>
+                <p className="text-[14px] leading-relaxed mb-6" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                  Skorpio nasce dall'esigenza reale di Fuyue Digital Agency: gestire clienti, contenuti e task senza dispersioni. Ogni funzionalità è stata pensata e testata dal team che lo usa ogni giorno.
+                </p>
+                <button
+                  onClick={scrollToAuth}
+                  className="flex items-center gap-2.5 px-6 py-3 rounded-xl font-semibold text-[14px] transition-all duration-200 hover:scale-105"
+                  style={{
+                    background: 'linear-gradient(135deg, #3B82F6, #6366F1)',
+                    color: 'white',
+                    boxShadow: '0 0 28px rgba(59,130,246,0.3)',
+                  }}
+                >
+                  Entra nella piattaforma
+                  <IconArrow />
+                </button>
+              </div>
+
+              {/* Checklist */}
+              <div className="space-y-3">
+                {[
+                  'Task → calendario automatico',
+                  'Auto-riconoscimento profilo dal login',
+                  'Chat realtime con reaction emoji',
+                  'Creative Engine AI per ogni cliente',
+                  'Kanban con drag & drop e suoni',
+                  'CRM clienti con quote e pacchetti',
+                ].map((item, i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <div className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center"
+                      style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', color: '#6EE7B7' }}>
+                      <IconCheck />
+                    </div>
+                    <span className="text-[13px]" style={{ color: 'rgba(255,255,255,0.55)' }}>{item}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── FOOTER ── */}
-      <footer className="py-8 px-6 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <span className="text-xl">🦂</span>
-            <span className="font-bold text-white">SKORPIO</span>
-            <span className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>by Fuyue Digital Agency</span>
+      {/* ════ FOOTER ════ */}
+      <footer className="py-8 px-6" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-6 h-6">
+              <svg viewBox="0 0 32 32" fill="none" className="w-full h-full">
+                <rect width="32" height="32" rx="8" fill="rgba(59,130,246,0.1)" stroke="rgba(59,130,246,0.3)" strokeWidth="1"/>
+                <path d="M8 10 L16 8 L24 10 L22 18 L16 24 L10 18 Z" stroke="#93C5FD" strokeWidth="1.5" fill="none"/>
+                <circle cx="16" cy="16" r="2.5" fill="#3B82F6"/>
+              </svg>
+            </div>
+            <span className="font-bold text-white text-[14px]">SKORPIO</span>
+            <span className="text-[12px]" style={{ color: 'rgba(255,255,255,0.2)' }}>— Fuyue Digital Agency</span>
           </div>
-          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>
-            © {new Date().getFullYear()} Fuyue Digital Agency — Tutti i diritti riservati
-          </p>
+          <div className="flex items-center gap-6 text-[11px]" style={{ color: 'rgba(255,255,255,0.2)' }}>
+            <span>© {new Date().getFullYear()} Fuyue Digital Agency</span>
+            <span>Tutti i diritti riservati</span>
+          </div>
         </div>
       </footer>
     </div>
