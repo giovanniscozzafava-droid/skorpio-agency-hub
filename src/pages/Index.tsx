@@ -70,8 +70,8 @@ function MainApp() {
         )}
         {tab === 'clienti' && <ClientiTab />}
         {tab === 'riprese' && <RipreseTab clienti={clienti} team={team} />}
-        {tab === 'chat' && <ChatTab team={team} />}
       </div>
+      <ChatPopup team={team} />
       <ToastContainer />
     </div>
   );
