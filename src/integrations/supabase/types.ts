@@ -190,6 +190,30 @@ export type Database = {
         }
         Relationships: []
       }
+      chat_reactions: {
+        Row: {
+          autore: string
+          created_at: string | null
+          emoji: string
+          id: string
+          msg_id: string
+        }
+        Insert: {
+          autore: string
+          created_at?: string | null
+          emoji: string
+          id?: string
+          msg_id: string
+        }
+        Update: {
+          autore?: string
+          created_at?: string | null
+          emoji?: string
+          id?: string
+          msg_id?: string
+        }
+        Relationships: []
+      }
       clienti: {
         Row: {
           adv_attivo: boolean | null
