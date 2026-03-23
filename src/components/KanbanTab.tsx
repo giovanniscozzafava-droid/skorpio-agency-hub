@@ -253,11 +253,17 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   };
 
   const filteredTasks = (stato: string) => {
-    return tasks.filter(t => {
+    const filtered = tasks.filter(t => {
       if (t.stato !== stato) return false;
       if (personaView && t.assegnato_a !== personaView) return false;
       if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
       return true;
+    });
+    // Ordina: scaduti prima, poi per scadenza più vicina, poi senza scadenza
+    return filtered.sort((a, b) => {
+      const aMs = a.scadenza ? getTargetDate(a.scadenza, a.ora).getTime() : Infinity;
+      const bMs = b.scadenza ? getTargetDate(b.scadenza, b.ora).getTime() : Infinity;
+      return aMs - bMs;
     });
   };
 
