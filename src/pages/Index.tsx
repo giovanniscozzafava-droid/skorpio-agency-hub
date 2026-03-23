@@ -5,6 +5,7 @@ import { TopBar } from '../components/TopBar';
 import { ToastContainer } from '../components/ToastContainer';
 import { KanbanTab } from '../components/KanbanTab';
 import { ContenutiTab } from '../components/ContenutiTab';
+import { ClientiTab } from '../components/ClientiTab';
 import type { TeamMember, Cliente, Task } from '../types';
 import { supabase } from '../lib/supabase';
 
