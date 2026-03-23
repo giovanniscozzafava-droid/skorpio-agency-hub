@@ -443,7 +443,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                         </p>
                       )}
 
-                      {scad && (
+                      {scad && task.tipo !== 'Pubblicazione' && (
                         <div
                           className="inline-flex items-center text-xs px-1.5 py-0.5 rounded mt-1.5 font-medium"
                           style={{ background: scad.bg, color: scad.colore }}
@@ -451,6 +451,11 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                           {scad.label}
                           {task.ora && <span className="ml-1 opacity-70">{task.ora.slice(0, 5)}</span>}
                         </div>
+                      )}
+
+                      {/* Countdown dedicato per task Pubblicazione */}
+                      {task.tipo === 'Pubblicazione' && task.scadenza && (
+                        <CountdownBadge task={task} />
                       )}
                     </div>
                   );
