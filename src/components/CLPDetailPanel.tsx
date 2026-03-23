@@ -1,8 +1,18 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
-import type { Contenuto, FaseCLP, TeamMember, Cliente } from '../types';
+import type { Contenuto, FaseCLP, TeamMember, Cliente, LogRipresa } from '../types';
 import { FASE_CONFIG } from './ContenutiTab';
+
+const STATI_CLIP: LogRipresa['stato'][] = ['Da girare', 'Grezza', 'Buona', 'Scartata', 'Usata'];
+const FORMATI_CLIP = ['Verticale 9:16', 'Orizzontale 16:9', 'Quadrato 1:1', 'Foto', 'Raw / LOG', 'Slow Motion', 'Drone', 'Altro'];
+const STATO_CLIP_CFG: Record<string, { bg: string; text: string; border: string }> = {
+  'Da girare': { bg: 'hsl(45 90% 50% / 0.12)', text: 'hsl(45 90% 40%)',  border: 'hsl(45 90% 50% / 0.35)' },
+  'Grezza':    { bg: 'hsl(var(--muted))',        text: 'hsl(var(--muted-foreground))', border: 'hsl(var(--border))' },
+  'Buona':     { bg: 'hsl(142 70% 45% / 0.12)',  text: 'hsl(142 60% 35%)',  border: 'hsl(142 70% 45% / 0.35)' },
+  'Scartata':  { bg: 'hsl(0 80% 55% / 0.10)',    text: 'hsl(0 70% 45%)',    border: 'hsl(0 80% 55% / 0.35)' },
+  'Usata':     { bg: 'hsl(214 80% 55% / 0.12)',  text: 'hsl(214 70% 45%)',  border: 'hsl(214 80% 55% / 0.35)' },
+};
 
 async function createDriveFolder(contenuto: Contenuto): Promise<string | null> {
   try {
