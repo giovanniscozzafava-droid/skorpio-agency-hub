@@ -459,10 +459,10 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
     return Object.values(map).sort((a, b) => b.totale - a.totale);
   }, [clips]);
 
-  // Filtered
+  // Filtered — filtroCliente è il nome del cliente
   const filtered = clips.filter(c => {
     if (filtroStato && c.stato !== filtroStato) return false;
-    if (filtroCliente && c.cliente_id !== filtroCliente) return false;
+    if (filtroCliente && (c.cliente_nome || '') !== filtroCliente) return false;
     if (filtroOperatore && c.operatore !== filtroOperatore) return false;
     if (search) {
       const s = search.toLowerCase();
@@ -476,12 +476,8 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
     return true;
   });
 
-  // Nome del cliente attivo nel filtro
-  const clienteAttivoNome = filtroCliente
-    ? (clienti.find(c => c.id === filtroCliente)?.nome || '')
-    : '';
-  const reportClienteAttivo = clienteAttivoNome
-    ? reportClienti.find(r => r.clienteId === filtroCliente)
+  const reportClienteAttivo = filtroCliente
+    ? reportClienti.find(r => r.nome === filtroCliente)
     : null;
 
   // helpers per la tabella
