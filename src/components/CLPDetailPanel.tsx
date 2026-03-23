@@ -1,8 +1,18 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
-import type { Contenuto, FaseCLP, TeamMember, Cliente } from '../types';
+import type { Contenuto, FaseCLP, TeamMember, Cliente, LogRipresa } from '../types';
 import { FASE_CONFIG } from './ContenutiTab';
+
+const STATI_CLIP: LogRipresa['stato'][] = ['Da girare', 'Grezza', 'Buona', 'Scartata', 'Usata'];
+const FORMATI_CLIP = ['Verticale 9:16', 'Orizzontale 16:9', 'Quadrato 1:1', 'Foto', 'Raw / LOG', 'Slow Motion', 'Drone', 'Altro'];
+const STATO_CLIP_CFG: Record<string, { bg: string; text: string; border: string }> = {
+  'Da girare': { bg: 'hsl(45 90% 50% / 0.12)', text: 'hsl(45 90% 40%)',  border: 'hsl(45 90% 50% / 0.35)' },
+  'Grezza':    { bg: 'hsl(var(--muted))',        text: 'hsl(var(--muted-foreground))', border: 'hsl(var(--border))' },
+  'Buona':     { bg: 'hsl(142 70% 45% / 0.12)',  text: 'hsl(142 60% 35%)',  border: 'hsl(142 70% 45% / 0.35)' },
+  'Scartata':  { bg: 'hsl(0 80% 55% / 0.10)',    text: 'hsl(0 70% 45%)',    border: 'hsl(0 80% 55% / 0.35)' },
+  'Usata':     { bg: 'hsl(214 80% 55% / 0.12)',  text: 'hsl(214 70% 45%)',  border: 'hsl(214 80% 55% / 0.35)' },
+};
 
 async function createDriveFolder(contenuto: Contenuto): Promise<string | null> {
   try {
@@ -66,10 +76,31 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
   const [creatingDrive, setCreatingDrive] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ─── Riprese state ────────────────────────────────────────────────────────
+  const [clips, setClips] = useState<LogRipresa[]>([]);
+  const [showAddClip, setShowAddClip] = useState(false);
+  const [addingClip, setAddingClip] = useState(false);
+  const [clipForm, setClipForm] = useState({
+    codici: '',
+    stato: 'Grezza' as LogRipresa['stato'],
+    formato: '',
+    operatore: '',
+  });
+
+  const loadClips = useCallback(async () => {
+    const { data } = await supabase
+      .from('log_riprese')
+      .select('*')
+      .eq('contenuto_id', contenuto.id)
+      .order('created_at', { ascending: false });
+    setClips((data || []) as LogRipresa[]);
+  }, [contenuto.id]);
+
   // Reset form when contenuto changes
   useEffect(() => {
     setForm({ ...contenuto });
-  }, [contenuto.id]);
+    loadClips();
+  }, [contenuto.id, loadClips]);
 
   const set = (k: keyof Contenuto, v: any) => {
     setForm(prev => ({ ...prev, [k]: v }));
@@ -125,6 +156,59 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
       addToast('⚠️ Errore creazione cartella Drive', 'warn');
     }
     setCreatingDrive(false);
+  };
+
+  const handleAddClips = async () => {
+    const rawCodes = clipForm.codici.split(',').map(s => s.trim()).filter(Boolean);
+    if (rawCodes.length === 0) { addToast('⚠️ Inserisci almeno un codice Sony', 'warn'); return; }
+    setAddingClip(true);
+
+    const rows = rawCodes.map(code => ({
+      id_clip: code,
+      contenuto_id: contenuto.id,
+      id_contenuto_display: contenuto.id_display,
+      cliente_id: contenuto.cliente_id || null,
+      cliente_nome: contenuto.cliente_nome || '',
+      titolo: contenuto.titolo,
+      stato: clipForm.stato,
+      formato: clipForm.formato,
+      operatore: clipForm.operatore,
+    }));
+
+    const { error } = await supabase.from('log_riprese').insert(rows);
+    setAddingClip(false);
+
+    if (error) {
+      addToast(error.code === '23505' ? '⚠️ Codice clip già esistente' : '❌ Errore inserimento', 'warn');
+      return;
+    }
+
+    // Porta il CLP a Girato se era in Idea o Script
+    if (['Idea', 'Script'].includes(form.fase)) {
+      await supabase.from('contenuti').update({ fase: 'Girato' }).eq('id', contenuto.id);
+      const { data: fresh } = await supabase.from('contenuti').select('*').eq('id', contenuto.id).single();
+      if (fresh) {
+        onUpdate(fresh as Contenuto);
+        setForm(fresh as Contenuto);
+      }
+      addToast('🎬 Fase aggiornata a Girato', 'success');
+    }
+
+    addToast(`✅ ${rawCodes.length} clip inserita${rawCodes.length > 1 ? 'e' : ''}!`, 'success');
+    setClipForm({ codici: '', stato: 'Grezza', formato: '', operatore: '' });
+    setShowAddClip(false);
+    loadClips();
+  };
+
+  const handleClipStatoChange = async (clipId: string, nuovoStato: LogRipresa['stato']) => {
+    await supabase.from('log_riprese').update({ stato: nuovoStato }).eq('id', clipId);
+    setClips(prev => prev.map(c => c.id === clipId ? { ...c, stato: nuovoStato } : c));
+  };
+
+  const handleDeleteClip = async (clipId: string) => {
+    await supabase.from('log_riprese').delete().eq('id', clipId);
+    setClips(prev => prev.filter(c => c.id !== clipId));
+    addToast('Clip rimossa', 'success');
   };
 
   const faseCfg = FASE_CONFIG[form.fase];
@@ -337,6 +421,128 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
           <div className="mt-3 grid grid-cols-2 gap-3">
             <LabelInput label="📱 Data pubblicaz." field="data_pubblicazione" type="date" />
             <LabelInput label="🕐 Ora pubblicaz." field="ora_pubblicazione" type="time" />
+          </div>
+
+          {/* ─── RIPRESE ─── */}
+          <Section title="RIPRESE" />
+
+          <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'hsl(var(--border))' }}>
+            {/* Header riprese */}
+            <div className="flex items-center justify-between px-3 py-2"
+              style={{ background: 'hsl(var(--muted))' }}>
+              <span className="text-xs font-semibold" style={{ color: 'hsl(var(--muted-foreground))' }}>
+                🎬 {clips.length} clip{clips.length !== 1 ? 's' : ''} collegate
+              </span>
+              <button
+                onClick={() => setShowAddClip(v => !v)}
+                className="text-xs px-2.5 py-1 rounded-md font-semibold transition-all"
+                style={{ background: showAddClip ? 'hsl(var(--muted-foreground))' : 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))' }}
+              >
+                {showAddClip ? '✕ Annulla' : '+ Aggiungi clip'}
+              </button>
+            </div>
+
+            {/* Form aggiunta clip */}
+            {showAddClip && (
+              <div className="p-3 border-b space-y-2" style={{ borderColor: 'hsl(var(--border))', background: 'hsl(var(--card))' }}>
+                <div>
+                  <label className="sk-label">Codici Sony <span className="font-normal opacity-60">(separati da virgola)</span></label>
+                  <input
+                    className="sk-input w-full text-sm"
+                    placeholder="es: C7876, C7877"
+                    value={clipForm.codici}
+                    onChange={e => setClipForm(f => ({ ...f, codici: e.target.value }))}
+                    autoFocus
+                  />
+                  {clipForm.codici && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {clipForm.codici.split(',').map(s => s.trim()).filter(Boolean).map(code => (
+                        <span key={code} className="px-2 py-0.5 rounded-full text-[11px] font-medium"
+                          style={{ background: 'hsl(214 80% 55% / 0.12)', color: 'hsl(214 70% 45%)', border: '1px solid hsl(214 80% 55% / 0.3)' }}>
+                          {code}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="sk-label">Stato</label>
+                    <select className="sk-select w-full text-sm" value={clipForm.stato}
+                      onChange={e => setClipForm(f => ({ ...f, stato: e.target.value as LogRipresa['stato'] }))}>
+                      {STATI_CLIP.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="sk-label">Formato</label>
+                    <select className="sk-select w-full text-sm" value={clipForm.formato}
+                      onChange={e => setClipForm(f => ({ ...f, formato: e.target.value }))}>
+                      <option value="">—</option>
+                      {FORMATI_CLIP.map(f => <option key={f} value={f}>{f}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="sk-label">Operatore</label>
+                    <select className="sk-select w-full text-sm" value={clipForm.operatore}
+                      onChange={e => setClipForm(f => ({ ...f, operatore: e.target.value }))}>
+                      <option value="">—</option>
+                      {team.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <button
+                  onClick={handleAddClips}
+                  disabled={addingClip || !clipForm.codici.trim()}
+                  className="sk-btn-primary w-full text-sm"
+                >
+                  {addingClip ? '⏳ Inserimento…' : `✅ Inserisci clip${['Idea', 'Script'].includes(form.fase) ? ' → porta a Girato' : ''}`}
+                </button>
+              </div>
+            )}
+
+            {/* Lista clip */}
+            {clips.length === 0 ? (
+              <div className="px-3 py-4 text-center text-xs" style={{ color: 'hsl(var(--muted-foreground))' }}>
+                Nessuna clip collegata
+              </div>
+            ) : (
+              <div className="divide-y" style={{ borderColor: 'hsl(var(--border))' }}>
+                {clips.map(clip => {
+                  const cfg = STATO_CLIP_CFG[clip.stato] || STATO_CLIP_CFG['Grezza'];
+                  return (
+                    <div key={clip.id} className="flex items-center gap-2 px-3 py-2">
+                      <span className="font-mono text-xs font-bold flex-shrink-0"
+                        style={{ color: 'hsl(var(--muted-foreground))' }}>
+                        {clip.id_clip}
+                      </span>
+                      <select
+                        className="text-[11px] font-semibold border rounded-full px-2 py-0.5 cursor-pointer focus:outline-none flex-shrink-0"
+                        style={{ background: cfg.bg, color: cfg.text, borderColor: cfg.border }}
+                        value={clip.stato}
+                        onChange={e => handleClipStatoChange(clip.id, e.target.value as LogRipresa['stato'])}
+                      >
+                        {STATI_CLIP.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                      {clip.operatore && (
+                        <span className="text-xs flex-shrink-0" style={{ color: 'hsl(var(--muted-foreground))' }}>
+                          {clip.operatore}
+                        </span>
+                      )}
+                      {clip.formato && (
+                        <span className="text-xs truncate flex-1" style={{ color: 'hsl(var(--muted-foreground))' }}>
+                          {clip.formato}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => handleDeleteClip(clip.id)}
+                        className="ml-auto flex-shrink-0 text-xs opacity-30 hover:opacity-80 transition-opacity"
+                        title="Rimuovi clip"
+                      >✕</button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* ─── NOTE & LINK ─── */}
