@@ -62,7 +62,7 @@ function MainApp() {
           <KanbanTab team={team} clienti={clienti} personaView={personaView} />
         )}
         {tab === 'calendario' && <CalendarioTab team={team} clienti={clienti} />}
-        {tab === 'creative' && <Placeholder emoji="🤖" label="Creative Engine" />}
+        {tab === 'creative' && <CreativeEngineTab clienti={clienti} team={team} />}
         {tab === 'contenuti' && (
           <ContenutiTab team={team} clienti={clienti} />
         )}
