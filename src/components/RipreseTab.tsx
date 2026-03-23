@@ -482,6 +482,24 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
     ? reportClienti.find(r => r.clienteId === filtroCliente)
     : null;
 
+  // helpers per la tabella
+  async function updateClip(id: string, patch: Partial<LogRipresa>) {
+    const { error } = await supabase.from('log_riprese').update(patch).eq('id', id);
+    if (error) { addToast('❌ Errore aggiornamento', 'error'); return; }
+    setClips(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
+  }
+
+  async function deleteClip(id: string) {
+    const { error } = await supabase.from('log_riprese').delete().eq('id', id);
+    if (error) { addToast('❌ Errore eliminazione', 'error'); return; }
+    setClips(prev => prev.filter(c => c.id !== id));
+    setDeletingId(null);
+    addToast('🗑️ Clip eliminata', 'warn');
+  }
+
+  const thCls = "px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap bg-muted/60 sticky top-0 z-10";
+  const tdCls = "px-3 py-2 text-sm text-foreground border-b border-border/50";
+
   return (
     <div className="flex flex-col h-full">
 
