@@ -366,7 +366,11 @@ export function LandingPage({ onAuthenticated }: LandingPageProps) {
           {/* ── Left: Copy ── */}
           <div className="space-y-8 max-w-xl">
             {/* Eyebrow */}
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2.5" style={{
+              opacity: heroVisible ? 1 : 0,
+              transform: heroVisible ? 'translateY(0)' : 'translateY(28px)',
+              transition: 'opacity 0.7s ease 0.05s, transform 0.7s ease 0.05s',
+            }}>
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold tracking-wide uppercase"
                 style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.25)', color: '#93C5FD' }}>
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse flex-shrink-0" />
@@ -379,7 +383,11 @@ export function LandingPage({ onAuthenticated }: LandingPageProps) {
             </div>
 
             {/* Headline */}
-            <div>
+            <div style={{
+              opacity: heroVisible ? 1 : 0,
+              transform: heroVisible ? 'translateY(0)' : 'translateY(36px)',
+              transition: 'opacity 0.75s ease 0.18s, transform 0.75s ease 0.18s',
+            }}>
               <h1 className="font-black leading-[1.04] tracking-tight" style={{ fontSize: 'clamp(44px,5.5vw,72px)' }}>
                 <span className="block" style={{ color: 'rgba(255,255,255,0.92)' }}>Il sistema operativo</span>
                 <span className="block" style={{ color: 'rgba(255,255,255,0.92)' }}>della tua</span>
@@ -399,7 +407,11 @@ export function LandingPage({ onAuthenticated }: LandingPageProps) {
             </div>
 
             {/* CTA */}
-            <div className="flex flex-wrap items-center gap-4 pt-1">
+            <div className="flex flex-wrap items-center gap-4 pt-1" style={{
+              opacity: heroVisible ? 1 : 0,
+              transform: heroVisible ? 'translateY(0)' : 'translateY(24px)',
+              transition: 'opacity 0.7s ease 0.36s, transform 0.7s ease 0.36s',
+            }}>
               <button
                 onClick={scrollToAuth}
                 className="flex items-center gap-2.5 px-7 py-3.5 rounded-xl font-semibold text-[15px] transition-all duration-200 hover:brightness-110 hover:shadow-lg"
@@ -422,7 +434,11 @@ export function LandingPage({ onAuthenticated }: LandingPageProps) {
             </div>
 
             {/* Trust row */}
-            <div className="flex items-center gap-6 pt-2">
+            <div className="flex items-center gap-6 pt-2" style={{
+              opacity: heroVisible ? 1 : 0,
+              transform: heroVisible ? 'translateY(0)' : 'translateY(16px)',
+              transition: 'opacity 0.65s ease 0.52s, transform 0.65s ease 0.52s',
+            }}>
               <div className="flex items-center gap-1.5 text-[12px] font-medium" style={{ color: 'rgba(255,255,255,0.35)' }}>
                 <IconShield />
                 End-to-end encrypted
