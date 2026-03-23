@@ -76,10 +76,31 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
   const [creatingDrive, setCreatingDrive] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ─── Riprese state ────────────────────────────────────────────────────────
+  const [clips, setClips] = useState<LogRipresa[]>([]);
+  const [showAddClip, setShowAddClip] = useState(false);
+  const [addingClip, setAddingClip] = useState(false);
+  const [clipForm, setClipForm] = useState({
+    codici: '',
+    stato: 'Grezza' as LogRipresa['stato'],
+    formato: '',
+    operatore: '',
+  });
+
+  const loadClips = useCallback(async () => {
+    const { data } = await supabase
+      .from('log_riprese')
+      .select('*')
+      .eq('contenuto_id', contenuto.id)
+      .order('created_at', { ascending: false });
+    setClips((data || []) as LogRipresa[]);
+  }, [contenuto.id]);
+
   // Reset form when contenuto changes
   useEffect(() => {
     setForm({ ...contenuto });
-  }, [contenuto.id]);
+    loadClips();
+  }, [contenuto.id, loadClips]);
 
   const set = (k: keyof Contenuto, v: any) => {
     setForm(prev => ({ ...prev, [k]: v }));
@@ -135,6 +156,59 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
       addToast('⚠️ Errore creazione cartella Drive', 'warn');
     }
     setCreatingDrive(false);
+  };
+
+  const handleAddClips = async () => {
+    const rawCodes = clipForm.codici.split(',').map(s => s.trim()).filter(Boolean);
+    if (rawCodes.length === 0) { addToast('⚠️ Inserisci almeno un codice Sony', 'warn'); return; }
+    setAddingClip(true);
+
+    const rows = rawCodes.map(code => ({
+      id_clip: code,
+      contenuto_id: contenuto.id,
+      id_contenuto_display: contenuto.id_display,
+      cliente_id: contenuto.cliente_id || null,
+      cliente_nome: contenuto.cliente_nome || '',
+      titolo: contenuto.titolo,
+      stato: clipForm.stato,
+      formato: clipForm.formato,
+      operatore: clipForm.operatore,
+    }));
+
+    const { error } = await supabase.from('log_riprese').insert(rows);
+    setAddingClip(false);
+
+    if (error) {
+      addToast(error.code === '23505' ? '⚠️ Codice clip già esistente' : '❌ Errore inserimento', 'warn');
+      return;
+    }
+
+    // Porta il CLP a Girato se era in Idea o Script
+    if (['Idea', 'Script'].includes(form.fase)) {
+      await supabase.from('contenuti').update({ fase: 'Girato' }).eq('id', contenuto.id);
+      const { data: fresh } = await supabase.from('contenuti').select('*').eq('id', contenuto.id).single();
+      if (fresh) {
+        onUpdate(fresh as Contenuto);
+        setForm(fresh as Contenuto);
+      }
+      addToast('🎬 Fase aggiornata a Girato', 'success');
+    }
+
+    addToast(`✅ ${rawCodes.length} clip inserita${rawCodes.length > 1 ? 'e' : ''}!`, 'success');
+    setClipForm({ codici: '', stato: 'Grezza', formato: '', operatore: '' });
+    setShowAddClip(false);
+    loadClips();
+  };
+
+  const handleClipStatoChange = async (clipId: string, nuovoStato: LogRipresa['stato']) => {
+    await supabase.from('log_riprese').update({ stato: nuovoStato }).eq('id', clipId);
+    setClips(prev => prev.map(c => c.id === clipId ? { ...c, stato: nuovoStato } : c));
+  };
+
+  const handleDeleteClip = async (clipId: string) => {
+    await supabase.from('log_riprese').delete().eq('id', clipId);
+    setClips(prev => prev.filter(c => c.id !== clipId));
+    addToast('Clip rimossa', 'success');
   };
 
   const faseCfg = FASE_CONFIG[form.fase];
