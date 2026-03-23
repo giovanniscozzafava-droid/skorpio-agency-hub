@@ -1,8 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { format } from 'date-fns';
+import { CalendarIcon } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import type { Contenuto, FaseCLP, TeamMember, Cliente, LogRipresa } from '../types';
 import { FASE_CONFIG } from './ContenutiTab';
+import { Calendar } from './ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import { cn } from '../lib/utils';
 
 const STATI_CLIP: LogRipresa['stato'][] = ['Da girare', 'Grezza', 'Buona', 'Scartata', 'Usata'];
 const FORMATI_CLIP = ['Verticale 9:16', 'Orizzontale 16:9', 'Quadrato 1:1', 'Foto', 'Raw / LOG', 'Slow Motion', 'Drone', 'Altro'];
@@ -13,6 +18,74 @@ const STATO_CLIP_CFG: Record<string, { bg: string; text: string; border: string 
   'Scartata':  { bg: 'hsl(0 80% 55% / 0.10)',    text: 'hsl(0 70% 45%)',    border: 'hsl(0 80% 55% / 0.35)' },
   'Usata':     { bg: 'hsl(214 80% 55% / 0.12)',  text: 'hsl(214 70% 45%)',  border: 'hsl(214 80% 55% / 0.35)' },
 };
+
+// ─── Workflow: trova i nomi reali di Luca, Alessandro, Elisa dal team ─────────
+// Usiamo funzione di ricerca per essere robusti rispetto a variazioni di case
+function findMembro(team: TeamMember[], cerca: string): string {
+  const m = team.find(t => t.nome.toLowerCase().includes(cerca.toLowerCase()));
+  return m?.nome ?? cerca;
+}
+
+// ─── Task workflow: completa task esistenti per un contenuto + tipo ───────────
+async function completaTaskPerContenuto(contenutoId: string, tipo: string) {
+  // Trova task attivi (non completati) collegati a questo contenuto con il tipo specificato
+  const { data } = await supabase
+    .from('task')
+    .select('id')
+    .eq('id_contenuto', contenutoId)
+    .eq('tipo', tipo)
+    .neq('stato', 'Completato')
+    .neq('stato', 'Archiviato');
+
+  if (data && data.length > 0) {
+    await supabase
+      .from('task')
+      .update({ stato: 'Completato' })
+      .in('id', data.map(t => t.id));
+  }
+}
+
+async function creaTaskWorkflow(
+  contenuto: Contenuto,
+  assegnatoA: string,
+  tipo: string,
+  descrizione: string,
+  stato: string = 'Da fare'
+) {
+  // Evita duplicati: se esiste già un task attivo per questo contenuto+tipo non ne creare un altro
+  const { data: existing } = await supabase
+    .from('task')
+    .select('id')
+    .eq('id_contenuto', contenuto.id)
+    .eq('tipo', tipo)
+    .neq('stato', 'Completato')
+    .neq('stato', 'Archiviato');
+
+  if (existing && existing.length > 0) return null;
+
+  // Genera id_display
+  const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_id_seq' });
+
+  const { data, error } = await supabase
+    .from('task')
+    .insert({
+      id_display: idData ?? 'TSK000',
+      descrizione,
+      tipo,
+      stato,
+      assegnato_a: assegnatoA,
+      assegnato_da: 'Sistema',
+      cliente_id: contenuto.cliente_id,
+      cliente_nome: contenuto.cliente_nome || '',
+      id_contenuto: contenuto.id,
+      priorita: '🟡 Media',
+    })
+    .select()
+    .single();
+
+  if (error) console.error('Errore creazione task workflow:', error);
+  return data;
+}
 
 async function createDriveFolder(contenuto: Contenuto): Promise<string | null> {
   try {
