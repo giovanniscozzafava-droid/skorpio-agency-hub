@@ -146,6 +146,7 @@ export function CreativeEngineTab({ clienti, team }: Props) {
     setLoading(true);
     setRisultati([]);
     setStats(null);
+    aiCounterRef.current = null; // reset counter per nuovo batch
     try {
       const { data, error } = await supabase.functions.invoke('generate-content', {
         body: {
