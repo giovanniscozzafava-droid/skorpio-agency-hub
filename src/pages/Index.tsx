@@ -7,6 +7,7 @@ import { KanbanTab } from '../components/KanbanTab';
 import { ContenutiTab } from '../components/ContenutiTab';
 import { ClientiTab } from '../components/ClientiTab';
 import { RipreseTab } from '../components/RipreseTab';
+import { CalendarioTab } from '../components/CalendarioTab';
 import type { TeamMember, Cliente, Task } from '../types';
 import { supabase } from '../lib/supabase';
 
