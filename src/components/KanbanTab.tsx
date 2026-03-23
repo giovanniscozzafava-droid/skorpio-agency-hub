@@ -76,6 +76,14 @@ const PRIORITA_COLOR: Record<string, string> = {
   '🟢 Bassa': '#22C55E',
 };
 
+// Mappatura: tipo task workflow → fase CLP corrente del contenuto
+const TIPO_TO_FASE: Record<string, { label: string; bg: string; color: string; border: string }> = {
+  'Premontaggio':        { label: '🎬 Girato',       bg: 'hsl(270 60% 55% / 0.10)', color: 'hsl(270 50% 45%)', border: 'hsl(270 60% 55% / 0.30)' },
+  'Montaggio':           { label: '✂️ Pre montato',  bg: 'hsl(214 80% 55% / 0.10)', color: 'hsl(214 70% 44%)', border: 'hsl(214 80% 55% / 0.28)' },
+  'Revisione montaggio': { label: '🔍 Montato',      bg: 'hsl(38 92% 50% / 0.10)',  color: 'hsl(32 95% 38%)',  border: 'hsl(38 92% 50% / 0.28)'  },
+  'Pubblicazione':       { label: '📱 Montato',      bg: 'hsl(142 60% 45% / 0.10)', color: 'hsl(142 55% 35%)', border: 'hsl(142 60% 45% / 0.28)' },
+};
+
 function scadenzaInfo(task: Task): { label: string; colore: string; bg: string } | null {
   if (!task.scadenza) return null;
   const oggi = new Date(); oggi.setHours(0,0,0,0);
@@ -426,14 +434,24 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                           <span className="text-xs font-mono" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
                             {task.id_display}
                           </span>
-                          {task.tipo && (
-                            <span
-                              className="text-xs px-1.5 py-0.5 rounded"
-                              style={{ background: 'hsl(210 40% 96%)', color: '#64748B' }}
-                            >
-                              {task.tipo}
-                            </span>
-                          )}
+                          {task.tipo && (() => {
+                            const fase = TIPO_TO_FASE[task.tipo];
+                            return fase ? (
+                              <span
+                                className="text-xs px-1.5 py-0.5 rounded font-medium"
+                                style={{ background: fase.bg, color: fase.color, border: `1px solid ${fase.border}` }}
+                              >
+                                {fase.label}
+                              </span>
+                            ) : (
+                              <span
+                                className="text-xs px-1.5 py-0.5 rounded"
+                                style={{ background: 'hsl(210 40% 96%)', color: '#64748B' }}
+                              >
+                                {task.tipo}
+                              </span>
+                            );
+                          })()}
                         </div>
                         {member && (
                           <Avatar nome={member.nome} colore={member.colore} size={20} />
