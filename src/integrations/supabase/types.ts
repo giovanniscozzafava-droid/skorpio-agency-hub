@@ -516,6 +516,35 @@ export type Database = {
         }
         Relationships: []
       }
+      profiles: {
+        Row: {
+          auth_user_id: string
+          created_at: string | null
+          id: string
+          team_id: string | null
+        }
+        Insert: {
+          auth_user_id: string
+          created_at?: string | null
+          id?: string
+          team_id?: string | null
+        }
+        Update: {
+          auth_user_id?: string
+          created_at?: string | null
+          id?: string
+          team_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "team"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task: {
         Row: {
           assegnato_a: string
@@ -583,6 +612,7 @@ export type Database = {
       }
       team: {
         Row: {
+          auth_user_id: string | null
           avatar_url: string | null
           colore: string | null
           created_at: string | null
@@ -592,6 +622,7 @@ export type Database = {
           ruolo: string | null
         }
         Insert: {
+          auth_user_id?: string | null
           avatar_url?: string | null
           colore?: string | null
           created_at?: string | null
@@ -601,6 +632,7 @@ export type Database = {
           ruolo?: string | null
         }
         Update: {
+          auth_user_id?: string | null
           avatar_url?: string | null
           colore?: string | null
           created_at?: string | null
