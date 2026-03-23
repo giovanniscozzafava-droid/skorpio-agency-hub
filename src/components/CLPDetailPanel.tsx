@@ -99,6 +99,19 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
     }
   };
 
+  const handleCreateDrive = async () => {
+    setCreatingDrive(true);
+    addToast('📁 Creazione cartella Drive…', 'info');
+    const url = await createDriveFolder(form);
+    if (url) {
+      set('link_drive', url);
+      addToast('📁 Cartella Drive creata!', 'success');
+    } else {
+      addToast('⚠️ Errore creazione cartella Drive', 'warn');
+    }
+    setCreatingDrive(false);
+  };
+
   const faseCfg = FASE_CONFIG[form.fase];
   const clienteSelezionato = clienti.find(c => c.id === form.cliente_id);
 
