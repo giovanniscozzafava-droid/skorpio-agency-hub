@@ -148,6 +148,15 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
   const [saving, setSaving] = useState(false);
   const [creatingDrive, setCreatingDrive] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevFaseRef = useRef<FaseCLP>(contenuto.fase);
+
+  // ─── Publish state (per Elisa) ─────────────────────────────────────────────
+  const [pubDate, setPubDate] = useState<Date | undefined>(
+    contenuto.data_pubblicazione ? new Date(contenuto.data_pubblicazione) : undefined
+  );
+  const [pubOra, setPubOra] = useState(contenuto.ora_pubblicazione?.slice(0, 5) || '');
+  const [pubCalOpen, setPubCalOpen] = useState(false);
+  const [savingPub, setSavingPub] = useState(false);
 
   // ─── Riprese state ────────────────────────────────────────────────────────
   const [clips, setClips] = useState<LogRipresa[]>([]);
@@ -172,6 +181,9 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
   // Reset form when contenuto changes
   useEffect(() => {
     setForm({ ...contenuto });
+    prevFaseRef.current = contenuto.fase;
+    setPubDate(contenuto.data_pubblicazione ? new Date(contenuto.data_pubblicazione) : undefined);
+    setPubOra(contenuto.ora_pubblicazione?.slice(0, 5) || '');
     loadClips();
   }, [contenuto.id, loadClips]);
 
@@ -189,8 +201,57 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
     if (data) onUpdate(data as Contenuto);
   };
 
+  // ─── WORKFLOW AUTOMATICO ──────────────────────────────────────────────────
+  // Eseguito ogni volta che si salva un cambio di fase
+  const eseguiWorkflowFase = useCallback(async (vecchiaFase: FaseCLP, nuovaFase: FaseCLP, contenutoAggiornato: Contenuto) => {
+    if (vecchiaFase === nuovaFase) return;
+
+    const nomeLuca = findMembro(team, 'Luca');
+    const nomeAlessandro = findMembro(team, 'Alessandro');
+    const nomeElisa = findMembro(team, 'Elisa');
+
+    // GIRATO → crea task montaggio per Luca
+    if (nuovaFase === 'Girato') {
+      const task = await creaTaskWorkflow(
+        contenutoAggiornato,
+        nomeLuca,
+        'Montaggio',
+        `✂️ Monta ${contenutoAggiornato.id_display} – ${contenutoAggiornato.titolo}${contenutoAggiornato.cliente_nome ? ` (${contenutoAggiornato.cliente_nome})` : ''}`,
+        'Da fare'
+      );
+      if (task) addToast(`📋 Task montaggio creato per ${nomeLuca}`, 'success');
+    }
+
+    // PRE MONTATO → completa task Luca + crea task revisione per Alessandro
+    if (nuovaFase === 'Pre montato') {
+      await completaTaskPerContenuto(contenutoAggiornato.id, 'Montaggio');
+      const task = await creaTaskWorkflow(
+        contenutoAggiornato,
+        nomeAlessandro,
+        'Revisione montaggio',
+        `🔍 Revisiona montaggio ${contenutoAggiornato.id_display} – ${contenutoAggiornato.titolo}${contenutoAggiornato.cliente_nome ? ` (${contenutoAggiornato.cliente_nome})` : ''}`,
+        'Da fare'
+      );
+      if (task) addToast(`📋 Task revisione creato per ${nomeAlessandro}`, 'success');
+    }
+
+    // MONTATO → completa task Alessandro + crea task pubblicazione per Elisa
+    if (nuovaFase === 'Montato') {
+      await completaTaskPerContenuto(contenutoAggiornato.id, 'Revisione montaggio');
+      const task = await creaTaskWorkflow(
+        contenutoAggiornato,
+        nomeElisa,
+        'Pubblicazione',
+        `📱 Programma/pubblica ${contenutoAggiornato.id_display} – ${contenutoAggiornato.titolo}${contenutoAggiornato.cliente_nome ? ` (${contenutoAggiornato.cliente_nome})` : ''}`,
+        'In revisione'
+      );
+      if (task) addToast(`📋 Task pubblicazione creato per ${nomeElisa}`, 'success');
+    }
+  }, [team, addToast]);
+
   const handleSaveAll = async () => {
     setSaving(true);
+    const vecchiaFase = prevFaseRef.current;
     const { data, error } = await supabase
       .from('contenuti')
       .update(form)
@@ -199,11 +260,15 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
       .single();
     setSaving(false);
     if (!error && data) {
-      onUpdate(data as Contenuto);
+      const updatedData = data as Contenuto;
+      onUpdate(updatedData);
       addToast('CLP salvato ✅', 'success');
 
+      // 🔄 Workflow task automatico
+      await eseguiWorkflowFase(vecchiaFase, form.fase, updatedData);
+      prevFaseRef.current = form.fase;
+
       // 📁 Se la fase è Montato e non c'è ancora link Drive → crea cartella
-      const updatedData = data as Contenuto;
       if (form.fase === 'Montato' && !updatedData.link_drive) {
         addToast('📁 Creazione cartella Drive…', 'info');
         const url = await createDriveFolder(updatedData);
@@ -215,6 +280,53 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
           addToast('⚠️ Errore creazione cartella Drive', 'warn');
         }
       }
+    }
+  };
+
+  // ─── PROGRAMMA / PUBBLICA (Elisa) ─────────────────────────────────────────
+  const handleProgramma = async (nuovaFase: 'Programmato' | 'Pubblicato') => {
+    setSavingPub(true);
+    const dataStr = pubDate ? format(pubDate, 'yyyy-MM-dd') : null;
+    const oraStr = pubOra || null;
+
+    const { data, error } = await supabase
+      .from('contenuti')
+      .update({ fase: nuovaFase, data_pubblicazione: dataStr, ora_pubblicazione: oraStr })
+      .eq('id', contenuto.id)
+      .select()
+      .single();
+    setSavingPub(false);
+
+    if (!error && data) {
+      onUpdate(data as Contenuto);
+      setForm(data as Contenuto);
+      const vecchiaFase = prevFaseRef.current;
+      prevFaseRef.current = nuovaFase;
+
+      // Completa task pubblicazione di Elisa
+      await completaTaskPerContenuto(contenuto.id, 'Pubblicazione');
+
+      // Se programmato, aggiungi evento in calendario
+      if (nuovaFase === 'Programmato' && dataStr) {
+        await supabase.from('calendario').insert({
+          tipo: 'pubblicazione',
+          data: dataStr,
+          ora: oraStr,
+          descrizione: `${contenuto.id_display} – ${contenuto.titolo}`,
+          cliente_id: contenuto.cliente_id,
+          cliente_nome: contenuto.cliente_nome || '',
+          contenuto_id: contenuto.id,
+          id_contenuto_display: contenuto.id_display,
+          canale: contenuto.canale || '',
+          tipo_contenuto: contenuto.tipo || '',
+          stato: 'Pianificato',
+        });
+        addToast(`📅 Programmato per il ${format(pubDate!, 'dd/MM/yyyy')}`, 'success');
+      } else if (nuovaFase === 'Pubblicato') {
+        addToast('🚀 Contenuto pubblicato!', 'success');
+      }
+
+      await eseguiWorkflowFase(vecchiaFase, nuovaFase, data as Contenuto);
     }
   };
 
