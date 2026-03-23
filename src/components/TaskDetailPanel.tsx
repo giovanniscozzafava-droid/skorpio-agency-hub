@@ -56,6 +56,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
 
   const handleArchivia = async () => {
     if (!confirm(`Archiviare il task ${task.id_display}?`)) return;
+    sounds.elimina();
     await supabase.from('task').update({ stato: 'Archiviato' }).eq('id', task.id);
     onDelete(task.id);
     addToast('Task archiviato', 'info');
@@ -71,6 +72,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
       .select()
       .single();
     if (!error && data) {
+      sounds.salva();
       onUpdate(data as Task);
       setNota('');
       addToast('Nota aggiunta', 'success');
