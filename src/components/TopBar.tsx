@@ -38,7 +38,6 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
     { id: 'contenuti', label: '📹 Contenuti' },
     { id: 'clienti', label: '👥 Clienti' },
     { id: 'riprese', label: '🎬 Riprese' },
-    { id: 'chat', label: '💬 Chat' },
   ];
 
   return (
