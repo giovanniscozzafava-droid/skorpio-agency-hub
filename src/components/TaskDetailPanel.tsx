@@ -49,6 +49,8 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
       .single();
     setSaving(false);
     if (!error && data) {
+      if (nuovoStato === 'Completato') sounds.taskCompletato();
+      else sounds.salva();
       onUpdate(data as Task);
       addToast(`Stato cambiato → ${nuovoStato}`, 'success');
     }
