@@ -47,7 +47,7 @@ function MainApp() {
 
 
   return (
-    <div className="min-h-screen" style={{ background: 'hsl(var(--skorpio-bg))' }}>
+    <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'hsl(var(--skorpio-bg))' }}>
       <TopBar
         team={team}
         taskCounts={{ daFare, urgenti, scaduti }}
