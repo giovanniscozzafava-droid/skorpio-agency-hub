@@ -95,6 +95,47 @@ export function ContenutiTab({ team, clienti }: ContentTabProps) {
           addToast(`${emoji} Reel pubblicato! ${nuoviReel}/${cliente.reel_quota} per ${cliente.nome}`, nuoviReel > cliente.reel_quota ? 'warn' : 'success');
         }
       }
+
+      // 📁 Quando passa a "Montato" → crea cartella Drive automaticamente
+      if (nuovaFase === 'Montato' && contenuto.fase !== 'Montato' && !contenuto.link_drive) {
+        addToast('📁 Creazione cartella Drive…', 'info');
+        try {
+          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+          const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+          const res = await fetch(
+            `${supabaseUrl}/functions/v1/create-drive-folder`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseKey}`,
+                'apikey': supabaseKey,
+              },
+              body: JSON.stringify({
+                contenuto_id: contenuto.id,
+                titolo: contenuto.titolo,
+                cliente_nome: contenuto.cliente_nome,
+                id_display: contenuto.id_display,
+              }),
+            }
+          );
+          const result = await res.json();
+          if (result.success) {
+            addToast(`📁 Cartella Drive creata! → ${contenuto.id_display}`, 'success');
+            // Ricarica il contenuto aggiornato con link_drive
+            const { data: fresh } = await supabase
+              .from('contenuti').select('*').eq('id', contenuto.id).single();
+            if (fresh) handleUpdate(fresh as Contenuto);
+            return;
+          } else {
+            addToast(`⚠️ Drive: ${result.error}`, 'warn');
+          }
+        } catch (e) {
+          addToast('⚠️ Errore creazione cartella Drive', 'warn');
+          console.error(e);
+        }
+      }
+
       handleUpdate(data as Contenuto);
       addToast(`Fase → ${nuovaFase}`, 'success');
     }
