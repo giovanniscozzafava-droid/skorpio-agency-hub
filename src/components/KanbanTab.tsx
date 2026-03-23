@@ -259,12 +259,15 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
       return true;
     });
-    // Ordina: scaduti prima, poi per scadenza più vicina, poi senza scadenza
-    return filtered.sort((a, b) => {
-      const aMs = a.scadenza ? getTargetDate(a.scadenza, a.ora).getTime() : Infinity;
-      const bMs = b.scadenza ? getTargetDate(b.scadenza, b.ora).getTime() : Infinity;
-      return aMs - bMs;
-    });
+    // Ordina: scadenza futura più vicina in cima → senza scadenza → scaduti in fondo
+    const now = Date.now();
+    const score = (t: Task) => {
+      if (!t.scadenza) return 2_000_000_000_000; // senza scadenza: in fondo
+      const ms = getTargetDate(t.scadenza, t.ora).getTime();
+      if (ms < now) return 3_000_000_000_000 + (now - ms); // scaduti: ultimi, ordinati dal più recente
+      return ms; // futuri: ordinati dal più imminente
+    };
+    return filtered.sort((a, b) => score(a) - score(b));
   };
 
   const handleDrop = async (nuovoStato: string) => {
