@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Index from './pages/Index';
 import { ResetPassword } from './pages/ResetPassword';
-import { NotFound } from './pages/NotFound';
+import NotFound from './pages/NotFound';
 
 const App = () => (
   <BrowserRouter>

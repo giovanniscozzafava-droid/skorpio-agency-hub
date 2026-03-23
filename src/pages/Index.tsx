@@ -23,9 +23,9 @@ function MainApp() {
 
   useEffect(() => {
     if (!utente) return;
-    supabase.from('team').select('*').order('created_at').then(({ data }) => setTeam(data || []));
-    supabase.from('clienti').select('*').order('nome').then(({ data }) => setClienti(data || []));
-    supabase.from('task').select('*').neq('stato', 'Archiviato').then(({ data }) => setTasks(data || []));
+    supabase.from('team').select('*').order('created_at').then(({ data }) => setTeam((data as TeamMember[]) || []));
+    supabase.from('clienti').select('*').order('nome').then(({ data }) => setClienti((data as Cliente[]) || []));
+    supabase.from('task').select('*').neq('stato', 'Archiviato').then(({ data }) => setTasks((data as Task[]) || []));
   }, [utente]);
 
   // 1. Non autenticato → Landing Page
