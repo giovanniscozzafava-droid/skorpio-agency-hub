@@ -98,13 +98,64 @@ function Counter({ target, suffix = '' }: { target: number; suffix?: string }) {
 }
 
 /* ─────────────────────────────────────────
+   useStaggerReveal — Intersection Observer hook
+───────────────────────────────────────── */
+function useStaggerReveal(count: number, options?: { threshold?: number; delay?: number }) {
+  const refs = useRef<(HTMLDivElement | null)[]>([]);
+  const [visible, setVisible] = useState<boolean[]>(Array(count).fill(false));
+
+  useEffect(() => {
+    const obs = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const idx = refs.current.indexOf(entry.target as HTMLDivElement);
+            if (idx !== -1) {
+              setTimeout(() => {
+                setVisible(prev => {
+                  const next = [...prev];
+                  next[idx] = true;
+                  return next;
+                });
+              }, idx * (options?.delay ?? 80));
+            }
+            obs.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: options?.threshold ?? 0.15 }
+    );
+
+    refs.current.forEach(el => { if (el) obs.observe(el); });
+    return () => obs.disconnect();
+  }, [count, options?.delay, options?.threshold]);
+
+  return { refs, visible };
+}
+
+/* ─────────────────────────────────────────
    Feature row item
 ───────────────────────────────────────── */
-interface FeatureProps { icon: React.ReactNode; title: string; desc: string; tag?: string; }
-function FeatureItem({ icon, title, desc, tag }: FeatureProps) {
+interface FeatureProps {
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+  tag?: string;
+  visible?: boolean;
+  refCallback?: (el: HTMLDivElement | null) => void;
+}
+function FeatureItem({ icon, title, desc, tag, visible = true, refCallback }: FeatureProps) {
   return (
-    <div className="group flex items-start gap-5 py-7 border-b last:border-b-0 transition-all duration-200 hover:pl-1"
-      style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+    <div
+      ref={refCallback}
+      className="group flex items-start gap-5 py-7 border-b last:border-b-0 transition-all duration-200 hover:pl-1"
+      style={{
+        borderColor: 'rgba(255,255,255,0.06)',
+        opacity: visible ? 1 : 0,
+        transform: visible ? 'translateY(0)' : 'translateY(22px)',
+        transition: 'opacity 0.55s ease, transform 0.55s ease',
+      }}
+    >
       <div className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-200 group-hover:scale-105"
         style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', color: '#93C5FD' }}>
         {icon}
