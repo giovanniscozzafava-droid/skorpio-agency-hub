@@ -76,6 +76,14 @@ const PRIORITA_COLOR: Record<string, string> = {
   '🟢 Bassa': '#22C55E',
 };
 
+// Mappatura: tipo task workflow → fase CLP corrente del contenuto
+const TIPO_TO_FASE: Record<string, { label: string; bg: string; color: string; border: string }> = {
+  'Premontaggio':        { label: '🎬 Girato',       bg: 'hsl(270 60% 55% / 0.10)', color: 'hsl(270 50% 45%)', border: 'hsl(270 60% 55% / 0.30)' },
+  'Montaggio':           { label: '✂️ Pre montato',  bg: 'hsl(214 80% 55% / 0.10)', color: 'hsl(214 70% 44%)', border: 'hsl(214 80% 55% / 0.28)' },
+  'Revisione montaggio': { label: '🔍 Montato',      bg: 'hsl(38 92% 50% / 0.10)',  color: 'hsl(32 95% 38%)',  border: 'hsl(38 92% 50% / 0.28)'  },
+  'Pubblicazione':       { label: '📱 Montato',      bg: 'hsl(142 60% 45% / 0.10)', color: 'hsl(142 55% 35%)', border: 'hsl(142 60% 45% / 0.28)' },
+};
+
 function scadenzaInfo(task: Task): { label: string; colore: string; bg: string } | null {
   if (!task.scadenza) return null;
   const oggi = new Date(); oggi.setHours(0,0,0,0);
