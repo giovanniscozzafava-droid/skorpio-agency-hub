@@ -49,7 +49,7 @@ function LiveClock({ scadenza, ora }: { scadenza: string; ora: string | null }) 
       <span className="flex items-center gap-1.5">
         <span>{icon}</span>
         <span className="uppercase tracking-wide" style={{ fontSize: '0.65rem' }}>
-          {isScaduto ? 'SCADUTO' : 'alla pub.'}
+          {isScaduto ? 'SCADUTO' : '⏱'}
         </span>
       </span>
       <span
