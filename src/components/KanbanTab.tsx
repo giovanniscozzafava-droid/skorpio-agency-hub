@@ -7,62 +7,56 @@ import { Avatar } from './Avatar';
 import { TaskDetailPanel } from './TaskDetailPanel';
 import { NuovoTaskModal } from './NuovoTaskModal';
 
-// ─── Countdown per task Pubblicazione con scadenza ────────────────────────────
-function useCountdown(scadenza: string | null, ora: string | null): string | null {
-  const [remaining, setRemaining] = useState<string | null>(null);
+// ─── Orologio live al secondo per task con scadenza ──────────────────────────
+function getTargetDate(scadenza: string, ora: string | null): Date {
+  return new Date(`${scadenza}T${ora ? ora.slice(0, 5) : '23:59'}:00`);
+}
+
+function formatCountdown(diff: number): string {
+  if (diff <= 0) return 'SCADUTO';
+  const d = Math.floor(diff / 86400000);
+  const h = Math.floor((diff % 86400000) / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  const s = Math.floor((diff % 60000) / 1000);
+  if (d > 0) return `${d}g ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function LiveClock({ scadenza, ora }: { scadenza: string; ora: string | null }) {
+  const [diff, setDiff] = useState(() => getTargetDate(scadenza, ora).getTime() - Date.now());
 
   useEffect(() => {
-    if (!scadenza) { setRemaining(null); return; }
-
-    const calc = () => {
-      const target = new Date(`${scadenza}T${ora ? ora.slice(0, 5) : '23:59'}:00`);
-      const diff = target.getTime() - Date.now();
-      if (diff <= 0) { setRemaining('⏰ SCADUTO'); return; }
-      const days = Math.floor(diff / 86400000);
-      const hours = Math.floor((diff % 86400000) / 3600000);
-      const mins = Math.floor((diff % 3600000) / 60000);
-      if (days > 0) setRemaining(`${days}g ${hours}h`);
-      else if (hours > 0) setRemaining(`${hours}h ${mins}m`);
-      else setRemaining(`${mins}m`);
-    };
-
-    calc();
-    const id = setInterval(calc, 60000);
+    const id = setInterval(() => {
+      setDiff(getTargetDate(scadenza, ora).getTime() - Date.now());
+    }, 1000);
     return () => clearInterval(id);
   }, [scadenza, ora]);
 
-  return remaining;
-}
-
-function CountdownBadge({ task }: { task: Task }) {
-  const countdown = useCountdown(task.scadenza, task.ora);
-  if (!countdown) return null;
-
-  const target = task.scadenza
-    ? new Date(`${task.scadenza}T${task.ora ? task.ora.slice(0, 5) : '23:59'}:00`)
-    : null;
-  const diff = target ? target.getTime() - Date.now() : Infinity;
   const isScaduto = diff <= 0;
-  const isUrgent = diff > 0 && diff < 24 * 3600000; // < 24h
-  const isWarning = diff > 0 && diff < 72 * 3600000; // < 3 giorni
+  const isUrgent  = !isScaduto && diff < 24 * 3600000;
+  const isWarning = !isScaduto && diff < 72 * 3600000;
 
-  const bg = isScaduto ? 'hsl(0 80% 55% / 0.12)' : isUrgent ? 'hsl(0 80% 55% / 0.10)' : isWarning ? 'hsl(38 92% 50% / 0.10)' : 'hsl(214 80% 55% / 0.10)';
-  const color = isScaduto ? 'hsl(0 70% 45%)' : isUrgent ? 'hsl(0 70% 45%)' : isWarning ? 'hsl(32 95% 40%)' : 'hsl(214 70% 45%)';
-  const border = isScaduto ? 'hsl(0 80% 55% / 0.35)' : isUrgent ? 'hsl(0 80% 55% / 0.30)' : isWarning ? 'hsl(38 92% 50% / 0.30)' : 'hsl(214 80% 55% / 0.25)';
-  const icon = isScaduto ? '🔴' : isUrgent ? '🔴' : isWarning ? '🟡' : '🟢';
+  const bg     = isScaduto ? 'hsl(0 80% 55% / 0.13)'   : isUrgent ? 'hsl(0 80% 55% / 0.10)'   : isWarning ? 'hsl(38 92% 50% / 0.10)'  : 'hsl(214 80% 55% / 0.10)';
+  const color  = isScaduto ? 'hsl(0 70% 42%)'           : isUrgent ? 'hsl(0 70% 42%)'           : isWarning ? 'hsl(32 95% 38%)'         : 'hsl(214 70% 44%)';
+  const border = isScaduto ? 'hsl(0 80% 55% / 0.40)'   : isUrgent ? 'hsl(0 80% 55% / 0.30)'   : isWarning ? 'hsl(38 92% 50% / 0.30)'  : 'hsl(214 80% 55% / 0.25)';
+  const icon   = isScaduto ? '🔴' : isUrgent ? '🔴' : isWarning ? '🟡' : '🟢';
 
   return (
     <div
       className="mt-2 flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-semibold"
       style={{ background: bg, border: `1px solid ${border}`, color }}
     >
-      <span className="flex items-center gap-1">
+      <span className="flex items-center gap-1.5">
         <span>{icon}</span>
-        <span>PUBBLICAZIONE</span>
+        <span className="uppercase tracking-wide" style={{ fontSize: '0.65rem' }}>
+          {isScaduto ? 'SCADUTO' : 'alla pub.'}
+        </span>
       </span>
-      <span className="font-mono tabular-nums tracking-tight"
-        style={{ fontVariantNumeric: 'tabular-nums' }}>
-        {isScaduto ? countdown : `⏱ ${countdown}`}
+      <span
+        className="font-mono tabular-nums"
+        style={{ fontSize: '0.72rem', letterSpacing: '0.04em', fontVariantNumeric: 'tabular-nums' }}
+      >
+        {formatCountdown(diff)}
       </span>
     </div>
   );
@@ -259,11 +253,17 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   };
 
   const filteredTasks = (stato: string) => {
-    return tasks.filter(t => {
+    const filtered = tasks.filter(t => {
       if (t.stato !== stato) return false;
       if (personaView && t.assegnato_a !== personaView) return false;
       if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
       return true;
+    });
+    // Ordina: scaduti prima, poi per scadenza più vicina, poi senza scadenza
+    return filtered.sort((a, b) => {
+      const aMs = a.scadenza ? getTargetDate(a.scadenza, a.ora).getTime() : Infinity;
+      const bMs = b.scadenza ? getTargetDate(b.scadenza, b.ora).getTime() : Infinity;
+      return aMs - bMs;
     });
   };
 
@@ -453,9 +453,9 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                         </div>
                       )}
 
-                      {/* Countdown dedicato per task Pubblicazione */}
+                      {/* Orologio live per task Pubblicazione con scadenza */}
                       {task.tipo === 'Pubblicazione' && task.scadenza && (
-                        <CountdownBadge task={task} />
+                        <LiveClock scadenza={task.scadenza} ora={task.ora} />
                       )}
                     </div>
                   );
