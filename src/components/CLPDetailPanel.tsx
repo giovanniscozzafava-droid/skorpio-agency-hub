@@ -213,40 +213,40 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
     const nomeAlessandro = findMembro(team, 'Alessandro');
     const nomeElisa = findMembro(team, 'Elisa');
 
-    // GIRATO → crea task montaggio per Luca
+    // GIRATO → crea task premontaggio per Luca
     if (nuovaFase === 'Girato') {
       const task = await creaTaskWorkflow(
         contenutoAggiornato,
         nomeLuca,
+        'Premontaggio',
+        `🎬 Premontaggia ${contenutoAggiornato.id_display} – ${contenutoAggiornato.titolo}${contenutoAggiornato.cliente_nome ? ` (${contenutoAggiornato.cliente_nome})` : ''}`,
+        'Da fare'
+      );
+      if (task) addToast(`📋 Task premontaggio creato per ${nomeLuca}`, 'success');
+    }
+
+    // PRE MONTATO → completa task Luca (premontaggio) + crea task montaggio per Alessandro
+    if (nuovaFase === 'Pre montato') {
+      await completaTaskPerContenuto(contenutoAggiornato.id, 'Premontaggio');
+      const task = await creaTaskWorkflow(
+        contenutoAggiornato,
+        nomeAlessandro,
         'Montaggio',
         `✂️ Monta ${contenutoAggiornato.id_display} – ${contenutoAggiornato.titolo}${contenutoAggiornato.cliente_nome ? ` (${contenutoAggiornato.cliente_nome})` : ''}`,
         'Da fare'
       );
-      if (task) addToast(`📋 Task montaggio creato per ${nomeLuca}`, 'success');
+      if (task) addToast(`📋 Task montaggio creato per ${nomeAlessandro}`, 'success');
     }
 
-    // PRE MONTATO → completa task Luca + crea task revisione per Alessandro
-    if (nuovaFase === 'Pre montato') {
-      await completaTaskPerContenuto(contenutoAggiornato.id, 'Montaggio');
-      const task = await creaTaskWorkflow(
-        contenutoAggiornato,
-        nomeAlessandro,
-        'Revisione montaggio',
-        `🔍 Revisiona montaggio ${contenutoAggiornato.id_display} – ${contenutoAggiornato.titolo}${contenutoAggiornato.cliente_nome ? ` (${contenutoAggiornato.cliente_nome})` : ''}`,
-        'Da fare'
-      );
-      if (task) addToast(`📋 Task revisione creato per ${nomeAlessandro}`, 'success');
-    }
-
-    // MONTATO → completa task Alessandro + crea task pubblicazione per Elisa
+    // MONTATO → completa task Alessandro (montaggio) + crea task pubblicazione per Elisa
     if (nuovaFase === 'Montato') {
-      await completaTaskPerContenuto(contenutoAggiornato.id, 'Revisione montaggio');
+      await completaTaskPerContenuto(contenutoAggiornato.id, 'Montaggio');
       const task = await creaTaskWorkflow(
         contenutoAggiornato,
         nomeElisa,
         'Pubblicazione',
         `📱 Programma/pubblica ${contenutoAggiornato.id_display} – ${contenutoAggiornato.titolo}${contenutoAggiornato.cliente_nome ? ` (${contenutoAggiornato.cliente_nome})` : ''}`,
-        'In revisione'
+        'Da fare'
       );
       if (task) addToast(`📋 Task pubblicazione creato per ${nomeElisa}`, 'success');
     }
