@@ -62,6 +62,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
   const { addToast } = useApp();
   const [form, setForm] = useState<Contenuto>({ ...contenuto });
   const [saving, setSaving] = useState(false);
+  const [creatingDrive, setCreatingDrive] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Reset form when contenuto changes
