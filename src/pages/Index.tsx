@@ -4,6 +4,7 @@ import { SplashScreen } from '../components/SplashScreen';
 import { TopBar } from '../components/TopBar';
 import { ToastContainer } from '../components/ToastContainer';
 import { KanbanTab } from '../components/KanbanTab';
+import { ContenutiTab } from '../components/ContenutiTab';
 import type { TeamMember, Cliente, Task } from '../types';
 import { supabase } from '../lib/supabase';
 
@@ -23,7 +24,7 @@ function MainApp() {
 
   if (!utente) return <SplashScreen />;
 
-  const oggi = new Date(); oggi.setHours(0,0,0,0);
+  const oggi = new Date(); oggi.setHours(0, 0, 0, 0);
   const myTasks = utente.ruolo === 'Admin' ? tasks : tasks.filter(t => t.assegnato_a === utente.nome);
   const daFare = myTasks.filter(t => t.stato === 'Da fare').length;
   const urgenti = myTasks.filter(t => t.priorita === '🔴 Alta' && t.stato !== 'Completato').length;
@@ -49,10 +50,14 @@ function MainApp() {
         personaView={personaView}
       />
       <div className="skorpio-main">
-        {tab === 'kanban' && <KanbanTab team={team} clienti={clienti} personaView={personaView} />}
+        {tab === 'kanban' && (
+          <KanbanTab team={team} clienti={clienti} personaView={personaView} />
+        )}
         {tab === 'calendario' && <Placeholder emoji="📅" label="Calendario" />}
         {tab === 'creative' && <Placeholder emoji="🤖" label="Creative Engine" />}
-        {tab === 'contenuti' && <Placeholder emoji="📹" label="Contenuti (CLP)" />}
+        {tab === 'contenuti' && (
+          <ContenutiTab team={team} clienti={clienti} />
+        )}
         {tab === 'clienti' && <Placeholder emoji="👥" label="Clienti" />}
         {tab === 'riprese' && <Placeholder emoji="🎬" label="Riprese" />}
         {tab === 'chat' && <Placeholder emoji="💬" label="Chat" />}
