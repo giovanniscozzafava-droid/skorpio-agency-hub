@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { AppProvider, useApp } from './context/AppContext';
-import { SplashScreen } from './components/SplashScreen';
-import { TopBar } from './components/TopBar';
-import { ToastContainer } from './components/ToastContainer';
-import { KanbanTab } from './components/KanbanTab';
-import type { TeamMember, Cliente, Task } from './types';
-import { supabase } from './lib/supabase';
+import { AppProvider, useApp } from '../context/AppContext';
+import { SplashScreen } from '../components/SplashScreen';
+import { TopBar } from '../components/TopBar';
+import { ToastContainer } from '../components/ToastContainer';
+import { KanbanTab } from '../components/KanbanTab';
+import type { TeamMember, Cliente, Task } from '../types';
+import { supabase } from '../lib/supabase';
 
 function MainApp() {
   const { utente, tab } = useApp();
@@ -32,6 +32,14 @@ function MainApp() {
     return new Date(t.scadenza) < oggi;
   }).length;
 
+  const Placeholder = ({ emoji, label }: { emoji: string; label: string }) => (
+    <div className="p-8 text-center text-muted-foreground">
+      <div className="text-5xl mb-4">{emoji}</div>
+      <p className="text-lg font-medium">{label}</p>
+      <p className="text-sm mt-1 opacity-60">In costruzione — prossimo aggiornamento</p>
+    </div>
+  );
+
   return (
     <div className="min-h-screen" style={{ background: 'hsl(var(--skorpio-bg))' }}>
       <TopBar
@@ -40,61 +48,21 @@ function MainApp() {
         onViewPersona={setPersonaView}
         personaView={personaView}
       />
-
       <div className="skorpio-main">
-        {tab === 'kanban' && (
-          <KanbanTab team={team} clienti={clienti} personaView={personaView} />
-        )}
-        {tab === 'calendario' && (
-          <div className="p-8 text-center text-muted-foreground">
-            <div className="text-5xl mb-4">📅</div>
-            <p className="text-lg font-medium">Calendario</p>
-            <p className="text-sm mt-1">In costruzione — prossimo aggiornamento</p>
-          </div>
-        )}
-        {tab === 'creative' && (
-          <div className="p-8 text-center text-muted-foreground">
-            <div className="text-5xl mb-4">🤖</div>
-            <p className="text-lg font-medium">Creative Engine</p>
-            <p className="text-sm mt-1">In costruzione — prossimo aggiornamento</p>
-          </div>
-        )}
-        {tab === 'contenuti' && (
-          <div className="p-8 text-center text-muted-foreground">
-            <div className="text-5xl mb-4">📹</div>
-            <p className="text-lg font-medium">Contenuti (CLP)</p>
-            <p className="text-sm mt-1">In costruzione — prossimo aggiornamento</p>
-          </div>
-        )}
-        {tab === 'clienti' && (
-          <div className="p-8 text-center text-muted-foreground">
-            <div className="text-5xl mb-4">👥</div>
-            <p className="text-lg font-medium">Clienti</p>
-            <p className="text-sm mt-1">In costruzione — prossimo aggiornamento</p>
-          </div>
-        )}
-        {tab === 'riprese' && (
-          <div className="p-8 text-center text-muted-foreground">
-            <div className="text-5xl mb-4">🎬</div>
-            <p className="text-lg font-medium">Riprese</p>
-            <p className="text-sm mt-1">In costruzione — prossimo aggiornamento</p>
-          </div>
-        )}
-        {tab === 'chat' && (
-          <div className="p-8 text-center text-muted-foreground">
-            <div className="text-5xl mb-4">💬</div>
-            <p className="text-lg font-medium">Chat</p>
-            <p className="text-sm mt-1">In costruzione — prossimo aggiornamento</p>
-          </div>
-        )}
+        {tab === 'kanban' && <KanbanTab team={team} clienti={clienti} personaView={personaView} />}
+        {tab === 'calendario' && <Placeholder emoji="📅" label="Calendario" />}
+        {tab === 'creative' && <Placeholder emoji="🤖" label="Creative Engine" />}
+        {tab === 'contenuti' && <Placeholder emoji="📹" label="Contenuti (CLP)" />}
+        {tab === 'clienti' && <Placeholder emoji="👥" label="Clienti" />}
+        {tab === 'riprese' && <Placeholder emoji="🎬" label="Riprese" />}
+        {tab === 'chat' && <Placeholder emoji="💬" label="Chat" />}
       </div>
-
       <ToastContainer />
     </div>
   );
 }
 
-export default function App() {
+export default function Index() {
   return (
     <AppProvider>
       <MainApp />
