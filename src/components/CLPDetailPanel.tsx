@@ -1,8 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { format } from 'date-fns';
+import { CalendarIcon } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import type { Contenuto, FaseCLP, TeamMember, Cliente, LogRipresa } from '../types';
 import { FASE_CONFIG } from './ContenutiTab';
+import { Calendar } from './ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import { cn } from '../lib/utils';
 
 const STATI_CLIP: LogRipresa['stato'][] = ['Da girare', 'Grezza', 'Buona', 'Scartata', 'Usata'];
 const FORMATI_CLIP = ['Verticale 9:16', 'Orizzontale 16:9', 'Quadrato 1:1', 'Foto', 'Raw / LOG', 'Slow Motion', 'Drone', 'Altro'];
@@ -13,6 +18,74 @@ const STATO_CLIP_CFG: Record<string, { bg: string; text: string; border: string 
   'Scartata':  { bg: 'hsl(0 80% 55% / 0.10)',    text: 'hsl(0 70% 45%)',    border: 'hsl(0 80% 55% / 0.35)' },
   'Usata':     { bg: 'hsl(214 80% 55% / 0.12)',  text: 'hsl(214 70% 45%)',  border: 'hsl(214 80% 55% / 0.35)' },
 };
+
+// ─── Workflow: trova i nomi reali di Luca, Alessandro, Elisa dal team ─────────
+// Usiamo funzione di ricerca per essere robusti rispetto a variazioni di case
+function findMembro(team: TeamMember[], cerca: string): string {
+  const m = team.find(t => t.nome.toLowerCase().includes(cerca.toLowerCase()));
+  return m?.nome ?? cerca;
+}
+
+// ─── Task workflow: completa task esistenti per un contenuto + tipo ───────────
+async function completaTaskPerContenuto(contenutoId: string, tipo: string) {
+  // Trova task attivi (non completati) collegati a questo contenuto con il tipo specificato
+  const { data } = await supabase
+    .from('task')
+    .select('id')
+    .eq('id_contenuto', contenutoId)
+    .eq('tipo', tipo)
+    .neq('stato', 'Completato')
+    .neq('stato', 'Archiviato');
+
+  if (data && data.length > 0) {
+    await supabase
+      .from('task')
+      .update({ stato: 'Completato' })
+      .in('id', data.map(t => t.id));
+  }
+}
+
+async function creaTaskWorkflow(
+  contenuto: Contenuto,
+  assegnatoA: string,
+  tipo: string,
+  descrizione: string,
+  stato: string = 'Da fare'
+) {
+  // Evita duplicati: se esiste già un task attivo per questo contenuto+tipo non ne creare un altro
+  const { data: existing } = await supabase
+    .from('task')
+    .select('id')
+    .eq('id_contenuto', contenuto.id)
+    .eq('tipo', tipo)
+    .neq('stato', 'Completato')
+    .neq('stato', 'Archiviato');
+
+  if (existing && existing.length > 0) return null;
+
+  // Genera id_display
+  const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_id_seq' });
+
+  const { data, error } = await supabase
+    .from('task')
+    .insert({
+      id_display: idData ?? 'TSK000',
+      descrizione,
+      tipo,
+      stato,
+      assegnato_a: assegnatoA,
+      assegnato_da: 'Sistema',
+      cliente_id: contenuto.cliente_id,
+      cliente_nome: contenuto.cliente_nome || '',
+      id_contenuto: contenuto.id,
+      priorita: '🟡 Media',
+    })
+    .select()
+    .single();
+
+  if (error) console.error('Errore creazione task workflow:', error);
+  return data;
+}
 
 async function createDriveFolder(contenuto: Contenuto): Promise<string | null> {
   try {
@@ -75,6 +148,15 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
   const [saving, setSaving] = useState(false);
   const [creatingDrive, setCreatingDrive] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevFaseRef = useRef<FaseCLP>(contenuto.fase);
+
+  // ─── Publish state (per Elisa) ─────────────────────────────────────────────
+  const [pubDate, setPubDate] = useState<Date | undefined>(
+    contenuto.data_pubblicazione ? new Date(contenuto.data_pubblicazione) : undefined
+  );
+  const [pubOra, setPubOra] = useState(contenuto.ora_pubblicazione?.slice(0, 5) || '');
+  const [pubCalOpen, setPubCalOpen] = useState(false);
+  const [savingPub, setSavingPub] = useState(false);
 
   // ─── Riprese state ────────────────────────────────────────────────────────
   const [clips, setClips] = useState<LogRipresa[]>([]);
@@ -99,6 +181,9 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
   // Reset form when contenuto changes
   useEffect(() => {
     setForm({ ...contenuto });
+    prevFaseRef.current = contenuto.fase;
+    setPubDate(contenuto.data_pubblicazione ? new Date(contenuto.data_pubblicazione) : undefined);
+    setPubOra(contenuto.ora_pubblicazione?.slice(0, 5) || '');
     loadClips();
   }, [contenuto.id, loadClips]);
 
@@ -116,8 +201,57 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
     if (data) onUpdate(data as Contenuto);
   };
 
+  // ─── WORKFLOW AUTOMATICO ──────────────────────────────────────────────────
+  // Eseguito ogni volta che si salva un cambio di fase
+  const eseguiWorkflowFase = useCallback(async (vecchiaFase: FaseCLP, nuovaFase: FaseCLP, contenutoAggiornato: Contenuto) => {
+    if (vecchiaFase === nuovaFase) return;
+
+    const nomeLuca = findMembro(team, 'Luca');
+    const nomeAlessandro = findMembro(team, 'Alessandro');
+    const nomeElisa = findMembro(team, 'Elisa');
+
+    // GIRATO → crea task montaggio per Luca
+    if (nuovaFase === 'Girato') {
+      const task = await creaTaskWorkflow(
+        contenutoAggiornato,
+        nomeLuca,
+        'Montaggio',
+        `✂️ Monta ${contenutoAggiornato.id_display} – ${contenutoAggiornato.titolo}${contenutoAggiornato.cliente_nome ? ` (${contenutoAggiornato.cliente_nome})` : ''}`,
+        'Da fare'
+      );
+      if (task) addToast(`📋 Task montaggio creato per ${nomeLuca}`, 'success');
+    }
+
+    // PRE MONTATO → completa task Luca + crea task revisione per Alessandro
+    if (nuovaFase === 'Pre montato') {
+      await completaTaskPerContenuto(contenutoAggiornato.id, 'Montaggio');
+      const task = await creaTaskWorkflow(
+        contenutoAggiornato,
+        nomeAlessandro,
+        'Revisione montaggio',
+        `🔍 Revisiona montaggio ${contenutoAggiornato.id_display} – ${contenutoAggiornato.titolo}${contenutoAggiornato.cliente_nome ? ` (${contenutoAggiornato.cliente_nome})` : ''}`,
+        'Da fare'
+      );
+      if (task) addToast(`📋 Task revisione creato per ${nomeAlessandro}`, 'success');
+    }
+
+    // MONTATO → completa task Alessandro + crea task pubblicazione per Elisa
+    if (nuovaFase === 'Montato') {
+      await completaTaskPerContenuto(contenutoAggiornato.id, 'Revisione montaggio');
+      const task = await creaTaskWorkflow(
+        contenutoAggiornato,
+        nomeElisa,
+        'Pubblicazione',
+        `📱 Programma/pubblica ${contenutoAggiornato.id_display} – ${contenutoAggiornato.titolo}${contenutoAggiornato.cliente_nome ? ` (${contenutoAggiornato.cliente_nome})` : ''}`,
+        'In revisione'
+      );
+      if (task) addToast(`📋 Task pubblicazione creato per ${nomeElisa}`, 'success');
+    }
+  }, [team, addToast]);
+
   const handleSaveAll = async () => {
     setSaving(true);
+    const vecchiaFase = prevFaseRef.current;
     const { data, error } = await supabase
       .from('contenuti')
       .update(form)
@@ -126,11 +260,15 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
       .single();
     setSaving(false);
     if (!error && data) {
-      onUpdate(data as Contenuto);
+      const updatedData = data as Contenuto;
+      onUpdate(updatedData);
       addToast('CLP salvato ✅', 'success');
 
+      // 🔄 Workflow task automatico
+      await eseguiWorkflowFase(vecchiaFase, form.fase, updatedData);
+      prevFaseRef.current = form.fase;
+
       // 📁 Se la fase è Montato e non c'è ancora link Drive → crea cartella
-      const updatedData = data as Contenuto;
       if (form.fase === 'Montato' && !updatedData.link_drive) {
         addToast('📁 Creazione cartella Drive…', 'info');
         const url = await createDriveFolder(updatedData);
@@ -142,6 +280,53 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
           addToast('⚠️ Errore creazione cartella Drive', 'warn');
         }
       }
+    }
+  };
+
+  // ─── PROGRAMMA / PUBBLICA (Elisa) ─────────────────────────────────────────
+  const handleProgramma = async (nuovaFase: 'Programmato' | 'Pubblicato') => {
+    setSavingPub(true);
+    const dataStr = pubDate ? format(pubDate, 'yyyy-MM-dd') : null;
+    const oraStr = pubOra || null;
+
+    const { data, error } = await supabase
+      .from('contenuti')
+      .update({ fase: nuovaFase, data_pubblicazione: dataStr, ora_pubblicazione: oraStr })
+      .eq('id', contenuto.id)
+      .select()
+      .single();
+    setSavingPub(false);
+
+    if (!error && data) {
+      onUpdate(data as Contenuto);
+      setForm(data as Contenuto);
+      const vecchiaFase = prevFaseRef.current;
+      prevFaseRef.current = nuovaFase;
+
+      // Completa task pubblicazione di Elisa
+      await completaTaskPerContenuto(contenuto.id, 'Pubblicazione');
+
+      // Se programmato, aggiungi evento in calendario
+      if (nuovaFase === 'Programmato' && dataStr) {
+        await supabase.from('calendario').insert({
+          tipo: 'pubblicazione',
+          data: dataStr,
+          ora: oraStr,
+          descrizione: `${contenuto.id_display} – ${contenuto.titolo}`,
+          cliente_id: contenuto.cliente_id,
+          cliente_nome: contenuto.cliente_nome || '',
+          contenuto_id: contenuto.id,
+          id_contenuto_display: contenuto.id_display,
+          canale: contenuto.canale || '',
+          tipo_contenuto: contenuto.tipo || '',
+          stato: 'Pianificato',
+        });
+        addToast(`📅 Programmato per il ${format(pubDate!, 'dd/MM/yyyy')}`, 'success');
+      } else if (nuovaFase === 'Pubblicato') {
+        addToast('🚀 Contenuto pubblicato!', 'success');
+      }
+
+      await eseguiWorkflowFase(vecchiaFase, nuovaFase, data as Contenuto);
     }
   };
 
@@ -418,10 +603,88 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
             <LabelInput label="📷 Data ripresa" field="data_ripresa" type="date" />
             <LabelInput label="⏰ Scadenza" field="data_scadenza" type="date" />
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            <LabelInput label="📱 Data pubblicaz." field="data_pubblicazione" type="date" />
-            <LabelInput label="🕐 Ora pubblicaz." field="ora_pubblicazione" type="time" />
-          </div>
+
+          {/* ─── PUBBLICAZIONE (Elisa) ─── */}
+          {['Montato', 'Revisione', 'Programmato', 'Pubblicato'].includes(form.fase) && (
+            <>
+              <Section title="📱 PUBBLICAZIONE" />
+              <div className="rounded-lg border p-3 space-y-3" style={{ background: 'hsl(271 80% 97%)', borderColor: 'hsl(271 60% 80%)' }}>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'hsl(271 60% 45%)' }}>
+                    🟣 Programma o pubblica
+                  </span>
+                  {form.fase === 'Programmato' && (
+                    <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: 'hsl(271 60% 80%)', color: 'hsl(271 60% 30%)' }}>
+                      📅 Programmato
+                    </span>
+                  )}
+                  {form.fase === 'Pubblicato' && (
+                    <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: 'hsl(142 60% 80%)', color: 'hsl(142 60% 30%)' }}>
+                      🚀 Pubblicato
+                    </span>
+                  )}
+                </div>
+
+                {/* Data pubblicazione con datepicker */}
+                <div>
+                  <label className="sk-label">📅 Data pubblicazione</label>
+                  <Popover open={pubCalOpen} onOpenChange={setPubCalOpen}>
+                    <PopoverTrigger asChild>
+                      <button
+                        className={cn(
+                          'sk-input w-full text-sm text-left flex items-center gap-2',
+                          !pubDate && 'opacity-50'
+                        )}
+                      >
+                        <CalendarIcon className="h-3.5 w-3.5 flex-shrink-0" />
+                        {pubDate ? format(pubDate, 'dd/MM/yyyy') : 'Scegli data…'}
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start" style={{ zIndex: 9999 }}>
+                      <Calendar
+                        mode="single"
+                        selected={pubDate}
+                        onSelect={d => { setPubDate(d); setPubCalOpen(false); }}
+                        initialFocus
+                        className={cn('p-3 pointer-events-auto')}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* Ora */}
+                <div>
+                  <label className="sk-label">🕐 Ora pubblicazione</label>
+                  <input
+                    type="time"
+                    className="sk-input w-full text-sm"
+                    value={pubOra}
+                    onChange={e => setPubOra(e.target.value)}
+                  />
+                </div>
+
+                {/* Bottoni azione */}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={() => handleProgramma('Programmato')}
+                    disabled={savingPub || !pubDate}
+                    className="flex-1 text-xs px-3 py-2 rounded-lg font-semibold transition-all disabled:opacity-40"
+                    style={{ background: 'hsl(271 60% 55%)', color: 'white' }}
+                  >
+                    {savingPub ? '⏳…' : '📅 Programma'}
+                  </button>
+                  <button
+                    onClick={() => handleProgramma('Pubblicato')}
+                    disabled={savingPub}
+                    className="flex-1 text-xs px-3 py-2 rounded-lg font-semibold transition-all disabled:opacity-40"
+                    style={{ background: 'hsl(142 60% 45%)', color: 'white' }}
+                  >
+                    {savingPub ? '⏳…' : '🚀 Pubblica ora'}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
 
           {/* ─── RIPRESE ─── */}
           <Section title="RIPRESE" />
