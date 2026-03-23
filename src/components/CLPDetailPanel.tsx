@@ -63,13 +63,13 @@ async function creaTaskWorkflow(
 
   if (existing && existing.length > 0) return null;
 
-  // Genera id_display
-  const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_id_seq' });
+  // Genera id_display usando la sequenza task_seq
+  const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
 
   const { data, error } = await supabase
     .from('task')
     .insert({
-      id_display: idData ?? 'TSK000',
+      id_display: idData ?? `TSK${Date.now()}`,
       descrizione,
       tipo,
       stato,
