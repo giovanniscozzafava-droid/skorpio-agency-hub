@@ -97,8 +97,8 @@ Deno.serve(async (req) => {
     // Get OAuth2 access token
     const accessToken = await getGoogleAccessToken(serviceAccountJson);
 
-    // Nome cartella: "ID_DISPLAY - Cliente - Titolo"
-    const folderName = `${id_display || contenuto_id} - ${cliente_nome || 'Senza cliente'} - ${titolo}`;
+    // Nome cartella: "Cliente - Titolo"
+    const folderName = `${cliente_nome || 'Senza cliente'} - ${titolo}`;
 
     // Crea la cartella su Google Drive
     const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
