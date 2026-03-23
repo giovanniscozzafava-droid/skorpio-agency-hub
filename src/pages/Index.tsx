@@ -6,6 +6,7 @@ import { ToastContainer } from '../components/ToastContainer';
 import { KanbanTab } from '../components/KanbanTab';
 import { ContenutiTab } from '../components/ContenutiTab';
 import { ClientiTab } from '../components/ClientiTab';
+import { RipreseTab } from '../components/RipreseTab';
 import type { TeamMember, Cliente, Task } from '../types';
 import { supabase } from '../lib/supabase';
 
@@ -63,7 +64,7 @@ function MainApp() {
           <ContenutiTab team={team} clienti={clienti} />
         )}
         {tab === 'clienti' && <ClientiTab />}
-        {tab === 'riprese' && <Placeholder emoji="🎬" label="Riprese" />}
+        {tab === 'riprese' && <RipreseTab clienti={clienti} team={team} />}
         {tab === 'chat' && <Placeholder emoji="💬" label="Chat" />}
       </div>
       <ToastContainer />
