@@ -63,13 +63,13 @@ async function creaTaskWorkflow(
 
   if (existing && existing.length > 0) return null;
 
-  // Genera id_display
-  const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_id_seq' });
+  // Genera id_display usando la sequenza task_seq
+  const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
 
   const { data, error } = await supabase
     .from('task')
     .insert({
-      id_display: idData ?? 'TSK000',
+      id_display: idData ?? `TSK${Date.now()}`,
       descrizione,
       tipo,
       stato,
@@ -189,7 +189,10 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
 
   const set = (k: keyof Contenuto, v: any) => {
     setForm(prev => ({ ...prev, [k]: v }));
-    // Auto-save con debounce
+    // La fase NON viene autosalvata: il cambio fase si salva solo con il tasto Salva
+    // (così prevFaseRef rimane stabile per il workflow automatico)
+    if (k === 'fase') return;
+    // Auto-save con debounce per gli altri campi
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => saveField(k, v), 800);
   };
