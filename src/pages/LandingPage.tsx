@@ -203,7 +203,26 @@ export function LandingPage({ onAuthenticated }: LandingPageProps) {
   const [success, setSuccess] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [heroVisible, setHeroVisible] = useState(false);
   const authRef = useRef<HTMLDivElement>(null);
+
+  // Hero entrance on mount
+  useEffect(() => {
+    const t = requestAnimationFrame(() => setHeroVisible(true));
+    return () => cancelAnimationFrame(t);
+  }, []);
+
+  const features = [
+    { icon: <IconKanban />, title: 'Kanban Board Realtime', desc: 'Drag & drop con aggiornamenti istantanei per tutto il team. Badge "NUOVO" e notifiche sonore per ogni cambio di stato.' },
+    { icon: <IconCalendar />, title: 'Calendario Automatico', desc: 'Ogni task con scadenza viene sincronizzato automaticamente nel calendario. Nessun doppio inserimento, zero dispersione.' },
+    { icon: <IconFilm />, title: 'Pipeline Contenuti', desc: 'Traccia ogni contenuto dalla fase Idea fino alla Pubblicazione. Script, riprese, montaggio, revisione: tutto in un posto.', tag: 'Video' },
+    { icon: <IconAI />, title: 'Creative Engine AI', desc: 'Genera script, hook e caption personalizzati per cliente in secondi. Basato sui Brand Rules dell\'agenzia.', tag: 'AI' },
+    { icon: <IconChat />, title: 'Chat con Emoji Reaction', desc: 'Messaggistica interna con reaction, creazione task da messaggi e notifiche sonore in realtime.' },
+    { icon: <IconUsers />, title: 'CRM Clienti', desc: 'Pacchetti, quote reel e grafiche, stato abbonamenti, contatti. Tutto il portafoglio clienti sotto controllo.' },
+  ];
+
+  // Stagger reveal for feature items
+  const { refs: featureRefs, visible: featureVisible } = useStaggerReveal(features.length, { delay: 100 });
 
   useEffect(() => {
     const fn = () => setScrolled(window.scrollY > 30);
@@ -267,15 +286,6 @@ export function LandingPage({ onAuthenticated }: LandingPageProps) {
     'disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98]',
     'flex items-center justify-center gap-2',
   ].join(' ');
-
-  const features = [
-    { icon: <IconKanban />, title: 'Kanban Board Realtime', desc: 'Drag & drop con aggiornamenti istantanei per tutto il team. Badge "NUOVO" e notifiche sonore per ogni cambio di stato.' },
-    { icon: <IconCalendar />, title: 'Calendario Automatico', desc: 'Ogni task con scadenza viene sincronizzato automaticamente nel calendario. Nessun doppio inserimento, zero dispersione.' },
-    { icon: <IconFilm />, title: 'Pipeline Contenuti', desc: 'Traccia ogni contenuto dalla fase Idea fino alla Pubblicazione. Script, riprese, montaggio, revisione: tutto in un posto.', tag: 'Video' },
-    { icon: <IconAI />, title: 'Creative Engine AI', desc: 'Genera script, hook e caption personalizzati per cliente in secondi. Basato sui Brand Rules dell\'agenzia.', tag: 'AI' },
-    { icon: <IconChat />, title: 'Chat con Emoji Reaction', desc: 'Messaggistica interna con reaction, creazione task da messaggi e notifiche sonore in realtime.' },
-    { icon: <IconUsers />, title: 'CRM Clienti', desc: 'Pacchetti, quote reel e grafiche, stato abbonamenti, contatti. Tutto il portafoglio clienti sotto controllo.' },
-  ];
 
   /* ────────────────────────────────────
      RENDER
