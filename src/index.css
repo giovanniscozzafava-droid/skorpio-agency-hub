@@ -434,3 +434,9 @@
   from { transform: translateX(100%); opacity: 0; }
   to   { transform: translateX(0);    opacity: 1; }
 }
+
+@keyframes taskHighlight {
+  0%   { outline-color: #3B82F6; outline-width: 2px; background: #EFF6FF; }
+  60%  { outline-color: #3B82F6; outline-width: 2px; background: #EFF6FF; }
+  100% { outline-color: transparent; outline-width: 0; background: inherit; }
+}

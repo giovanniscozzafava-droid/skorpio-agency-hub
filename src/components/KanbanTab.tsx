@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import { sounds } from '../lib/sounds';
@@ -38,6 +38,13 @@ interface KanbanTabProps {
   personaView: string | null;
 }
 
+// Batch notification accumulator
+interface RealtimeEvent {
+  tipo: 'nuovo' | 'spostato' | 'completato';
+  task: Task;
+  fromStato?: string;
+}
+
 export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   const { utente, addToast } = useApp();
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -46,27 +53,130 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   const [showNuovoTask, setShowNuovoTask] = useState(false);
   const [dragItem, setDragItem] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [liveActive, setLiveActive] = useState(false);
+  const [newTaskIds, setNewTaskIds] = useState<Set<string>>(new Set());
+
+  // Batch accumulator: flush toast ogni 1.5s
+  const pendingEventsRef = useRef<RealtimeEvent[]>([]);
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMyAction = useRef(false); // flag set before optimistic updates
+
+  const flushNotifications = useCallback(() => {
+    const events = pendingEventsRef.current;
+    pendingEventsRef.current = [];
+    if (events.length === 0) return;
+
+    const assignedToMe = events.filter(e => e.task.assegnato_a === utente?.nome);
+    const nuovi = events.filter(e => e.tipo === 'nuovo');
+    const spostati = events.filter(e => e.tipo === 'spostato');
+    const completati = events.filter(e => e.tipo === 'completato');
+
+    // Suono prioritario: task assegnati a me
+    if (assignedToMe.some(e => e.tipo === 'nuovo')) {
+      sounds.nuovoTask();
+    } else if (completati.length > 0) {
+      sounds.taskCompletato();
+    } else if (spostati.length > 0) {
+      sounds.messaggio();
+    }
+
+    // Toast batch
+    if (nuovi.length > 0) {
+      const miei = nuovi.filter(e => e.task.assegnato_a === utente?.nome);
+      if (miei.length > 0) {
+        addToast(
+          miei.length === 1
+            ? `📥 Nuovo task assegnato a te: "${miei[0].task.descrizione.slice(0, 40)}"`
+            : `📥 ${miei.length} nuovi task assegnati a te`,
+          'success'
+        );
+      } else {
+        addToast(
+          nuovi.length === 1
+            ? `📋 Nuovo task: "${nuovi[0].task.descrizione.slice(0, 40)}"`
+            : `📋 ${nuovi.length} nuovi task aggiunti`,
+          'info'
+        );
+      }
+    }
+
+    if (spostati.length > 0 && !isMyAction.current) {
+      const msg = spostati.length === 1
+        ? `↕️ Task spostato → ${spostati[0].task.stato}`
+        : `↕️ ${spostati.length} task spostati da un membro del team`;
+      addToast(msg, 'info');
+    }
+
+    if (completati.length > 0) {
+      addToast(
+        completati.length === 1
+          ? `✅ Task completato: "${completati[0].task.descrizione.slice(0, 35)}"`
+          : `✅ ${completati.length} task completati`,
+        'success'
+      );
+    }
+
+    isMyAction.current = false;
+  }, [utente, addToast]);
+
+  const scheduleFlush = useCallback(() => {
+    if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+    flushTimerRef.current = setTimeout(flushNotifications, 1500);
+  }, [flushNotifications]);
 
   useEffect(() => {
     loadTasks();
+
     const channel = supabase
-      .channel('tasks-realtime')
+      .channel('kanban-realtime-v2')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'task' }, payload => {
+        setLiveActive(true);
+        setTimeout(() => setLiveActive(false), 800);
+
         if (payload.eventType === 'INSERT') {
-          setTasks(prev => [...prev, payload.new as Task]);
-          sounds.nuovoTask();
-          addToast('📥 Nuovo task ricevuto', 'info');
+          const newTask = payload.new as Task;
+          setTasks(prev => {
+            // avoid duplicates from optimistic
+            if (prev.some(t => t.id === newTask.id)) return prev;
+            return [newTask, ...prev];
+          });
+          // Flash highlight
+          setNewTaskIds(prev => new Set(prev).add(newTask.id));
+          setTimeout(() => setNewTaskIds(prev => {
+            const next = new Set(prev); next.delete(newTask.id); return next;
+          }), 3000);
+
+          pendingEventsRef.current.push({ tipo: 'nuovo', task: newTask });
+          scheduleFlush();
+
         } else if (payload.eventType === 'UPDATE') {
-          setTasks(prev => prev.map(t => t.id === (payload.new as Task).id ? payload.new as Task : t));
-          if ((payload.new as Task).stato === 'Completato') {
-            sounds.taskCompletato();
+          const updatedTask = payload.new as Task;
+          const prevTask = tasks.find(t => t.id === updatedTask.id);
+
+          setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
+          setSelectedTask(prev => prev?.id === updatedTask.id ? updatedTask : prev);
+
+          if (updatedTask.stato === 'Completato' && prevTask?.stato !== 'Completato') {
+            pendingEventsRef.current.push({ tipo: 'completato', task: updatedTask, fromStato: prevTask?.stato });
+          } else if (prevTask && prevTask.stato !== updatedTask.stato) {
+            pendingEventsRef.current.push({ tipo: 'spostato', task: updatedTask, fromStato: prevTask.stato });
           }
+          scheduleFlush();
+
         } else if (payload.eventType === 'DELETE') {
-          setTasks(prev => prev.filter(t => t.id !== (payload.old as any).id));
+          setTasks(prev => prev.filter(t => t.id !== (payload.old as Task).id));
         }
       })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          // realtime connected
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+    };
   }, []);
 
   const loadTasks = async () => {
@@ -78,10 +188,9 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
     setTasks(data || []);
     setLoading(false);
 
-    // Suono alert se ci sono scaduti
+    const oggi = new Date(); oggi.setHours(0,0,0,0);
     const scaduti = (data || []).filter(t => {
       if (!t.scadenza) return false;
-      const oggi = new Date(); oggi.setHours(0,0,0,0);
       const s = new Date(t.scadenza); s.setHours(0,0,0,0);
       return s < oggi && t.stato !== 'Completato';
     });
@@ -103,13 +212,15 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
     const task = tasks.find(t => t.id === dragItem);
     if (!task || task.stato === nuovoStato) return;
 
-    // Permesso: solo owner o Admin
     if (utente?.ruolo !== 'Admin' && task.assegnato_a !== utente?.nome) {
       addToast('Non hai il permesso di spostare questo task', 'error');
       return;
     }
 
-    // Aggiornamento ottimistico
+    // Mark this as MY action so realtime echo won't generate a toast
+    isMyAction.current = true;
+
+    // Optimistic update
     setTasks(prev => prev.map(t => t.id === dragItem ? { ...t, stato: nuovoStato as Task['stato'] } : t));
 
     const { error } = await supabase
@@ -119,9 +230,13 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
 
     if (error) {
       addToast('Errore nel salvataggio', 'error');
+      isMyAction.current = false;
       loadTasks();
     } else if (nuovoStato === 'Completato') {
       sounds.taskCompletato();
+      addToast('✅ Task completato!', 'success');
+    } else {
+      addToast(`↕️ Spostato → ${nuovoStato}`, 'info');
     }
     setDragItem(null);
   };
@@ -138,9 +253,24 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
     <div className="p-4">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-bold text-lg" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
-          Kanban Board
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="font-bold text-lg" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
+            Kanban Board
+          </h2>
+          {/* Live indicator */}
+          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium"
+            style={{ background: liveActive ? '#DCFCE7' : '#F1F5F9', color: liveActive ? '#16A34A' : '#94A3B8', transition: 'all 0.3s' }}>
+            <span
+              className="w-1.5 h-1.5 rounded-full"
+              style={{
+                backgroundColor: liveActive ? '#22C55E' : '#94A3B8',
+                boxShadow: liveActive ? '0 0 0 3px #BBF7D0' : 'none',
+                transition: 'all 0.3s',
+              }}
+            />
+            LIVE
+          </div>
+        </div>
         <button
           onClick={() => setShowNuovoTask(true)}
           className="sk-btn-primary text-sm"
@@ -183,6 +313,8 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                   const scad = scadenzaInfo(task);
                   const isScaduto = scad?.label.includes('SCADUTO');
                   const member = team.find(m => m.nome === task.assegnato_a);
+                  const isNew = newTaskIds.has(task.id);
+                  const isAssignedToMe = task.assegnato_a === utente?.nome;
 
                   return (
                     <div
@@ -195,8 +327,22 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                       style={{
                         borderLeft: `3px solid ${PRIORITA_COLOR[task.priorita] || '#64748B'}`,
                         ...(isScaduto ? { borderColor: '#EF4444' } : {}),
+                        ...(isNew ? {
+                          outline: '2px solid #3B82F6',
+                          outlineOffset: '1px',
+                          animation: 'taskHighlight 3s ease-out forwards',
+                        } : {}),
+                        ...(isAssignedToMe ? { boxShadow: '0 0 0 1px rgba(59,130,246,0.2)' } : {}),
                       }}
                     >
+                      {/* New badge */}
+                      {isNew && (
+                        <span className="text-xs font-bold px-1.5 py-0.5 rounded mb-1 inline-block"
+                          style={{ background: '#DBEAFE', color: '#1D4ED8' }}>
+                          NUOVO
+                        </span>
+                      )}
+
                       {/* Priorità dot */}
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <div
@@ -268,6 +414,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
           team={team}
           onClose={() => setSelectedTask(null)}
           onUpdate={(updated) => {
+            isMyAction.current = true;
             setTasks(prev => prev.map(t => t.id === updated.id ? updated : t));
             setSelectedTask(updated);
           }}
@@ -286,6 +433,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
           utente={utente}
           onClose={() => setShowNuovoTask(false)}
           onCreated={(task) => {
+            isMyAction.current = true;
             setTasks(prev => [task, ...prev]);
             addToast(`✅ Task ${task.id_display} creato`, 'success');
           }}
