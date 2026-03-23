@@ -434,14 +434,24 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                           <span className="text-xs font-mono" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
                             {task.id_display}
                           </span>
-                          {task.tipo && (
-                            <span
-                              className="text-xs px-1.5 py-0.5 rounded"
-                              style={{ background: 'hsl(210 40% 96%)', color: '#64748B' }}
-                            >
-                              {task.tipo}
-                            </span>
-                          )}
+                          {task.tipo && (() => {
+                            const fase = TIPO_TO_FASE[task.tipo];
+                            return fase ? (
+                              <span
+                                className="text-xs px-1.5 py-0.5 rounded font-medium"
+                                style={{ background: fase.bg, color: fase.color, border: `1px solid ${fase.border}` }}
+                              >
+                                {fase.label}
+                              </span>
+                            ) : (
+                              <span
+                                className="text-xs px-1.5 py-0.5 rounded"
+                                style={{ background: 'hsl(210 40% 96%)', color: '#64748B' }}
+                              >
+                                {task.tipo}
+                              </span>
+                            );
+                          })()}
                         </div>
                         {member && (
                           <Avatar nome={member.nome} colore={member.colore} size={20} />
