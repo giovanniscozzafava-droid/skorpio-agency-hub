@@ -255,6 +255,26 @@ function DetailPanel({ cliente, onClose, onUpdate, onDelete }: DetailPanelProps)
         {/* scrollable body */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-1">
 
+          {/* ─── Google Drive ─── */}
+          {(form as any).link_drive ? (
+            <div className="rounded-xl p-3 border mb-2" style={{ background: 'hsl(214 100% 98%)', borderColor: 'hsl(214 80% 85%)' }}>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(214 60% 40%)' }}>📁 Google Drive</span>
+              </div>
+              <a
+                href={(form as any).link_drive}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all"
+                style={{ background: '#e8f0fe', color: '#1a73e8', border: '1px solid #c5d8fd' }}
+              >
+                <span>📂</span>
+                <span className="flex-1 truncate">{form.id_display} – {form.nome}</span>
+                <span className="text-xs opacity-60">↗ Apri</span>
+              </a>
+            </div>
+          ) : null}
+
           {/* Stato & Pacchetto */}
           <div className="grid grid-cols-2 gap-3">
             <div>

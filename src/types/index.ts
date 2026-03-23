@@ -31,6 +31,7 @@ export type Cliente = {
   sito_web: 'No' | 'In corso' | 'Consegnato';
   adv_attivo: boolean;
   note: string;
+  link_drive: string;
   data_inizio: string | null;
   created_at: string;
   updated_at: string;
