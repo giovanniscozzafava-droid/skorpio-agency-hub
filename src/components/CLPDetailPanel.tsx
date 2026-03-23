@@ -19,6 +19,7 @@ async function createDriveFolder(contenuto: Contenuto): Promise<string | null> {
         contenuto_id: contenuto.id,
         titolo: contenuto.titolo,
         cliente_nome: contenuto.cliente_nome,
+        tipo: contenuto.tipo,
         id_display: contenuto.id_display,
       }),
     });
