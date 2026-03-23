@@ -4,6 +4,31 @@ import { useApp } from '../context/AppContext';
 import type { Contenuto, FaseCLP, TeamMember, Cliente } from '../types';
 import { FASE_CONFIG } from './ContenutiTab';
 
+async function createDriveFolder(contenuto: Contenuto): Promise<string | null> {
+  try {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    const res = await fetch(`${supabaseUrl}/functions/v1/create-drive-folder`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseKey}`,
+        'apikey': supabaseKey,
+      },
+      body: JSON.stringify({
+        contenuto_id: contenuto.id,
+        titolo: contenuto.titolo,
+        cliente_nome: contenuto.cliente_nome,
+        id_display: contenuto.id_display,
+      }),
+    });
+    const result = await res.json();
+    return result.success ? result.folder_url : null;
+  } catch {
+    return null;
+  }
+}
+
 const FASI: FaseCLP[] = ['Idea', 'Script', 'Girato', 'Pre montato', 'Montato', 'Revisione', 'Programmato', 'Pubblicato', 'Scartata'];
 const CANALI = ['Instagram', 'Facebook', 'Instagram/Facebook', 'TikTok', 'LinkedIn', 'YouTube', 'Altro'];
 const TIPI = ['Reel', 'Post', 'Carosello', 'Story', 'Video', 'Short', 'Altro'];
@@ -37,6 +62,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
   const { addToast } = useApp();
   const [form, setForm] = useState<Contenuto>({ ...contenuto });
   const [saving, setSaving] = useState(false);
+  const [creatingDrive, setCreatingDrive] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Reset form when contenuto changes
@@ -71,6 +97,19 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
       onUpdate(data as Contenuto);
       addToast('CLP salvato ✅', 'success');
     }
+  };
+
+  const handleCreateDrive = async () => {
+    setCreatingDrive(true);
+    addToast('📁 Creazione cartella Drive…', 'info');
+    const url = await createDriveFolder(form);
+    if (url) {
+      set('link_drive', url);
+      addToast('📁 Cartella Drive creata!', 'success');
+    } else {
+      addToast('⚠️ Errore creazione cartella Drive', 'warn');
+    }
+    setCreatingDrive(false);
   };
 
   const faseCfg = FASE_CONFIG[form.fase];
@@ -292,29 +331,54 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
           <div className="mt-3">
             <LabelTextarea label="Note revisione" field="note_revisione" rows={2} placeholder="Feedback dal cliente o per il team…" />
           </div>
-          <div className="mt-3">
-            <label className="sk-label">🔗 Link Drive</label>
+          {/* ─── GOOGLE DRIVE ─── */}
+          <div className="mt-3 rounded-lg p-3 border" style={{ background: 'hsl(214 100% 98%)', borderColor: 'hsl(214 80% 85%)' }}>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-bold uppercase tracking-widest" style={{ color: 'hsl(214 60% 40%)' }}>
+                📁 Google Drive
+              </label>
+              {!form.link_drive && (
+                <button
+                  onClick={handleCreateDrive}
+                  disabled={creatingDrive}
+                  className="text-xs px-2.5 py-1 rounded-md font-semibold transition-all flex items-center gap-1"
+                  style={{ background: '#1a73e8', color: 'white', opacity: creatingDrive ? 0.6 : 1 }}
+                >
+                  {creatingDrive ? (
+                    <>⏳ Creazione…</>
+                  ) : (
+                    <>📁 Crea cartella</>
+                  )}
+                </button>
+              )}
+            </div>
             {form.link_drive ? (
               <div className="flex items-center gap-2">
-                <input
-                  type="url"
-                  className="sk-input flex-1 text-sm"
-                  value={form.link_drive}
-                  onChange={e => set('link_drive', e.target.value)}
-                />
-                <a href={form.link_drive} target="_blank" rel="noopener noreferrer"
-                  className="sk-btn-ghost text-sm px-2 py-2 flex-shrink-0" title="Apri Drive">
-                  🔗
+                <a
+                  href={form.link_drive}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 flex-1 min-w-0 px-3 py-2 rounded-md text-sm font-medium truncate transition-all"
+                  style={{ background: '#e8f0fe', color: '#1a73e8', border: '1px solid #c5d8fd' }}
+                >
+                  <span>📂</span>
+                  <span className="truncate">{form.id_display} – {form.cliente_nome || 'Senza cliente'}</span>
+                  <span className="ml-auto flex-shrink-0 text-xs opacity-60">↗</span>
                 </a>
+                <button
+                  onClick={() => set('link_drive', '')}
+                  className="sk-btn-ghost text-xs px-1.5 py-1 flex-shrink-0 opacity-50 hover:opacity-100"
+                  title="Rimuovi link"
+                >✕</button>
               </div>
             ) : (
-              <input
-                type="url"
-                className="sk-input w-full text-sm"
-                value={form.link_drive}
-                onChange={e => set('link_drive', e.target.value)}
-                placeholder="https://drive.google.com/…"
-              />
+              <div className="text-xs" style={{ color: 'hsl(214 40% 55%)' }}>
+                {form.fase === 'Montato' ? (
+                  <span>Nessuna cartella — clicca "Crea cartella" per generarla automaticamente su Drive.</span>
+                ) : (
+                  <span>La cartella verrà creata automaticamente quando il contenuto passa a <strong>Montato</strong>.</span>
+                )}
+              </div>
             )}
           </div>
 
