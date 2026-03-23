@@ -9,6 +9,7 @@ import { ClientiTab } from '../components/ClientiTab';
 import { RipreseTab } from '../components/RipreseTab';
 import { CalendarioTab } from '../components/CalendarioTab';
 import { CreativeEngineTab } from '../components/CreativeEngineTab';
+import { ChatTab } from '../components/ChatTab';
 import type { TeamMember, Cliente, Task } from '../types';
 import { supabase } from '../lib/supabase';
 
@@ -69,7 +70,7 @@ function MainApp() {
         )}
         {tab === 'clienti' && <ClientiTab />}
         {tab === 'riprese' && <RipreseTab clienti={clienti} team={team} />}
-        {tab === 'chat' && <Placeholder emoji="💬" label="Chat" />}
+        {tab === 'chat' && <ChatTab team={team} />}
       </div>
       <ToastContainer />
     </div>
