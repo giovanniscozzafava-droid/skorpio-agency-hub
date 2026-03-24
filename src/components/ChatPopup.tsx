@@ -64,8 +64,11 @@ export function ChatPopup({ team }: ChatPopupProps) {
   const [salvandoTask, setSalvandoTask] = useState(false);
   const [hoveredMsg, setHoveredMsg] = useState<string | null>(null);
   const [incomingMittente, setIncomingMittente] = useState<string | null>(null);
+  const [altriScrivono, setAltriScrivono] = useState<string[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const presenceChRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const aperto = stato === 'open';
 
@@ -106,10 +109,18 @@ export function ChatPopup({ team }: ChatPopupProps) {
           if (msg.da === utenteNome || msg.a === utenteNome) {
             setMessaggi(prev => prev.find(m => m.id === msg.id) ? prev : [...prev, msg]);
 
-            // Messaggio IN ARRIVO (non mio) → apri chat invasivamente
+            // Messaggio IN ARRIVO (non mio) → apri chat invasivamente + push notification
             if (msg.da !== utenteNome) {
               sounds.chatUrgente();
               setIncomingMittente(msg.da);
+              // Browser push notification se finestra non in focus
+              if (document.hidden && Notification.permission === 'granted') {
+                new Notification(`💬 ${msg.da}`, {
+                  body: msg.testo.length > 80 ? msg.testo.slice(0, 80) + '…' : msg.testo,
+                  icon: '/favicon.ico',
+                  tag: `chat-${msg.da}`,
+                });
+              }
             }
           }
         }
@@ -141,6 +152,33 @@ export function ChatPopup({ team }: ChatPopupProps) {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [caricaReactions]);
+
+  // Richiedi permesso notifiche push al mount
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // Presence channel per "sta scrivendo..."
+  useEffect(() => {
+    if (!utenteNome) return;
+    const ch = supabase.channel(`chat-presence-${utenteNome}`, {
+      config: { presence: { key: utenteNome } },
+    });
+    ch.on('presence', { event: 'sync' }, () => {
+      const state = ch.presenceState<{ typing: boolean }>();
+      const scrivono = Object.entries(state)
+        .filter(([key, presences]) => key !== utenteNome && (presences as any[])[0]?.typing)
+        .map(([key]) => key);
+      setAltriScrivono(scrivono);
+    }).subscribe();
+    presenceChRef.current = ch;
+    return () => {
+      supabase.removeChannel(ch);
+      presenceChRef.current = null;
+    };
+  }, [utenteNome]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Contatti con preview
   const contatti: ContattoPreview[] = useMemo(() => {
@@ -204,6 +242,9 @@ export function ChatPopup({ team }: ChatPopupProps) {
   async function invia() {
     if (!testo.trim() || !contattoAttivo || !utente || invio) return;
     setInvio(true);
+    // Resetta typing
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    presenceChRef.current?.track({ typing: false });
     const { data, error } = await supabase
       .from('chat_messaggi')
       .insert({ da: utente.nome, a: contattoAttivo.nome, testo: testo.trim(), tipo: 'messaggio', rif_task: '', letto: false })
@@ -682,6 +723,20 @@ export function ChatPopup({ team }: ChatPopupProps) {
                     </div>
                   )}
 
+                  {/* Typing indicator */}
+                  {contattoAttivo && altriScrivono.includes(contattoAttivo.nome) && (
+                    <div className="px-4 pb-1 flex items-center gap-1.5">
+                      <div className="flex gap-0.5 items-center">
+                        <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: 'hsl(var(--muted-foreground))', animationDelay: '0ms' }} />
+                        <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: 'hsl(var(--muted-foreground))', animationDelay: '150ms' }} />
+                        <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: 'hsl(var(--muted-foreground))', animationDelay: '300ms' }} />
+                      </div>
+                      <span className="text-xs italic" style={{ color: 'hsl(var(--muted-foreground))', fontSize: 10 }}>
+                        {contattoAttivo.nome} sta scrivendo…
+                      </span>
+                    </div>
+                  )}
+
                   {/* Input */}
                   <div className="px-3 py-2.5 border-t flex items-center gap-2 flex-shrink-0"
                     style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}>
@@ -692,7 +747,17 @@ export function ChatPopup({ team }: ChatPopupProps) {
                       style={{ background: 'hsl(var(--muted))', borderColor: 'hsl(var(--border))', color: 'hsl(var(--foreground))' }}
                       placeholder={`Scrivi a ${contattoAttivo.nome}…`}
                       value={testo}
-                      onChange={e => setTesto(e.target.value)}
+                      onChange={e => {
+                        setTesto(e.target.value);
+                        // Broadcast "sto scrivendo" via Presence
+                        if (presenceChRef.current) {
+                          presenceChRef.current.track({ typing: true });
+                          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+                          typingTimeoutRef.current = setTimeout(() => {
+                            presenceChRef.current?.track({ typing: false });
+                          }, 2000);
+                        }
+                      }}
                       onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); invia(); } }}
                       disabled={invio}
                     />
