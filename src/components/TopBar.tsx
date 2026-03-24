@@ -3,6 +3,8 @@ import { useApp } from '../context/AppContext';
 import type { TeamMember } from '../types';
 import { Avatar } from './Avatar';
 import { ImpostazioniPanel } from './ImpostazioniPanel';
+import { NotificheDropdown } from './NotificheDropdown';
+import { useNotifiche } from '@/hooks/useNotifiche';
 
 interface TopBarProps {
   team: TeamMember[];
@@ -16,6 +18,8 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
   const { utente, tab, setTab, logout } = useApp();
   const [orologio, setOrologio] = useState(new Date());
   const [showImpostazioni, setShowImpostazioni] = useState(false);
+  const [showNotifiche, setShowNotifiche] = useState(false);
+  const { nonLette } = useNotifiche(utente?.nome ?? null);
 
   useEffect(() => {
     const t = setInterval(() => setOrologio(new Date()), 1000);
@@ -97,9 +101,41 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
           {orologio.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
         </div>
 
+        {/* Campanella notifiche */}
+        <div className="relative flex-shrink-0 mr-2">
+          <button
+            onClick={() => {
+              setShowNotifiche(v => !v);
+              setShowImpostazioni(false);
+            }}
+            className="relative p-1.5 rounded-lg transition-colors"
+            style={{
+              background: showNotifiche ? 'rgba(255,255,255,0.15)' : 'transparent',
+            }}
+            title="Notifiche"
+          >
+            <span className="text-base leading-none">🔔</span>
+            {nonLette > 0 && (
+              <span
+                className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full text-white text-[10px] font-bold flex items-center justify-center"
+                style={{ background: 'hsl(var(--skorpio-accent))' }}
+              >
+                {nonLette > 9 ? '9+' : nonLette}
+              </span>
+            )}
+          </button>
+
+          {showNotifiche && (
+            <NotificheDropdown onClose={() => setShowNotifiche(false)} />
+          )}
+        </div>
+
         {/* Utente loggato → apre Impostazioni */}
         <button
-          onClick={() => setShowImpostazioni(v => !v)}
+          onClick={() => {
+            setShowImpostazioni(v => !v);
+            setShowNotifiche(false);
+          }}
           className="flex items-center gap-2 px-2 py-1 rounded-lg transition-colors flex-shrink-0"
           style={{ background: showImpostazioni ? 'rgba(255,255,255,0.15)' : 'transparent' }}
           title="Impostazioni"
