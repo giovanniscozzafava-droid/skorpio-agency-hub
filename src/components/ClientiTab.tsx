@@ -104,20 +104,84 @@ function ProgressBar({ fatti, quota, label }: { fatti: number; quota: number; la
   );
 }
 
+// ─── Tripletta Reel 3 mesi ───────────────────────────────────────────────────
+
+interface ReelMese {
+  label: string;
+  fatti: number;
+  quota: number;
+  isCurrent: boolean;
+}
+
+function ReelTrend({ mesi, quota }: { mesi: ReelMese[]; quota: number }) {
+  if (quota === 0) return null;
+  return (
+    <div className="flex items-end gap-1.5">
+      <span className="text-xs text-muted-foreground font-medium mr-0.5">🎬</span>
+      {mesi.map((m, i) => {
+        const over = m.fatti > quota;
+        const pct = Math.min((m.fatti / quota) * 100, 100);
+        const barColor = over
+          ? 'hsl(var(--clr-red))'
+          : pct >= 75
+          ? 'hsl(var(--clr-amber))'
+          : 'hsl(var(--clr-green))';
+
+        return (
+          <div
+            key={i}
+            className={`flex flex-col items-center gap-0.5 transition-all duration-200 ${m.isCurrent ? 'flex-1' : 'opacity-50 w-8'}`}
+          >
+            {/* Barra */}
+            <div className={`w-full rounded-full bg-muted overflow-hidden ${m.isCurrent ? 'h-2' : 'h-1.5'}`}>
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{ width: `${pct}%`, background: barColor }}
+              />
+            </div>
+            {/* Contatore */}
+            <span
+              className={`font-mono tabular-nums leading-none ${
+                m.isCurrent
+                  ? `font-bold text-sm ${over ? 'text-[hsl(var(--clr-red))]' : 'text-foreground'}`
+                  : 'text-[10px] text-muted-foreground'
+              }`}
+            >
+              {m.fatti}/{quota}
+            </span>
+            {/* Etichetta mese */}
+            <span className={`leading-none ${m.isCurrent ? 'text-[10px] font-semibold text-foreground' : 'text-[9px] text-muted-foreground'}`}>
+              {m.label}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Card Cliente ────────────────────────────────────────────────────────────
 
-function ClienteCard({ cliente, onClick }: { cliente: Cliente; onClick: () => void }) {
+function ClienteCard({
+  cliente,
+  reelMesi,
+  onClick,
+}: {
+  cliente: Cliente;
+  reelMesi: ReelMese[];
+  onClick: () => void;
+}) {
   const color = clienteColor(cliente.nome);
-  const extraReel = Math.max(0, cliente.reel_fatti - cliente.reel_quota);
   const extraGrafiche = Math.max(0, cliente.grafiche_fatte - cliente.grafiche_quota);
-  const totalExtra = extraReel + extraGrafiche;
 
-  // Calcola giorni alla fine del mese
+  // Alert fine mese corrente
   const now = new Date();
   const giorniFineM = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate();
-  const sottoQuota = cliente.stato === 'Attivo' && cliente.reel_quota > 0 && cliente.reel_fatti < cliente.reel_quota;
-  const reelMancanti = Math.max(0, cliente.reel_quota - cliente.reel_fatti);
+  const currMese = reelMesi.find(m => m.isCurrent);
+  const sottoQuota = cliente.stato === 'Attivo' && cliente.reel_quota > 0 && currMese && currMese.fatti < cliente.reel_quota;
+  const reelMancanti = Math.max(0, cliente.reel_quota - (currMese?.fatti ?? 0));
   const alertFineMese = sottoQuota && giorniFineM <= 5;
+  const overQuota = currMese && currMese.fatti > cliente.reel_quota;
 
   return (
     <div
@@ -149,12 +213,23 @@ function ClienteCard({ cliente, onClick }: { cliente: Cliente; onClick: () => vo
 
       {/* Contatori */}
       <div className="space-y-2">
-        <ProgressBar fatti={cliente.reel_fatti} quota={cliente.reel_quota} label="🎬 Reel" />
+        {/* Tripletta Reel */}
+        {cliente.reel_quota > 0 && reelMesi.length === 3 && (
+          <ReelTrend mesi={reelMesi} quota={cliente.reel_quota} />
+        )}
+        {/* Grafiche (barra singola) */}
         <ProgressBar fatti={cliente.grafiche_fatte} quota={cliente.grafiche_quota} label="🖼️ Grafiche" />
-        {totalExtra > 0 && (
+        {overQuota && (
           <div className="flex items-center gap-1">
             <span className="text-xs text-[hsl(var(--clr-red))] font-semibold bg-[hsl(var(--clr-red)/0.1)] px-2 py-0.5 rounded-full border border-[hsl(var(--clr-red)/0.25)]">
-              ⚠️ {totalExtra} extra fatturabili
+              ⚠️ {currMese!.fatti - cliente.reel_quota} reel extra fatturabili
+            </span>
+          </div>
+        )}
+        {extraGrafiche > 0 && (
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-[hsl(var(--clr-red))] font-semibold bg-[hsl(var(--clr-red)/0.1)] px-2 py-0.5 rounded-full border border-[hsl(var(--clr-red)/0.25)]">
+              ⚠️ {extraGrafiche} grafiche extra
             </span>
           </div>
         )}
