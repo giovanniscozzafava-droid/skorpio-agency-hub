@@ -94,7 +94,6 @@ export function ChatPopup({ team }: ChatPopupProps) {
   }, [caricaMessaggi, caricaReactions]);
 
   // Realtime messaggi — dipende solo dal nome (primitivo) per evitare ri-subscribe su ogni render
-  const utenteNome = utente?.nome ?? '';
   useEffect(() => {
     if (!utenteNome) return;
     const channel = supabase
