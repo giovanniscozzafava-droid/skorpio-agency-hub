@@ -217,14 +217,16 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
     const nomeAlessandro = findMembro(team, 'Alessandro');
     const nomeElisa = findMembro(team, 'Elisa');
 
-    // GIRATO → crea task premontaggio per Luca
+    // GIRATO → crea task premontaggio per Luca (con scadenza = data_pubblicazione se presente)
     if (nuovaFase === 'Girato') {
       const task = await creaTaskWorkflow(
         contenutoAggiornato,
         nomeLuca,
         'Premontaggio',
         `🎬 Premontaggia ${contenutoAggiornato.id_display} – ${contenutoAggiornato.titolo}${contenutoAggiornato.cliente_nome ? ` (${contenutoAggiornato.cliente_nome})` : ''}`,
-        'Da fare'
+        'Da fare',
+        contenutoAggiornato.data_pubblicazione ?? null,
+        contenutoAggiornato.ora_pubblicazione?.slice(0, 5) ?? null
       );
       if (task) addToast(`📋 Task premontaggio creato per ${nomeLuca}`, 'success');
     }
