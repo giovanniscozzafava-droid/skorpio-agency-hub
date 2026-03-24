@@ -74,19 +74,19 @@ export default function GCalCallback() {
   }, []);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="bg-white rounded-2xl shadow-xl p-8 max-w-sm w-full text-center space-y-4">
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="bg-card rounded-2xl shadow-xl p-8 max-w-sm w-full text-center space-y-4 border border-border">
         <div className="text-4xl">
           {status === 'loading' ? '⏳' : status === 'success' ? '✅' : '❌'}
         </div>
-        <h1 className="font-bold text-lg text-gray-800">
+        <h1 className="font-bold text-lg text-foreground">
           {status === 'loading' ? 'Connessione a Google Calendar' : status === 'success' ? 'Connesso!' : 'Errore'}
         </h1>
-        <p className="text-sm text-gray-500">{message}</p>
+        <p className="text-sm text-muted-foreground">{message}</p>
         {status === 'error' && (
           <button
             onClick={() => window.close()}
-            className="mt-2 text-xs text-blue-500 underline"
+            className="mt-2 text-xs text-primary underline"
           >
             Chiudi questa finestra
           </button>
