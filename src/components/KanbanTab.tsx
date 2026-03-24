@@ -79,9 +79,9 @@ const PRIORITA_COLOR: Record<string, string> = {
 // Mappatura: tipo task workflow → fase CLP corrente del contenuto
 const TIPO_TO_FASE: Record<string, { label: string; bg: string; color: string; border: string }> = {
   'Premontaggio':        { label: '🎬 Girato',       bg: 'hsl(270 60% 55% / 0.10)', color: 'hsl(270 50% 45%)', border: 'hsl(270 60% 55% / 0.30)' },
-  'Montaggio':           { label: '✂️ Pre montato',  bg: 'hsl(214 80% 55% / 0.10)', color: 'hsl(214 70% 44%)', border: 'hsl(214 80% 55% / 0.28)' },
-  'Revisione montaggio': { label: '🔍 Montato',      bg: 'hsl(38 92% 50% / 0.10)',  color: 'hsl(32 95% 38%)',  border: 'hsl(38 92% 50% / 0.28)'  },
-  'Pubblicazione':       { label: '📱 Montato',      bg: 'hsl(142 60% 45% / 0.10)', color: 'hsl(142 55% 35%)', border: 'hsl(142 60% 45% / 0.28)' },
+  'Montaggio':           { label: '✂️ Pre montato',   bg: 'hsl(214 80% 55% / 0.10)', color: 'hsl(214 70% 44%)', border: 'hsl(214 80% 55% / 0.28)' },
+  'Revisione montaggio': { label: '🔍 Montato',       bg: 'hsl(25 90% 55% / 0.10)',  color: 'hsl(25 70% 40%)',  border: 'hsl(25 90% 55% / 0.28)'  },
+  'Programmazione':      { label: '📅 Revisionato',   bg: 'hsl(328 80% 55% / 0.10)', color: 'hsl(328 65% 40%)', border: 'hsl(328 80% 55% / 0.28)' },
 };
 
 function scadenzaInfo(task: Task): { label: string; colore: string; bg: string } | null {
