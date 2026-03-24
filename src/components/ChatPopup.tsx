@@ -242,6 +242,9 @@ export function ChatPopup({ team }: ChatPopupProps) {
   async function invia() {
     if (!testo.trim() || !contattoAttivo || !utente || invio) return;
     setInvio(true);
+    // Resetta typing
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    presenceChRef.current?.track({ typing: false });
     const { data, error } = await supabase
       .from('chat_messaggi')
       .insert({ da: utente.nome, a: contattoAttivo.nome, testo: testo.trim(), tipo: 'messaggio', rif_task: '', letto: false })
