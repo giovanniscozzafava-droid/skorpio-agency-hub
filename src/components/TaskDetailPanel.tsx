@@ -316,8 +316,82 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
 
           <hr style={{ borderColor: 'hsl(var(--border))' }} />
 
-          {/* ─── PIPELINE FASE CLP (solo task workflow) ─────────────────────── */}
-          {isCLPTask && (
+          {/* ─── PROGRAMMAZIONE DATE PICKER (task Programmazione) ───────────── */}
+          {isProgrammazioneTask && !taskCompletato && (
+            <div>
+              <p className="text-xs font-medium mb-3" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                📅 SCEGLI DATA DI PUBBLICAZIONE
+              </p>
+              <div className="rounded-xl p-4 space-y-3"
+                style={{ background: 'hsl(328 80% 55% / 0.06)', border: '1px solid hsl(328 80% 55% / 0.25)' }}>
+                <p className="text-xs leading-relaxed" style={{ color: 'hsl(328 65% 40%)' }}>
+                  Scegli quando pubblicare questo contenuto. Il CLP passerà a <strong>Programmato</strong> e a quella data diventerà <strong>Pubblicato</strong> in automatico.
+                </p>
+
+                {/* Date picker */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      className="w-full flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-all"
+                      style={{
+                        background: dataPub ? 'hsl(328 80% 55% / 0.10)' : 'hsl(var(--muted))',
+                        border: `1px solid ${dataPub ? 'hsl(328 80% 55% / 0.40)' : 'hsl(var(--border))'}`,
+                        color: dataPub ? 'hsl(328 65% 40%)' : 'hsl(var(--muted-foreground))',
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        <CalendarIcon size={14} />
+                        {dataPub ? format(dataPub, 'd MMMM yyyy', { locale: it }) : 'Seleziona data…'}
+                      </span>
+                      {dataPub && <span className="text-xs opacity-60">cambia</span>}
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={dataPub}
+                      onSelect={setDataPub}
+                      initialFocus
+                      disabled={(d) => d < new Date(new Date().setHours(0,0,0,0))}
+                    />
+                  </PopoverContent>
+                </Popover>
+
+                {/* Ora opzionale */}
+                <div>
+                  <label className="text-xs font-medium mb-1 block" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                    Ora pubblicazione (opzionale)
+                  </label>
+                  <input
+                    type="time"
+                    value={oraPub}
+                    onChange={e => setOraPub(e.target.value)}
+                    className="sk-input w-full text-sm"
+                  />
+                </div>
+
+                <button
+                  onClick={handleSalvaProgrammazione}
+                  disabled={!dataPub || savingProg}
+                  className="sk-btn-primary w-full text-sm font-semibold"
+                  style={{ opacity: (!dataPub || savingProg) ? 0.5 : 1 }}
+                >
+                  {savingProg ? '⏳ Salvando…' : `📅 Programma per ${dataPub ? format(dataPub, 'd MMM', { locale: it }) : '…'}`}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {isProgrammazioneTask && taskCompletato && (
+            <div className="rounded-lg px-3 py-2.5 text-xs"
+              style={{ background: 'hsl(142 70% 45% / 0.08)', color: 'hsl(142 60% 35%)', border: '1px solid hsl(142 70% 45% / 0.25)' }}>
+              ✅ Programmato per {task.scadenza ? format(new Date(task.scadenza), 'd MMM yyyy', { locale: it }) : '—'}
+              {task.ora ? ` alle ${task.ora.slice(0,5)}` : ''} — verrà pubblicato automaticamente!
+            </div>
+          )}
+
+          {/* ─── PIPELINE FASE CLP (solo task workflow NON Programmazione) ──── */}
+          {isCLPTask && !isProgrammazioneTask && (
             <div>
               <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
                 FASE CLP
@@ -358,7 +432,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
                 })}
               </div>
 
-              {/* Bottoni fase — evidenzia la faseNext come "azione principale" */}
+              {/* Bottoni fase */}
               <div className="flex flex-wrap gap-1.5">
                 {FASI_PIPELINE.map(fase => {
                   const style = FASE_STYLE[fase] || FASE_STYLE['Girato'];
@@ -402,6 +476,8 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
               )}
             </div>
           )}
+
+
 
           {/* ─── CAMBIA STATO TASK ──────────────────────────────────────────── */}
           <div>
