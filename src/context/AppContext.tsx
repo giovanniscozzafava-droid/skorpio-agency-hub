@@ -91,6 +91,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     autoLink();
   }, [session]);
 
+  // ── Auto-pubblica CLPs programmati con data <= oggi ──────────────────────
+  useEffect(() => {
+    checkAutoPubblica().then(n => {
+      if (n > 0) {
+        const id = Math.random().toString(36).slice(2);
+        setToasts(prev => [...prev, {
+          id,
+          msg: `🚀 ${n} contenuto${n > 1 ? 'i' : ''} auto-pubblicato${n > 1 ? 'i' : ''} — task Elisa completati`,
+          tipo: 'success'
+        }]);
+        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 5000);
+      }
+    });
+  }, []); // solo al mount
+
   const addToast = (msg: string, tipo: 'info' | 'success' | 'error' | 'warn' = 'info') => {
     const id = Math.random().toString(36).slice(2);
     setToasts(prev => [...prev, { id, msg, tipo }]);
