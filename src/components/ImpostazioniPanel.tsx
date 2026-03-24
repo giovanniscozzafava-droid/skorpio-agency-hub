@@ -1,8 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import { Avatar } from './Avatar';
 import type { TeamMember, Task } from '../types';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID as string;
+const GCAL_REDIRECT_URI = `${window.location.origin}/gcal-callback`;
 
 const COLORI_PRESET = [
   '#F59E0B', '#EC4899', '#06B6D4', '#22C55E',
