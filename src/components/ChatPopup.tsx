@@ -119,7 +119,6 @@ export function ChatPopup({ team }: ChatPopupProps) {
                   body: msg.testo.length > 80 ? msg.testo.slice(0, 80) + '…' : msg.testo,
                   icon: '/favicon.ico',
                   tag: `chat-${msg.da}`,
-                  renotify: true,
                 });
               }
             }
