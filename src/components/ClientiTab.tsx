@@ -632,11 +632,95 @@ export function ClientiTab() {
   const [showNuovo, setShowNuovo] = useState(false);
   const [fixLoading, setFixLoading] = useState(false);
 
+  const now = new Date();
+  const meseStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const meseEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+  const giorniFineM = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate();
+
+  // Ricalcola i contatori da DB (Programmato + Pubblicato del mese)
+  const ricalcolaContatori = useCallback(async (clientiData: Cliente[]) => {
+    const { data: clps } = await supabase
+      .from('contenuti')
+      .select('cliente_id, tipo, fase, data_pubblicazione')
+      .eq('tipo', 'Reel')
+      .in('fase', ['Programmato', 'Pubblicato']);
+
+    if (!clps) return clientiData;
+
+    const counts: Record<string, number> = {};
+    clps.forEach(c => {
+      if (!c.cliente_id) return;
+      // Per 'Pubblicato': conta solo quelli del mese corrente
+      if (c.fase === 'Pubblicato') {
+        if (c.data_pubblicazione && c.data_pubblicazione >= meseStart && c.data_pubblicazione <= meseEnd) {
+          counts[c.cliente_id] = (counts[c.cliente_id] || 0) + 1;
+        }
+      } else if (c.fase === 'Programmato') {
+        // Programmato conta sempre (è già schedulato questo mese)
+        counts[c.cliente_id] = (counts[c.cliente_id] || 0) + 1;
+      }
+    });
+
+    // Aggiorna DB in bulk
+    await Promise.all(
+      clientiData
+        .filter(c => c.stato === 'Attivo' && c.reel_quota > 0)
+        .map(c => {
+          const n = counts[c.id] || 0;
+          return supabase.from('clienti').update({ reel_fatti: n }).eq('id', c.id);
+        })
+    );
+
+    return clientiData.map(c => ({ ...c, reel_fatti: counts[c.id] || 0 }));
+  }, [meseStart, meseEnd]);
+
+  // Se siamo a ≤5 giorni dalla fine mese, crea task alert per Elisa
+  const checkQuoteInsufficienti = useCallback(async (clientiData: Cliente[]) => {
+    if (giorniFineM > 5) return;
+
+    const sottoQuota = clientiData.filter(c =>
+      c.stato === 'Attivo' &&
+      c.reel_quota > 0 &&
+      c.reel_fatti < c.reel_quota
+    );
+    if (sottoQuota.length === 0) return;
+
+    // Controlla se esiste già un task di alert per questo mese
+    const meseLabel = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const { data: existingTasks } = await supabase
+      .from('task')
+      .select('id, descrizione')
+      .eq('assegnato_a', 'Elisa')
+      .eq('tipo', 'Alert Quota')
+      .gte('created_at', meseStart);
+
+    const existingDesc = (existingTasks || []).map(t => t.descrizione);
+
+    const nuovi = sottoQuota.filter(c =>
+      !existingDesc.some(d => d.includes(c.id_display))
+    );
+    if (nuovi.length === 0) return;
+
+    const descrizione = `⚠️ Quota Reel insufficiente (${meseLabel}): ${nuovi.map(c => `${c.nome} ${c.reel_fatti}/${c.reel_quota}`).join(', ')}`;
+    await supabase.from('task').insert({
+      tipo: 'Alert Quota',
+      descrizione,
+      assegnato_a: 'Elisa',
+      assegnato_da: 'Sistema',
+      priorita: '🔴 Alta',
+      stato: 'Da fare',
+      scadenza: meseEnd,
+    });
+  }, [giorniFineM, meseStart, meseEnd, now]);
+
   const loadClienti = useCallback(async () => {
     const { data } = await supabase.from('clienti').select('*').order('nome');
-    setClienti((data || []) as Cliente[]);
+    const raw = (data || []) as Cliente[];
+    const aggiornati = await ricalcolaContatori(raw);
+    setClienti(aggiornati);
     setLoading(false);
-  }, []);
+    await checkQuoteInsufficienti(aggiornati);
+  }, [ricalcolaContatori, checkQuoteInsufficienti]);
 
   useEffect(() => { loadClienti(); }, [loadClienti]);
 
@@ -663,32 +747,8 @@ export function ClientiTab() {
 
   async function handleFix() {
     setFixLoading(true);
-    // Ricalcola reel_fatti contando CLP di tipo Reel pubblicati nel mese corrente
-    const now = new Date();
-    const meseStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-    const meseEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-
-    const { data: clps } = await supabase
-      .from('contenuti')
-      .select('cliente_id, tipo')
-      .eq('fase', 'Pubblicato')
-      .eq('tipo', 'Reel')
-      .gte('data_pubblicazione', meseStart)
-      .lte('data_pubblicazione', meseEnd);
-
-    if (clps) {
-      // group by cliente_id
-      const counts: Record<string, number> = {};
-      clps.forEach(c => { if (c.cliente_id) counts[c.cliente_id] = (counts[c.cliente_id] || 0) + 1; });
-      // update each
-      await Promise.all(
-        Object.entries(counts).map(([id, n]) =>
-          supabase.from('clienti').update({ reel_fatti: n }).eq('id', id)
-        )
-      );
-      await loadClienti();
-      addToast('🔧 Contatori ricalcolati', 'success');
-    }
+    await loadClienti();
+    addToast('🔧 Contatori ricalcolati (Programmato + Pubblicato)', 'success');
     setFixLoading(false);
   }
 
