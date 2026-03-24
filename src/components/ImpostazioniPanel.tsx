@@ -260,6 +260,17 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
           >
             👤 Profilo
           </button>
+          <button
+            onClick={() => setSection('integrazioni')}
+            className="flex-1 py-2.5 text-xs font-semibold transition-colors"
+            style={{
+              color: section === 'integrazioni' ? '#3B82F6' : 'hsl(var(--skorpio-text-secondary))',
+              borderBottom: section === 'integrazioni' ? '2px solid #3B82F6' : '2px solid transparent',
+              background: 'transparent',
+            }}
+          >
+            🔗 Integrazioni
+          </button>
           {isAdmin && (
             <button
               onClick={() => setSection('team')}
