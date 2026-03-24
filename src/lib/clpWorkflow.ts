@@ -4,7 +4,7 @@
 import { supabase } from './supabase';
 import type { Contenuto, FaseCLP, TeamMember } from '../types';
 
-// Mappa tipo task → fase CLP completata + prossima fase + prossimo task
+// Mappa tipo task → fase CLP corrente + prossima fase + prossimo task
 export const WORKFLOW_MAP: Record<string, {
   faseCurrent: FaseCLP;
   faseNext: FaseCLP;
@@ -28,10 +28,17 @@ export const WORKFLOW_MAP: Record<string, {
   },
   'Revisione montaggio': {
     faseCurrent: 'Montato',
-    faseNext: 'Revisione',
-    tipoNext: 'Pubblicazione',
+    faseNext: 'Revisionato',
+    tipoNext: 'Programmazione',
     assegnatoKeyword: 'Elisa',
-    descrizioneNext: c => `📱 Programma/pubblica ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
+    descrizioneNext: c => `📅 Programma ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
+  },
+  'Programmazione': {
+    faseCurrent: 'Revisionato',
+    faseNext: 'Programmato',
+    tipoNext: '',
+    assegnatoKeyword: 'Elisa',
+    descrizioneNext: () => '',
   },
 };
 
