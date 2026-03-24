@@ -3,6 +3,16 @@ import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import type { Cliente } from '../types';
 
+// ─── helpers mese ────────────────────────────────────────────────────────────
+function meseRange(year: number, month: number) {
+  // month: 0-indexed (0=gen, 11=dic)
+  const start = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+  const end = new Date(year, month + 1, 0).toISOString().split('T')[0];
+  return { start, end };
+}
+
+const MESI_IT = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 const PACCHETTO_COLORS: Record<string, string> = {
@@ -94,20 +104,84 @@ function ProgressBar({ fatti, quota, label }: { fatti: number; quota: number; la
   );
 }
 
+// ─── Tripletta Reel 3 mesi ───────────────────────────────────────────────────
+
+interface ReelMese {
+  label: string;
+  fatti: number;
+  quota: number;
+  isCurrent: boolean;
+}
+
+function ReelTrend({ mesi, quota }: { mesi: ReelMese[]; quota: number }) {
+  if (quota === 0) return null;
+  return (
+    <div className="flex items-end gap-1.5">
+      <span className="text-xs text-muted-foreground font-medium mr-0.5">🎬</span>
+      {mesi.map((m, i) => {
+        const over = m.fatti > quota;
+        const pct = Math.min((m.fatti / quota) * 100, 100);
+        const barColor = over
+          ? 'hsl(var(--clr-red))'
+          : pct >= 75
+          ? 'hsl(var(--clr-amber))'
+          : 'hsl(var(--clr-green))';
+
+        return (
+          <div
+            key={i}
+            className={`flex flex-col items-center gap-0.5 transition-all duration-200 ${m.isCurrent ? 'flex-1' : 'opacity-50 w-8'}`}
+          >
+            {/* Barra */}
+            <div className={`w-full rounded-full bg-muted overflow-hidden ${m.isCurrent ? 'h-2' : 'h-1.5'}`}>
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{ width: `${pct}%`, background: barColor }}
+              />
+            </div>
+            {/* Contatore */}
+            <span
+              className={`font-mono tabular-nums leading-none ${
+                m.isCurrent
+                  ? `font-bold text-sm ${over ? 'text-[hsl(var(--clr-red))]' : 'text-foreground'}`
+                  : 'text-[10px] text-muted-foreground'
+              }`}
+            >
+              {m.fatti}/{quota}
+            </span>
+            {/* Etichetta mese */}
+            <span className={`leading-none ${m.isCurrent ? 'text-[10px] font-semibold text-foreground' : 'text-[9px] text-muted-foreground'}`}>
+              {m.label}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Card Cliente ────────────────────────────────────────────────────────────
 
-function ClienteCard({ cliente, onClick }: { cliente: Cliente; onClick: () => void }) {
+function ClienteCard({
+  cliente,
+  reelMesi,
+  onClick,
+}: {
+  cliente: Cliente;
+  reelMesi: ReelMese[];
+  onClick: () => void;
+}) {
   const color = clienteColor(cliente.nome);
-  const extraReel = Math.max(0, cliente.reel_fatti - cliente.reel_quota);
   const extraGrafiche = Math.max(0, cliente.grafiche_fatte - cliente.grafiche_quota);
-  const totalExtra = extraReel + extraGrafiche;
 
-  // Calcola giorni alla fine del mese
+  // Alert fine mese corrente
   const now = new Date();
   const giorniFineM = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate();
-  const sottoQuota = cliente.stato === 'Attivo' && cliente.reel_quota > 0 && cliente.reel_fatti < cliente.reel_quota;
-  const reelMancanti = Math.max(0, cliente.reel_quota - cliente.reel_fatti);
+  const currMese = reelMesi.find(m => m.isCurrent);
+  const sottoQuota = cliente.stato === 'Attivo' && cliente.reel_quota > 0 && currMese && currMese.fatti < cliente.reel_quota;
+  const reelMancanti = Math.max(0, cliente.reel_quota - (currMese?.fatti ?? 0));
   const alertFineMese = sottoQuota && giorniFineM <= 5;
+  const overQuota = currMese && currMese.fatti > cliente.reel_quota;
 
   return (
     <div
@@ -139,12 +213,23 @@ function ClienteCard({ cliente, onClick }: { cliente: Cliente; onClick: () => vo
 
       {/* Contatori */}
       <div className="space-y-2">
-        <ProgressBar fatti={cliente.reel_fatti} quota={cliente.reel_quota} label="🎬 Reel" />
+        {/* Tripletta Reel */}
+        {cliente.reel_quota > 0 && reelMesi.length === 3 && (
+          <ReelTrend mesi={reelMesi} quota={cliente.reel_quota} />
+        )}
+        {/* Grafiche (barra singola) */}
         <ProgressBar fatti={cliente.grafiche_fatte} quota={cliente.grafiche_quota} label="🖼️ Grafiche" />
-        {totalExtra > 0 && (
+        {overQuota && (
           <div className="flex items-center gap-1">
             <span className="text-xs text-[hsl(var(--clr-red))] font-semibold bg-[hsl(var(--clr-red)/0.1)] px-2 py-0.5 rounded-full border border-[hsl(var(--clr-red)/0.25)]">
-              ⚠️ {totalExtra} extra fatturabili
+              ⚠️ {currMese!.fatti - cliente.reel_quota} reel extra fatturabili
+            </span>
+          </div>
+        )}
+        {extraGrafiche > 0 && (
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-[hsl(var(--clr-red))] font-semibold bg-[hsl(var(--clr-red)/0.1)] px-2 py-0.5 rounded-full border border-[hsl(var(--clr-red)/0.25)]">
+              ⚠️ {extraGrafiche} grafiche extra
             </span>
           </div>
         )}
@@ -637,9 +722,13 @@ function NuovoClienteModal({ onClose, onCreated }: { onClose: () => void; onCrea
 
 // ─── Main Tab ─────────────────────────────────────────────────────────────────
 
+// ─── tipo per la mappa reel per cliente ──────────────────────────────────────
+type ReelMap = Record<string, { prev: number; curr: number; next: number }>;
+
 export function ClientiTab() {
   const { addToast } = useApp();
   const [clienti, setClienti] = useState<Cliente[]>([]);
+  const [reelMap, setReelMap] = useState<ReelMap>({});
   const [loading, setLoading] = useState(true);
   const [filtroStato, setFiltroStato] = useState<string>('Attivo');
   const [search, setSearch] = useState('');
@@ -647,14 +736,21 @@ export function ClientiTab() {
   const [showNuovo, setShowNuovo] = useState(false);
   const [fixLoading, setFixLoading] = useState(false);
 
+  // Mesi dinamici: precedente, corrente, prossimo
   const now = new Date();
-  // Mese di riferimento: Aprile (mese 4, indice 3)
-  const meseRif = new Date(now.getFullYear(), 3, 1); // aprile
-  const meseStart = `${meseRif.getFullYear()}-04-01`;
-  const meseEnd = new Date(meseRif.getFullYear(), 4, 0).toISOString().split('T')[0]; // ultimo giorno aprile
-  const giorniFineM = new Date(meseRif.getFullYear(), 4, 0).getDate() - (now.getMonth() === 3 ? now.getDate() : 0);
+  const currY = now.getFullYear();
+  const currM = now.getMonth(); // 0-indexed
 
-  // Ricalcola i contatori da DB (Programmato + Pubblicato di aprile)
+  const prevRange = meseRange(currY, currM === 0 ? 11 : currM - 1);
+  const prevYear  = currM === 0 ? currY - 1 : currY;
+  const prevRangeFixed = meseRange(prevYear, currM === 0 ? 11 : currM - 1);
+
+  const currRange = meseRange(currY, currM);
+  const nextRange = meseRange(currM === 11 ? currY + 1 : currY, (currM + 1) % 12);
+
+  const giorniFineM = new Date(currY, currM + 1, 0).getDate() - now.getDate();
+
+  // Calcola contatori 3 mesi per tutti i clienti
   const ricalcolaContatori = useCallback(async (clientiData: Cliente[]) => {
     const { data: clps } = await supabase
       .from('contenuti')
@@ -662,57 +758,51 @@ export function ClientiTab() {
       .eq('tipo', 'Reel')
       .in('fase', ['Programmato', 'Pubblicato']);
 
-    if (!clps) return clientiData;
+    if (!clps) return { clientiData, map: {} as ReelMap };
 
-    const counts: Record<string, number> = {};
+    const map: ReelMap = {};
     clps.forEach(c => {
-      if (!c.cliente_id) return;
-      // Conta solo i contenuti con data_pubblicazione in aprile
-      if (c.data_pubblicazione && c.data_pubblicazione >= meseStart && c.data_pubblicazione <= meseEnd) {
-        if (c.fase === 'Pubblicato' || c.fase === 'Programmato') {
-          counts[c.cliente_id] = (counts[c.cliente_id] || 0) + 1;
-        }
-      }
+      if (!c.cliente_id || !c.data_pubblicazione) return;
+      const dp = c.data_pubblicazione;
+      if (!map[c.cliente_id]) map[c.cliente_id] = { prev: 0, curr: 0, next: 0 };
+      if (dp >= prevRangeFixed.start && dp <= prevRangeFixed.end) map[c.cliente_id].prev++;
+      else if (dp >= currRange.start && dp <= currRange.end) map[c.cliente_id].curr++;
+      else if (dp >= nextRange.start && dp <= nextRange.end) map[c.cliente_id].next++;
     });
 
-    // Aggiorna DB in bulk
+    // Aggiorna DB reel_fatti con il conteggio del mese corrente
     await Promise.all(
       clientiData
         .filter(c => c.stato === 'Attivo' && c.reel_quota > 0)
         .map(c => {
-          const n = counts[c.id] || 0;
+          const n = map[c.id]?.curr ?? 0;
           return supabase.from('clienti').update({ reel_fatti: n }).eq('id', c.id);
         })
     );
 
-    return clientiData.map(c => ({ ...c, reel_fatti: counts[c.id] || 0 }));
-  }, [meseStart, meseEnd]);
+    const updated = clientiData.map(c => ({ ...c, reel_fatti: map[c.id]?.curr ?? 0 }));
+    return { clientiData: updated, map };
+  }, [prevRangeFixed.start, prevRangeFixed.end, currRange.start, currRange.end, nextRange.start, nextRange.end]);
 
   // Se siamo a ≤5 giorni dalla fine mese, crea task alert per Elisa
   const checkQuoteInsufficienti = useCallback(async (clientiData: Cliente[]) => {
     if (giorniFineM > 5) return;
 
     const sottoQuota = clientiData.filter(c =>
-      c.stato === 'Attivo' &&
-      c.reel_quota > 0 &&
-      c.reel_fatti < c.reel_quota
+      c.stato === 'Attivo' && c.reel_quota > 0 && c.reel_fatti < c.reel_quota
     );
     if (sottoQuota.length === 0) return;
 
-    // Controlla se esiste già un task di alert per questo mese
-    const meseLabel = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const meseLabel = currRange.start.slice(0, 7);
     const { data: existingTasks } = await supabase
       .from('task')
       .select('id, descrizione')
       .eq('assegnato_a', 'Elisa')
       .eq('tipo', 'Alert Quota')
-      .gte('created_at', meseStart);
+      .gte('created_at', currRange.start);
 
     const existingDesc = (existingTasks || []).map(t => t.descrizione);
-
-    const nuovi = sottoQuota.filter(c =>
-      !existingDesc.some(d => d.includes(c.id_display))
-    );
+    const nuovi = sottoQuota.filter(c => !existingDesc.some(d => d.includes(c.id_display)));
     if (nuovi.length === 0) return;
 
     const descrizione = `⚠️ Quota Reel insufficiente (${meseLabel}): ${nuovi.map(c => `${c.nome} ${c.reel_fatti}/${c.reel_quota}`).join(', ')}`;
@@ -723,20 +813,31 @@ export function ClientiTab() {
       assegnato_da: 'Sistema',
       priorita: '🔴 Alta',
       stato: 'Da fare',
-      scadenza: meseEnd,
+      scadenza: currRange.end,
     });
-  }, [giorniFineM, meseStart, meseEnd, now]);
+  }, [giorniFineM, currRange.start, currRange.end]);
 
   const loadClienti = useCallback(async () => {
     const { data } = await supabase.from('clienti').select('*').order('nome');
     const raw = (data || []) as Cliente[];
-    const aggiornati = await ricalcolaContatori(raw);
+    const { clientiData: aggiornati, map } = await ricalcolaContatori(raw);
     setClienti(aggiornati);
+    setReelMap(map);
     setLoading(false);
     await checkQuoteInsufficienti(aggiornati);
   }, [ricalcolaContatori, checkQuoteInsufficienti]);
 
   useEffect(() => { loadClienti(); }, [loadClienti]);
+
+  // Costruisce la tripletta per un cliente
+  function buildReelMesi(c: Cliente): ReelMese[] {
+    const m = reelMap[c.id] ?? { prev: 0, curr: 0, next: 0 };
+    return [
+      { label: MESI_IT[currM === 0 ? 11 : currM - 1], fatti: m.prev, quota: c.reel_quota, isCurrent: false },
+      { label: MESI_IT[currM],                          fatti: m.curr, quota: c.reel_quota, isCurrent: true  },
+      { label: MESI_IT[(currM + 1) % 12],               fatti: m.next, quota: c.reel_quota, isCurrent: false },
+    ];
+  }
 
   const filtered = clienti.filter(c => {
     if (filtroStato !== 'Tutti' && c.stato !== filtroStato) return false;
@@ -762,7 +863,7 @@ export function ClientiTab() {
   async function handleFix() {
     setFixLoading(true);
     await loadClienti();
-    addToast('🔧 Contatori ricalcolati (Programmato + Pubblicato)', 'success');
+    addToast('🔧 Contatori ricalcolati (3 mesi: prev/curr/next)', 'success');
     setFixLoading(false);
   }
 
@@ -823,7 +924,12 @@ export function ClientiTab() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {filtered.map(c => (
-              <ClienteCard key={c.id} cliente={c} onClick={() => setSelected(c)} />
+              <ClienteCard
+                key={c.id}
+                cliente={c}
+                reelMesi={buildReelMesi(c)}
+                onClick={() => setSelected(c)}
+              />
             ))}
           </div>
         )}
