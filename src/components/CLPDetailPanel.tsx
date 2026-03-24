@@ -51,7 +51,7 @@ async function createDriveFolder(contenuto: Contenuto): Promise<string | null> {
   }
 }
 
-const FASI: FaseCLP[] = ['Idea', 'Script', 'Girato', 'Pre montato', 'Montato', 'Revisione', 'Programmato', 'Pubblicato', 'Scartata'];
+const FASI: FaseCLP[] = ['Idea', 'Script', 'Girato', 'Pre montato', 'Montato', 'Revisionato', 'Programmato', 'Pubblicato', 'Scartata'];
 const CANALI = ['Instagram', 'Facebook', 'Instagram/Facebook', 'TikTok', 'LinkedIn', 'YouTube', 'Altro'];
 const TIPI = ['Reel', 'Post', 'Carosello', 'Story', 'Video', 'Short', 'Altro'];
 
