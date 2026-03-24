@@ -255,7 +255,7 @@ export function ChatPopup({ team }: ChatPopupProps) {
     setInvio(true);
     // Resetta typing
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    presenceChRef.current?.track({ typing: false });
+    try { presenceChRef.current?.track({ typing: false, a: contattoAttivo.nome }); } catch (_) {}
     const { data, error } = await supabase
       .from('chat_messaggi')
       .insert({ da: utente.nome, a: contattoAttivo.nome, testo: testo.trim(), tipo: 'messaggio', rif_task: '', letto: false })
