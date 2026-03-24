@@ -47,7 +47,65 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
   const [deleting, setDeleting] = useState(false);
 
   // Sezione attiva
-  const [section, setSection] = useState<'profilo' | 'team'>('profilo');
+  const [section, setSection] = useState<'profilo' | 'team' | 'integrazioni'>('profilo');
+
+  // Google Calendar state
+  const [gcalLoading, setGcalLoading] = useState(false);
+  const [gcalConnected, setGcalConnected] = useState(false);
+
+  // Inizializza stato GCal dall'utente
+  useEffect(() => {
+    if (utente) {
+      setGcalConnected(!!(utente as any).google_calendar_connected);
+    }
+  }, [utente]);
+
+  // Handler OAuth Google Calendar
+  const connectGoogleCalendar = useCallback(async () => {
+    if (!utente) return;
+    setGcalLoading(true);
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/functions/v1/google-calendar-oauth?action=get_url`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY },
+          body: JSON.stringify({ redirect_uri: GCAL_REDIRECT_URI }),
+        }
+      );
+      const { url } = await res.json();
+      if (url) {
+        // Salva team_id nel sessionStorage per il callback
+        sessionStorage.setItem('gcal_team_id', utente.id);
+        window.open(url, '_blank', 'width=500,height=600');
+      }
+    } catch (e) {
+      addToast('❌ Errore connessione Google Calendar', 'error');
+    } finally {
+      setGcalLoading(false);
+    }
+  }, [utente, addToast]);
+
+  const disconnectGoogleCalendar = useCallback(async () => {
+    if (!utente) return;
+    setGcalLoading(true);
+    try {
+      await fetch(
+        `${SUPABASE_URL}/functions/v1/google-calendar-oauth?action=disconnect`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY },
+          body: JSON.stringify({ team_id: utente.id }),
+        }
+      );
+      setGcalConnected(false);
+      addToast('🔌 Google Calendar disconnesso', 'info');
+    } catch (e) {
+      addToast('❌ Errore disconnessione', 'error');
+    } finally {
+      setGcalLoading(false);
+    }
+  }, [utente, addToast]);
 
   // Close on ESC
   useEffect(() => {
