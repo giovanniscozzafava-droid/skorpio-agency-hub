@@ -361,6 +361,114 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
             </div>
           )}
 
+          {/* ── SEZIONE INTEGRAZIONI ── */}
+          {section === 'integrazioni' && utente && (
+            <div className="px-5 py-6 space-y-5">
+              <h3 className="text-xs font-bold uppercase tracking-wider"
+                style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                Connessioni esterne
+              </h3>
+
+              {/* Google Calendar Card */}
+              <div
+                className="rounded-xl border p-4 space-y-3"
+                style={{
+                  borderColor: gcalConnected ? '#86EFAC' : 'hsl(var(--border))',
+                  background: gcalConnected ? '#F0FDF4' : 'hsl(210 20% 98%)',
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center text-xl"
+                      style={{ background: '#FFF', border: '1px solid hsl(var(--border))', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}
+                    >
+                      📅
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
+                        Google Calendar
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                        {gcalConnected ? '✅ Connesso — sync automatico attivo' : 'Sincronizza eventi sul tuo calendario'}
+                      </p>
+                    </div>
+                  </div>
+                  <div
+                    className="w-3 h-3 rounded-full flex-shrink-0"
+                    style={{ background: gcalConnected ? '#22C55E' : '#D1D5DB' }}
+                  />
+                </div>
+
+                {gcalConnected ? (
+                  <div className="space-y-2">
+                    <div
+                      className="rounded-lg p-3 text-xs"
+                      style={{ background: '#DCFCE7', border: '1px solid #86EFAC' }}
+                    >
+                      <p className="font-semibold" style={{ color: '#15803D' }}>Cosa viene sincronizzato sul tuo Google Calendar:</p>
+                      <ul className="mt-1 space-y-0.5" style={{ color: '#166534' }}>
+                        {utente.ruolo === 'Admin' ? (
+                          <>
+                            <li>• 📱 Tutte le pubblicazioni (calendario editoriale)</li>
+                            <li>• 📅 I tuoi appuntamenti e task personali</li>
+                            <li className="opacity-70 text-[10px] mt-1">* Gli altri task del team restano visibili in-app ma non sul tuo Google Calendar</li>
+                          </>
+                        ) : (
+                          <>
+                            <li>• 📱 Tutte le pubblicazioni (calendario editoriale)</li>
+                            <li>• 📅 I tuoi appuntamenti e task</li>
+                          </>
+                        )}
+                      </ul>
+                    </div>
+                    <button
+                      onClick={disconnectGoogleCalendar}
+                      disabled={gcalLoading}
+                      className="w-full py-2 rounded-lg text-xs font-semibold border transition-all disabled:opacity-50"
+                      style={{
+                        color: '#EF4444',
+                        borderColor: 'rgba(239,68,68,0.3)',
+                        background: 'rgba(239,68,68,0.05)',
+                      }}
+                    >
+                      {gcalLoading ? '⏳ Disconnessione…' : '🔌 Disconnetti Google Calendar'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div
+                      className="rounded-lg p-3 text-xs"
+                      style={{ background: '#EFF6FF', border: '1px solid #BFDBFE' }}
+                    >
+                      <p className="font-semibold" style={{ color: '#1D4ED8' }}>Come funziona:</p>
+                      <ul className="mt-1 space-y-0.5" style={{ color: '#1E40AF' }}>
+                        <li>• Autorizza Fuyue a scrivere sul tuo Google Calendar</li>
+                        <li>• Gli eventi vengono sincronizzati automaticamente</li>
+                        {utente.ruolo === 'Admin' ? (
+                          <li>• Vedrai i tuoi appuntamenti + il calendario editoriale</li>
+                        ) : (
+                          <li>• Vedrai i tuoi task + tutte le pubblicazioni</li>
+                        )}
+                      </ul>
+                    </div>
+                    <button
+                      onClick={connectGoogleCalendar}
+                      disabled={gcalLoading}
+                      className="w-full py-2.5 rounded-lg text-xs font-bold text-white transition-all disabled:opacity-50"
+                      style={{ background: gcalLoading ? '#94A3B8' : '#4285F4' }}
+                    >
+                      {gcalLoading ? '⏳ Apertura finestra…' : '🔗 Collega Google Calendar'}
+                    </button>
+                    <p className="text-[10px] text-center" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                      Si aprirà una finestra Google per autorizzare l'accesso
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* ── SEZIONE TEAM ── */}
           {section === 'team' && isAdmin && (
             <div className="px-5 py-5 space-y-4">
