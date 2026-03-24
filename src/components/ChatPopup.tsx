@@ -64,8 +64,11 @@ export function ChatPopup({ team }: ChatPopupProps) {
   const [salvandoTask, setSalvandoTask] = useState(false);
   const [hoveredMsg, setHoveredMsg] = useState<string | null>(null);
   const [incomingMittente, setIncomingMittente] = useState<string | null>(null);
+  const [altriScrivono, setAltriScrivono] = useState<string[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const presenceChRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const aperto = stato === 'open';
 
