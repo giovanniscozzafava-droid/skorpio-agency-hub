@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Index from './pages/Index';
 import { ResetPassword } from './pages/ResetPassword';
+import GCalCallback from './pages/GCalCallback';
 import NotFound from './pages/NotFound';
 
 const App = () => (
@@ -8,6 +9,7 @@ const App = () => (
     <Routes>
       <Route path="/" element={<Index />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/gcal-callback" element={<GCalCallback />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   </BrowserRouter>
