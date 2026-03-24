@@ -619,6 +619,11 @@ export type Database = {
           avatar_url: string | null
           colore: string | null
           created_at: string | null
+          google_calendar_access_token: string | null
+          google_calendar_connected: boolean | null
+          google_calendar_id: string | null
+          google_calendar_refresh_token: string | null
+          google_calendar_token_expiry: number | null
           id: string
           label: string | null
           nome: string
@@ -629,6 +634,11 @@ export type Database = {
           avatar_url?: string | null
           colore?: string | null
           created_at?: string | null
+          google_calendar_access_token?: string | null
+          google_calendar_connected?: boolean | null
+          google_calendar_id?: string | null
+          google_calendar_refresh_token?: string | null
+          google_calendar_token_expiry?: number | null
           id?: string
           label?: string | null
           nome: string
@@ -639,6 +649,11 @@ export type Database = {
           avatar_url?: string | null
           colore?: string | null
           created_at?: string | null
+          google_calendar_access_token?: string | null
+          google_calendar_connected?: boolean | null
+          google_calendar_id?: string | null
+          google_calendar_refresh_token?: string | null
+          google_calendar_token_expiry?: number | null
           id?: string
           label?: string | null
           nome?: string

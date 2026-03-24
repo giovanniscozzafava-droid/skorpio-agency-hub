@@ -593,6 +593,7 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
 
   // ── Data loading ───────────────────────────────────────────────────────────
   const loadData = useCallback(async () => {
+    if (!utente) return;
     setLoading(true);
     let rangeStart: string, rangeEnd: string;
 
@@ -606,17 +607,34 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
       rangeEnd = toDateStr(addDays(ws, 8));
     }
 
-    const [evRes, mktRes, contRes] = await Promise.all([
+    const isAdmin = utente.ruolo === 'Admin';
+
+    // Carica tutti gli eventi grezzi
+    const [evResAll, mktRes, contRes] = await Promise.all([
       supabase.from('calendario').select('*').gte('data', rangeStart).lte('data', rangeEnd).order('ora', { nullsFirst: true }),
       supabase.from('marketing_calendar').select('*').gte('data', rangeStart).lte('data', rangeEnd),
       supabase.from('contenuti').select('id, id_display, titolo, cliente_nome, tipo, canale, fase, data_pubblicazione').neq('fase', 'Pubblicato').neq('fase', 'Scartata'),
     ]);
 
-    setEventi((evRes.data as CalendarioEvent[]) || []);
+    const tuttiEventi = (evResAll.data as CalendarioEvent[]) || [];
+
+    // Filtra per ruolo:
+    // - Admin: vede tutto
+    // - Team: vede le proprie pubblicazioni/appuntamenti/task (persona === utente.nome) + TUTTE le pubblicazioni
+    const eventiFiltrati = isAdmin
+      ? tuttiEventi
+      : tuttiEventi.filter(ev =>
+          ev.tipo === 'pubblicazione' ||
+          ev.persona === utente.nome ||
+          ev.persona === '' ||
+          ev.persona === null
+        );
+
+    setEventi(eventiFiltrati);
     setMarketing((mktRes.data as MarketingEvent[]) || []);
     setContenuti((contRes.data as any[]) || []);
     setLoading(false);
-  }, [vista, currentDate]);
+  }, [vista, currentDate, utente]);
 
   useEffect(() => { loadData(); }, [loadData]);
 

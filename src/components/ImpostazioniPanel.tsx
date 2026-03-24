@@ -1,8 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import { Avatar } from './Avatar';
 import type { TeamMember, Task } from '../types';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID as string;
+const GCAL_REDIRECT_URI = `${window.location.origin}/gcal-callback`;
 
 const COLORI_PRESET = [
   '#F59E0B', '#EC4899', '#06B6D4', '#22C55E',
@@ -43,7 +47,78 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
   const [deleting, setDeleting] = useState(false);
 
   // Sezione attiva
-  const [section, setSection] = useState<'profilo' | 'team'>('profilo');
+  const [section, setSection] = useState<'profilo' | 'team' | 'integrazioni'>('profilo');
+
+  // Google Calendar state
+  const [gcalLoading, setGcalLoading] = useState(false);
+  const [gcalConnected, setGcalConnected] = useState(false);
+
+  // Inizializza stato GCal dall'utente
+  useEffect(() => {
+    if (utente) {
+      setGcalConnected(!!(utente as any).google_calendar_connected);
+    }
+  }, [utente]);
+
+  // Ascolta callback OAuth dalla finestra popup
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
+      if (e.data?.type === 'GCAL_CONNECTED') {
+        setGcalConnected(true);
+        addToast('✅ Google Calendar connesso con successo!', 'success');
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [addToast]);
+
+  // Handler OAuth Google Calendar
+  const connectGoogleCalendar = useCallback(async () => {
+    if (!utente) return;
+    setGcalLoading(true);
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/functions/v1/google-calendar-oauth?action=get_url`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY },
+          body: JSON.stringify({ redirect_uri: GCAL_REDIRECT_URI }),
+        }
+      );
+      const { url } = await res.json();
+      if (url) {
+        // Salva team_id nel sessionStorage per il callback
+        sessionStorage.setItem('gcal_team_id', utente.id);
+        window.open(url, '_blank', 'width=500,height=600');
+      }
+    } catch (e) {
+      addToast('❌ Errore connessione Google Calendar', 'error');
+    } finally {
+      setGcalLoading(false);
+    }
+  }, [utente, addToast]);
+
+  const disconnectGoogleCalendar = useCallback(async () => {
+    if (!utente) return;
+    setGcalLoading(true);
+    try {
+      await fetch(
+        `${SUPABASE_URL}/functions/v1/google-calendar-oauth?action=disconnect`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY },
+          body: JSON.stringify({ team_id: utente.id }),
+        }
+      );
+      setGcalConnected(false);
+      addToast('🔌 Google Calendar disconnesso', 'info');
+    } catch (e) {
+      addToast('❌ Errore disconnessione', 'error');
+    } finally {
+      setGcalLoading(false);
+    }
+  }, [utente, addToast]);
 
   // Close on ESC
   useEffect(() => {
@@ -198,6 +273,17 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
           >
             👤 Profilo
           </button>
+          <button
+            onClick={() => setSection('integrazioni')}
+            className="flex-1 py-2.5 text-xs font-semibold transition-colors"
+            style={{
+              color: section === 'integrazioni' ? '#3B82F6' : 'hsl(var(--skorpio-text-secondary))',
+              borderBottom: section === 'integrazioni' ? '2px solid #3B82F6' : '2px solid transparent',
+              background: 'transparent',
+            }}
+          >
+            🔗 Integrazioni
+          </button>
           {isAdmin && (
             <button
               onClick={() => setSection('team')}
@@ -285,6 +371,114 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
               <p className="text-xs text-center" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
                 💡 Solo un Admin può modificare le informazioni del profilo
               </p>
+            </div>
+          )}
+
+          {/* ── SEZIONE INTEGRAZIONI ── */}
+          {section === 'integrazioni' && utente && (
+            <div className="px-5 py-6 space-y-5">
+              <h3 className="text-xs font-bold uppercase tracking-wider"
+                style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                Connessioni esterne
+              </h3>
+
+              {/* Google Calendar Card */}
+              <div
+                className="rounded-xl border p-4 space-y-3"
+                style={{
+                  borderColor: gcalConnected ? '#86EFAC' : 'hsl(var(--border))',
+                  background: gcalConnected ? '#F0FDF4' : 'hsl(210 20% 98%)',
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center text-xl"
+                      style={{ background: '#FFF', border: '1px solid hsl(var(--border))', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}
+                    >
+                      📅
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
+                        Google Calendar
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                        {gcalConnected ? '✅ Connesso — sync automatico attivo' : 'Sincronizza eventi sul tuo calendario'}
+                      </p>
+                    </div>
+                  </div>
+                  <div
+                    className="w-3 h-3 rounded-full flex-shrink-0"
+                    style={{ background: gcalConnected ? '#22C55E' : '#D1D5DB' }}
+                  />
+                </div>
+
+                {gcalConnected ? (
+                  <div className="space-y-2">
+                    <div
+                      className="rounded-lg p-3 text-xs"
+                      style={{ background: '#DCFCE7', border: '1px solid #86EFAC' }}
+                    >
+                      <p className="font-semibold" style={{ color: '#15803D' }}>Cosa viene sincronizzato sul tuo Google Calendar:</p>
+                      <ul className="mt-1 space-y-0.5" style={{ color: '#166534' }}>
+                        {utente.ruolo === 'Admin' ? (
+                          <>
+                            <li>• 📱 Tutte le pubblicazioni (calendario editoriale)</li>
+                            <li>• 📅 I tuoi appuntamenti e task personali</li>
+                            <li className="opacity-70 text-[10px] mt-1">* Gli altri task del team restano visibili in-app ma non sul tuo Google Calendar</li>
+                          </>
+                        ) : (
+                          <>
+                            <li>• 📱 Tutte le pubblicazioni (calendario editoriale)</li>
+                            <li>• 📅 I tuoi appuntamenti e task</li>
+                          </>
+                        )}
+                      </ul>
+                    </div>
+                    <button
+                      onClick={disconnectGoogleCalendar}
+                      disabled={gcalLoading}
+                      className="w-full py-2 rounded-lg text-xs font-semibold border transition-all disabled:opacity-50"
+                      style={{
+                        color: '#EF4444',
+                        borderColor: 'rgba(239,68,68,0.3)',
+                        background: 'rgba(239,68,68,0.05)',
+                      }}
+                    >
+                      {gcalLoading ? '⏳ Disconnessione…' : '🔌 Disconnetti Google Calendar'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div
+                      className="rounded-lg p-3 text-xs"
+                      style={{ background: '#EFF6FF', border: '1px solid #BFDBFE' }}
+                    >
+                      <p className="font-semibold" style={{ color: '#1D4ED8' }}>Come funziona:</p>
+                      <ul className="mt-1 space-y-0.5" style={{ color: '#1E40AF' }}>
+                        <li>• Autorizza Fuyue a scrivere sul tuo Google Calendar</li>
+                        <li>• Gli eventi vengono sincronizzati automaticamente</li>
+                        {utente.ruolo === 'Admin' ? (
+                          <li>• Vedrai i tuoi appuntamenti + il calendario editoriale</li>
+                        ) : (
+                          <li>• Vedrai i tuoi task + tutte le pubblicazioni</li>
+                        )}
+                      </ul>
+                    </div>
+                    <button
+                      onClick={connectGoogleCalendar}
+                      disabled={gcalLoading}
+                      className="w-full py-2.5 rounded-lg text-xs font-bold text-white transition-all disabled:opacity-50"
+                      style={{ background: gcalLoading ? '#94A3B8' : '#4285F4' }}
+                    >
+                      {gcalLoading ? '⏳ Apertura finestra…' : '🔗 Collega Google Calendar'}
+                    </button>
+                    <p className="text-[10px] text-center" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                      Si aprirà una finestra Google per autorizzare l'accesso
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
