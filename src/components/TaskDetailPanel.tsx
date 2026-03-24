@@ -55,6 +55,14 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   const [savingFase, setSavingFase] = useState(false);
   const [taskCompletato, setTaskCompletato] = useState(task.stato === 'Completato');
 
+  // ── Programmazione date picker ─────────────────────────────────────────────
+  const [dataPub, setDataPub] = useState<Date | undefined>(
+    task.scadenza ? new Date(task.scadenza) : undefined
+  );
+  const [oraPub, setOraPub] = useState<string>(task.ora ? task.ora.slice(0, 5) : '');
+  const [savingProg, setSavingProg] = useState(false);
+  const isProgrammazioneTask = task.tipo === 'Programmazione';
+
   const isCLPTask = !!(task.id_contenuto && WORKFLOW_MAP[task.tipo]);
   const workflowStep = WORKFLOW_MAP[task.tipo];
 
@@ -74,9 +82,70 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
     setTaskCompletato(task.stato === 'Completato');
   }, [task.stato]);
 
+  useEffect(() => {
+    setDataPub(task.scadenza ? new Date(task.scadenza) : undefined);
+    setOraPub(task.ora ? task.ora.slice(0, 5) : '');
+  }, [task.scadenza, task.ora]);
+
   const scad = task.scadenza ? new Date(task.scadenza) : null;
   const oggi = new Date(); oggi.setHours(0, 0, 0, 0);
   const isScaduto = scad && scad < oggi && task.stato !== 'Completato';
+
+  // ── Salva data/ora di pubblicazione (task Programmazione) ─────────────────
+  const handleSalvaProgrammazione = async () => {
+    if (!dataPub || !task.id_contenuto) return;
+    setSavingProg(true);
+    const dataStr = format(dataPub, 'yyyy-MM-dd');
+    const oraStr = oraPub || null;
+
+    // Aggiorna scadenza del task e data_pubblicazione del CLP
+    await Promise.all([
+      supabase.from('task').update({ scadenza: dataStr, ora: oraStr }).eq('id', task.id),
+      supabase.from('contenuti').update({
+        data_pubblicazione: dataStr,
+        ora_pubblicazione: oraStr,
+        fase: 'Programmato',
+      }).eq('id', task.id_contenuto),
+    ]);
+
+    // Completa il task e aggiunge evento calendario
+    await supabase.from('task').update({ stato: 'Completato' }).eq('id', task.id);
+
+    // Crea evento calendario per la pubblicazione
+    const { data: contenuto } = await supabase
+      .from('contenuti')
+      .select('*')
+      .eq('id', task.id_contenuto)
+      .single();
+
+    if (contenuto) {
+      await supabase.from('calendario').insert({
+        tipo: 'pubblicazione',
+        data: dataStr,
+        ora: oraStr,
+        descrizione: `📱 Pubblica ${contenuto.id_display} – ${contenuto.titolo}`,
+        cliente_id: contenuto.cliente_id,
+        cliente_nome: contenuto.cliente_nome || '',
+        contenuto_id: contenuto.id,
+        id_contenuto_display: contenuto.id_display,
+        canale: contenuto.canale || '',
+        tipo_contenuto: contenuto.tipo || '',
+        persona: 'Elisa',
+        stato: 'Pianificato',
+      });
+    }
+
+    setClpFase('Programmato');
+    setTaskCompletato(true);
+    sounds.taskCompletato();
+    addToast(`📅 CLP programmato per ${format(dataPub, 'd MMM yyyy', { locale: it })}${oraStr ? ' alle ' + oraStr : ''} — verrà pubblicato automaticamente!`, 'success');
+
+    const { data: updated } = await supabase.from('task').select('*').eq('id', task.id).single();
+    if (updated) onUpdate(updated as Task);
+    setSavingProg(false);
+  };
+
+
 
   // ── Cambia solo lo stato del task (senza toccare il CLP) ──────────────────
   const handleStatoChange = async (nuovoStato: Task['stato']) => {
