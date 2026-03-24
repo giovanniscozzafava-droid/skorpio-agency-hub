@@ -60,6 +60,19 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
     }
   }, [utente]);
 
+  // Ascolta callback OAuth dalla finestra popup
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
+      if (e.data?.type === 'GCAL_CONNECTED') {
+        setGcalConnected(true);
+        addToast('✅ Google Calendar connesso con successo!', 'success');
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [addToast]);
+
   // Handler OAuth Google Calendar
   const connectGoogleCalendar = useCallback(async () => {
     if (!utente) return;
