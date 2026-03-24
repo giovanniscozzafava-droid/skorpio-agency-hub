@@ -68,16 +68,16 @@ export function ChatPopup({ team }: ChatPopupProps) {
 
   const aperto = stato === 'open';
 
-  // Carica messaggi
+  // Carica messaggi — dipende solo dal nome (primitivo) per stabilità
   const caricaMessaggi = useCallback(async () => {
-    if (!utente) return;
+    if (!utenteNome) return;
     const { data } = await supabase
       .from('chat_messaggi')
       .select('*')
-      .or(`da.eq.${utente.nome},a.eq.${utente.nome}`)
+      .or(`da.eq.${utenteNome},a.eq.${utenteNome}`)
       .order('created_at', { ascending: true });
     setMessaggi((data as ChatMessaggio[]) || []);
-  }, [utente]);
+  }, [utenteNome]);
 
   // Carica reactions
   const caricaReactions = useCallback(async () => {
