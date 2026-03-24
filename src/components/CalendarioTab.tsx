@@ -650,11 +650,14 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
 
   // ── Create CLP event (position content on calendar) ───────────────────────
   const handleSaveCLP = async (contenuto: Contenuto, ora: string) => {
+    const dataStr = toDateStr(selectedDate);
+    const oraStr = ora || null;
+
     const payload = {
       tipo: 'contenuto' as const,
       descrizione: contenuto.titolo,
-      data: toDateStr(selectedDate),
-      ora: ora || null,
+      data: dataStr,
+      ora: oraStr,
       cliente_id: contenuto.cliente_id,
       cliente_nome: contenuto.cliente_nome,
       contenuto_id: contenuto.id,
@@ -667,11 +670,45 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
     const { data, error } = await supabase.from('calendario').insert(payload).select().single();
     if (!error && data) {
       setEventi(prev => [...prev, data as CalendarioEvent]);
-      // Also update data_pubblicazione on contenuto
+
+      // Aggiorna data_pubblicazione sul CLP
       await supabase.from('contenuti').update({
-        data_pubblicazione: toDateStr(selectedDate),
-        ora_pubblicazione: ora || null,
+        data_pubblicazione: dataStr,
+        ora_pubblicazione: oraStr,
       }).eq('id', contenuto.id);
+
+      // ── WORKFLOW: se il CLP è in "Girato" e non esiste ancora un task Premontaggio per Luca → crealo ──
+      if (contenuto.fase === 'Girato') {
+        const nomeLuca = findMembro(team, 'Luca');
+        const contenutoAggiornato = { ...contenuto, data_pubblicazione: dataStr, ora_pubblicazione: oraStr };
+        const newTask = await creaTaskWorkflow(
+          contenutoAggiornato,
+          nomeLuca,
+          'Premontaggio',
+          `🎬 Premontaggia ${contenuto.id_display} – ${contenuto.titolo}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}`,
+          'Da fare',
+          dataStr,
+          oraStr
+        );
+        if (newTask) {
+          addToast(`📋 Task premontaggio creato per ${nomeLuca} con scadenza ${selectedDate.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}`, 'success');
+        } else {
+          // Task già esiste → aggiorna solo la scadenza
+          const { data: existingTask } = await supabase
+            .from('task')
+            .select('id')
+            .eq('id_contenuto', contenuto.id)
+            .eq('tipo', 'Premontaggio')
+            .neq('stato', 'Completato')
+            .neq('stato', 'Archiviato')
+            .single();
+          if (existingTask) {
+            await supabase.from('task').update({ scadenza: dataStr, ora: oraStr, priorita: '🔴 Alta' }).eq('id', existingTask.id);
+            addToast(`⏰ Scadenza task Luca aggiornata al ${selectedDate.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}`, 'success');
+          }
+        }
+      }
+
       addToast(`📹 ${contenuto.id_display} posizionato il ${selectedDate.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}`, 'success');
     }
     setShowCLPPicker(false);
