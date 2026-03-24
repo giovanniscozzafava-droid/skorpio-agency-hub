@@ -50,7 +50,9 @@ async function creaTaskWorkflow(
   assegnatoA: string,
   tipo: string,
   descrizione: string,
-  stato: string = 'Da fare'
+  stato: string = 'Da fare',
+  scadenza?: string | null,
+  ora?: string | null
 ) {
   // Evita duplicati: se esiste già un task attivo per questo contenuto+tipo non ne creare un altro
   const { data: existing } = await supabase
@@ -78,7 +80,9 @@ async function creaTaskWorkflow(
       cliente_id: contenuto.cliente_id,
       cliente_nome: contenuto.cliente_nome || '',
       id_contenuto: contenuto.id,
-      priorita: '🟡 Media',
+      priorita: scadenza ? '🔴 Alta' : '🟡 Media',
+      scadenza: scadenza ?? null,
+      ora: ora ?? null,
     })
     .select()
     .single();
@@ -213,14 +217,16 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
     const nomeAlessandro = findMembro(team, 'Alessandro');
     const nomeElisa = findMembro(team, 'Elisa');
 
-    // GIRATO → crea task premontaggio per Luca
+    // GIRATO → crea task premontaggio per Luca (con scadenza = data_pubblicazione se presente)
     if (nuovaFase === 'Girato') {
       const task = await creaTaskWorkflow(
         contenutoAggiornato,
         nomeLuca,
         'Premontaggio',
         `🎬 Premontaggia ${contenutoAggiornato.id_display} – ${contenutoAggiornato.titolo}${contenutoAggiornato.cliente_nome ? ` (${contenutoAggiornato.cliente_nome})` : ''}`,
-        'Da fare'
+        'Da fare',
+        contenutoAggiornato.data_pubblicazione ?? null,
+        contenutoAggiornato.ora_pubblicazione?.slice(0, 5) ?? null
       );
       if (task) addToast(`📋 Task premontaggio creato per ${nomeLuca}`, 'success');
     }
