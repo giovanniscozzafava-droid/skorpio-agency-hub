@@ -105,23 +105,9 @@ export function ChatPopup({ team }: ChatPopupProps) {
           if (msg.da === utente.nome || msg.a === utente.nome) {
             setMessaggi(prev => prev.find(m => m.id === msg.id) ? prev : [...prev, msg]);
 
-            // Messaggio IN ARRIVO (non mio)
+            // Messaggio IN ARRIVO (non mio) → apri chat invasivamente
             if (msg.da !== utente.nome) {
-              // 🔊 Suono invasivo
               sounds.chatUrgente();
-
-              // 📲 Apri la chat forzatamente e vai sulla conversazione col mittente
-              setStato('open');
-              setContattoAttivo(prev => {
-                // Apri il contatto del mittente (cerca nel team passato via ref)
-                return prev; // verrà sovrascritta nel secondo set qui sotto
-              });
-              // Imposta il contatto attivo al mittente usando il team corrente
-              setContattoAttivo(currentContact => {
-                // Cerca il membro nel team corrente via closure
-                return currentContact;
-              });
-              // Usiamo un ref separato per trovare il membro
               setIncomingMittente(msg.da);
             }
           }
@@ -129,9 +115,9 @@ export function ChatPopup({ team }: ChatPopupProps) {
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [utente, addToast]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [utente]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Apri automaticamente la conversazione col mittente
+  // Apri automaticamente la conversazione col mittente quando arriva un messaggio
   useEffect(() => {
     if (!incomingMittente || team.length === 0) return;
     const membro = team.find(m => m.nome === incomingMittente);
