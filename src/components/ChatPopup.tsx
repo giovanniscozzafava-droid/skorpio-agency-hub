@@ -48,6 +48,7 @@ function formatSeparatoreData(ts: string) {
 
 export function ChatPopup({ team }: ChatPopupProps) {
   const { utente, addToast } = useApp();
+  const utenteNome = utente?.nome ?? '';
 
   // 'closed' | 'minimized' | 'open'
   const [stato, setStato] = useState<'closed' | 'minimized' | 'open'>('closed');
@@ -68,16 +69,16 @@ export function ChatPopup({ team }: ChatPopupProps) {
 
   const aperto = stato === 'open';
 
-  // Carica messaggi
+  // Carica messaggi — dipende solo dal nome (primitivo) per stabilità
   const caricaMessaggi = useCallback(async () => {
-    if (!utente) return;
+    if (!utenteNome) return;
     const { data } = await supabase
       .from('chat_messaggi')
       .select('*')
-      .or(`da.eq.${utente.nome},a.eq.${utente.nome}`)
+      .or(`da.eq.${utenteNome},a.eq.${utenteNome}`)
       .order('created_at', { ascending: true });
     setMessaggi((data as ChatMessaggio[]) || []);
-  }, [utente]);
+  }, [utenteNome]);
 
   // Carica reactions
   const caricaReactions = useCallback(async () => {
@@ -92,21 +93,21 @@ export function ChatPopup({ team }: ChatPopupProps) {
     caricaReactions();
   }, [caricaMessaggi, caricaReactions]);
 
-  // Realtime messaggi
+  // Realtime messaggi — dipende solo dal nome (primitivo) per evitare ri-subscribe su ogni render
   useEffect(() => {
-    if (!utente) return;
+    if (!utenteNome) return;
     const channel = supabase
-      .channel('chat-popup-realtime')
+      .channel(`chat-popup-${utenteNome}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'chat_messaggi' },
         (payload) => {
           const msg = payload.new as ChatMessaggio;
-          if (msg.da === utente.nome || msg.a === utente.nome) {
+          if (msg.da === utenteNome || msg.a === utenteNome) {
             setMessaggi(prev => prev.find(m => m.id === msg.id) ? prev : [...prev, msg]);
 
             // Messaggio IN ARRIVO (non mio) → apri chat invasivamente
-            if (msg.da !== utente.nome) {
+            if (msg.da !== utenteNome) {
               sounds.chatUrgente();
               setIncomingMittente(msg.da);
             }
@@ -115,7 +116,7 @@ export function ChatPopup({ team }: ChatPopupProps) {
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [utente]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [utenteNome]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Apri automaticamente la conversazione col mittente quando arriva un messaggio
   useEffect(() => {
