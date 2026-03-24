@@ -5,6 +5,11 @@ import { sounds } from '../lib/sounds';
 import { avanzaFaseDaTask, completaTaskEAvanzaFase, WORKFLOW_MAP } from '../lib/clpWorkflow';
 import type { Task, TeamMember, FaseCLP } from '../types';
 import { Avatar } from './Avatar';
+import { Calendar } from './ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import { format } from 'date-fns';
+import { it } from 'date-fns/locale';
+import { CalendarIcon } from 'lucide-react';
 
 const STATI: Task['stato'][] = ['Da fare', 'In lavorazione', 'In revisione', 'Completato', 'Non accettato'];
 
