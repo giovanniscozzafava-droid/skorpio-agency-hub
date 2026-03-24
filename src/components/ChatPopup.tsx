@@ -62,6 +62,7 @@ export function ChatPopup({ team }: ChatPopupProps) {
   const [taskScadenza, setTaskScadenza] = useState('');
   const [salvandoTask, setSalvandoTask] = useState(false);
   const [hoveredMsg, setHoveredMsg] = useState<string | null>(null);
+  const [incomingMittente, setIncomingMittente] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -103,18 +104,29 @@ export function ChatPopup({ team }: ChatPopupProps) {
           const msg = payload.new as ChatMessaggio;
           if (msg.da === utente.nome || msg.a === utente.nome) {
             setMessaggi(prev => prev.find(m => m.id === msg.id) ? prev : [...prev, msg]);
+
+            // Messaggio IN ARRIVO (non mio) → apri chat invasivamente
             if (msg.da !== utente.nome) {
-              sounds.messaggio();
-              if (stato !== 'open') {
-                addToast(`💬 ${msg.da}: ${msg.testo.substring(0, 45)}${msg.testo.length > 45 ? '…' : ''}`, 'info');
-              }
+              sounds.chatUrgente();
+              setIncomingMittente(msg.da);
             }
           }
         }
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [utente, stato, addToast]);
+  }, [utente]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Apri automaticamente la conversazione col mittente quando arriva un messaggio
+  useEffect(() => {
+    if (!incomingMittente || team.length === 0) return;
+    const membro = team.find(m => m.nome === incomingMittente);
+    if (membro) {
+      setStato('open');
+      setContattoAttivo(membro);
+    }
+    setIncomingMittente(null);
+  }, [incomingMittente, team]);
 
   // Realtime reactions
   useEffect(() => {

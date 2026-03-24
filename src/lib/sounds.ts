@@ -178,6 +178,20 @@ export const sounds = {
     tone(1200, 0.12, 0.08, 'sine', 0.05);
   },
 
+  // 📲 CHAT URGENTE — Triplice "ding" invasivo stile telefono che squilla
+  chatUrgente: () => {
+    // 3 ding ravvicinati e forti, come una notifica telefonica insistente
+    for (let i = 0; i < 3; i++) {
+      tone(1400, i * 0.22,        0.04, 'sine', 0.28);
+      tone(1800, i * 0.22 + 0.05, 0.09, 'sine', 0.22);
+      tone(1400, i * 0.22 + 0.15, 0.06, 'sine', 0.18);
+    }
+    // Vibrazione finale — impulso basso
+    tone(120, 0.70, 0.08, 'sawtooth', 0.20);
+    tone(90,  0.79, 0.12, 'sawtooth', 0.18, 60);
+    noise(0.70, 0.12, 0.10);
+  },
+
   // 🗑️ ELIMINA — "Womp womp" tromboni tristi (meme trombone)
   elimina: () => {
     // Womp womp discendente
