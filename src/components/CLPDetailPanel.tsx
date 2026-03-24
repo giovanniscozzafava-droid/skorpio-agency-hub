@@ -8,6 +8,11 @@ import { FASE_CONFIG } from './ContenutiTab';
 import { Calendar } from './ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { cn } from '../lib/utils';
+import {
+  findMembro,
+  completaTaskPerContenuto,
+  creaTaskWorkflow,
+} from '../lib/clpWorkflow';
 
 const STATI_CLIP: LogRipresa['stato'][] = ['Da girare', 'Grezza', 'Buona', 'Scartata', 'Usata'];
 const FORMATI_CLIP = ['Verticale 9:16', 'Orizzontale 16:9', 'Quadrato 1:1', 'Foto', 'Raw / LOG', 'Slow Motion', 'Drone', 'Altro'];
