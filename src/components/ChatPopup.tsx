@@ -720,6 +720,20 @@ export function ChatPopup({ team }: ChatPopupProps) {
                     </div>
                   )}
 
+                  {/* Typing indicator */}
+                  {contattoAttivo && altriScrivono.includes(contattoAttivo.nome) && (
+                    <div className="px-4 pb-1 flex items-center gap-1.5">
+                      <div className="flex gap-0.5 items-center">
+                        <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: 'hsl(var(--muted-foreground))', animationDelay: '0ms' }} />
+                        <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: 'hsl(var(--muted-foreground))', animationDelay: '150ms' }} />
+                        <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: 'hsl(var(--muted-foreground))', animationDelay: '300ms' }} />
+                      </div>
+                      <span className="text-xs italic" style={{ color: 'hsl(var(--muted-foreground))', fontSize: 10 }}>
+                        {contattoAttivo.nome} sta scrivendo…
+                      </span>
+                    </div>
+                  )}
+
                   {/* Input */}
                   <div className="px-3 py-2.5 border-t flex items-center gap-2 flex-shrink-0"
                     style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}>
@@ -730,7 +744,17 @@ export function ChatPopup({ team }: ChatPopupProps) {
                       style={{ background: 'hsl(var(--muted))', borderColor: 'hsl(var(--border))', color: 'hsl(var(--foreground))' }}
                       placeholder={`Scrivi a ${contattoAttivo.nome}…`}
                       value={testo}
-                      onChange={e => setTesto(e.target.value)}
+                      onChange={e => {
+                        setTesto(e.target.value);
+                        // Broadcast "sto scrivendo" via Presence
+                        if (presenceChRef.current) {
+                          presenceChRef.current.track({ typing: true });
+                          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+                          typingTimeoutRef.current = setTimeout(() => {
+                            presenceChRef.current?.track({ typing: false });
+                          }, 2000);
+                        }
+                      }}
                       onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); invia(); } }}
                       disabled={invio}
                     />
