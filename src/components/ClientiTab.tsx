@@ -3,6 +3,16 @@ import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import type { Cliente } from '../types';
 
+// ─── helpers mese ────────────────────────────────────────────────────────────
+function meseRange(year: number, month: number) {
+  // month: 0-indexed (0=gen, 11=dic)
+  const start = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+  const end = new Date(year, month + 1, 0).toISOString().split('T')[0];
+  return { start, end };
+}
+
+const MESI_IT = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 const PACCHETTO_COLORS: Record<string, string> = {
