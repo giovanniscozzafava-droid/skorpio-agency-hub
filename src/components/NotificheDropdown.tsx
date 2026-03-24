@@ -45,17 +45,18 @@ export function NotificheDropdown({ onClose, onOpenTask }: Props) {
       ref={ref}
       className="absolute right-0 top-full mt-2 w-80 rounded-xl shadow-2xl z-50 overflow-hidden"
       style={{
-        background: 'hsl(var(--skorpio-card))',
-        border: '1px solid hsl(var(--skorpio-border))',
+        background: 'hsl(var(--topbar-bg))',
+        border: '1px solid rgba(255,255,255,0.12)',
       }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'hsl(var(--skorpio-border))' }}>
+      <div className="flex items-center justify-between px-4 py-3 border-b"
+        style={{ borderColor: 'rgba(255,255,255,0.1)' }}>
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-white">🔔 Notifiche</span>
           {nonLette > 0 && (
-            <span className="text-xs px-1.5 py-0.5 rounded-full font-bold"
-              style={{ background: 'hsl(var(--skorpio-accent))', color: 'white' }}>
+            <span className="text-xs px-1.5 py-0.5 rounded-full font-bold text-white"
+              style={{ background: 'hsl(var(--primary))' }}>
               {nonLette}
             </span>
           )}
@@ -63,8 +64,8 @@ export function NotificheDropdown({ onClose, onOpenTask }: Props) {
         {nonLette > 0 && (
           <button
             onClick={marcaTutteLette}
-            className="text-xs transition-opacity hover:opacity-80"
-            style={{ color: 'hsl(var(--skorpio-accent))' }}
+            className="text-xs hover:opacity-80 transition-opacity"
+            style={{ color: 'hsl(var(--primary))' }}
           >
             Segna tutte lette
           </button>
@@ -74,8 +75,8 @@ export function NotificheDropdown({ onClose, onOpenTask }: Props) {
       {/* Lista */}
       <div className="overflow-y-auto" style={{ maxHeight: 380 }}>
         {notifiche.length === 0 ? (
-          <div className="py-10 text-center text-sm" style={{ color: 'hsl(var(--skorpio-muted))' }}>
-            Nessuna notifica
+          <div className="py-10 text-center text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>
+            Nessuna notifica 🎉
           </div>
         ) : (
           notifiche.map(n => (
@@ -84,27 +85,31 @@ export function NotificheDropdown({ onClose, onOpenTask }: Props) {
               onClick={() => {
                 marcaLetta(n.id);
                 if (n.task_id && onOpenTask) onOpenTask(n.task_id);
+                onClose();
               }}
-              className="flex gap-3 px-4 py-3 cursor-pointer transition-colors hover:opacity-80 border-b"
+              className="flex gap-3 px-4 py-3 cursor-pointer transition-colors border-b hover:bg-white/5"
               style={{
-                borderColor: 'hsl(var(--skorpio-border))',
-                background: n.letto ? 'transparent' : 'hsl(var(--skorpio-accent) / 0.08)',
+                borderColor: 'rgba(255,255,255,0.06)',
+                background: n.letto ? 'transparent' : 'rgba(59,130,246,0.08)',
               }}
             >
               <span className="text-lg flex-shrink-0 mt-0.5">{icona(n.tipo)}</span>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold text-white leading-snug">{n.titolo}</p>
-                <p className="text-xs mt-0.5 leading-snug line-clamp-2" style={{ color: 'hsl(var(--skorpio-muted))' }}>
+                <p className="text-xs mt-0.5 leading-snug line-clamp-2"
+                  style={{ color: 'rgba(255,255,255,0.55)' }}>
                   {n.messaggio}
                 </p>
-                <p className="text-xs mt-1" style={{ color: 'hsl(var(--skorpio-muted) / 0.6)' }}>
-                  {n.task_id_display && <span className="mr-2 font-mono">{n.task_id_display}</span>}
+                <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                  {n.task_id_display && (
+                    <span className="mr-2 font-mono">{n.task_id_display}</span>
+                  )}
                   {timeAgo(n.created_at)}
                 </p>
               </div>
               {!n.letto && (
                 <span className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5"
-                  style={{ background: 'hsl(var(--skorpio-accent))' }} />
+                  style={{ background: 'hsl(var(--primary))' }} />
               )}
             </div>
           ))
