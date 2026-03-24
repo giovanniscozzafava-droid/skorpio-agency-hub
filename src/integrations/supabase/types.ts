@@ -519,6 +519,42 @@ export type Database = {
         }
         Relationships: []
       }
+      notifiche: {
+        Row: {
+          created_at: string
+          destinatario: string
+          id: string
+          letto: boolean
+          messaggio: string
+          task_id: string | null
+          task_id_display: string | null
+          tipo: string
+          titolo: string
+        }
+        Insert: {
+          created_at?: string
+          destinatario: string
+          id?: string
+          letto?: boolean
+          messaggio: string
+          task_id?: string | null
+          task_id_display?: string | null
+          tipo: string
+          titolo: string
+        }
+        Update: {
+          created_at?: string
+          destinatario?: string
+          id?: string
+          letto?: boolean
+          messaggio?: string
+          task_id?: string | null
+          task_id_display?: string | null
+          tipo?: string
+          titolo?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           auth_user_id: string
