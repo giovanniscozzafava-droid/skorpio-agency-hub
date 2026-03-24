@@ -50,7 +50,9 @@ async function creaTaskWorkflow(
   assegnatoA: string,
   tipo: string,
   descrizione: string,
-  stato: string = 'Da fare'
+  stato: string = 'Da fare',
+  scadenza?: string | null,
+  ora?: string | null
 ) {
   // Evita duplicati: se esiste già un task attivo per questo contenuto+tipo non ne creare un altro
   const { data: existing } = await supabase
@@ -78,7 +80,9 @@ async function creaTaskWorkflow(
       cliente_id: contenuto.cliente_id,
       cliente_nome: contenuto.cliente_nome || '',
       id_contenuto: contenuto.id,
-      priorita: '🟡 Media',
+      priorita: scadenza ? '🔴 Alta' : '🟡 Media',
+      scadenza: scadenza ?? null,
+      ora: ora ?? null,
     })
     .select()
     .single();
