@@ -48,6 +48,7 @@ function formatSeparatoreData(ts: string) {
 
 export function ChatPopup({ team }: ChatPopupProps) {
   const { utente, addToast } = useApp();
+  const utenteNome = utente?.nome ?? '';
 
   // 'closed' | 'minimized' | 'open'
   const [stato, setStato] = useState<'closed' | 'minimized' | 'open'>('closed');
