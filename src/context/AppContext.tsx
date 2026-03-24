@@ -47,8 +47,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Quando arriva una session, carica il profilo team corrispondente
+  // Usa session.user.id come chiave per evitare ri-esecuzioni su TOKEN_REFRESHED
   useEffect(() => {
-    if (!session) return;
+    if (!session?.user?.id) return;
+
+    // Se l'utente è già caricato per questo stesso auth_user_id, non fare nulla
+    if (utente && (utente as any).auth_user_id === session.user.id) return;
 
     const autoLink = async () => {
       // 1. Cerca per auth_user_id già collegato
@@ -73,8 +77,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           emailLocal.startsWith(m.nome.toLowerCase())
         );
 
-        if (match && !match.auth_user_id) {
-          // Collega automaticamente
+        if (match) {
+          // Collega automaticamente (anche se già aveva auth_user_id — potrebbe essere lo stesso)
           await supabase.from('team').update({ auth_user_id: session.user.id }).eq('id', match.id);
           await supabase.from('profiles').upsert(
             { auth_user_id: session.user.id, team_id: match.id },
@@ -89,7 +93,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     autoLink();
-  }, [session]);
+  }, [session?.user?.id]);
 
   // ── Auto-pubblica CLPs programmati con data <= oggi ──────────────────────
   useEffect(() => {
