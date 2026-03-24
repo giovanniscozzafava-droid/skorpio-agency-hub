@@ -760,13 +760,15 @@ export function ChatPopup({ team }: ChatPopupProps) {
                       value={testo}
                       onChange={e => {
                         setTesto(e.target.value);
-                        // Broadcast "sto scrivendo" via Presence
-                        if (presenceChRef.current) {
-                          presenceChRef.current.track({ typing: true });
-                          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-                          typingTimeoutRef.current = setTimeout(() => {
-                            presenceChRef.current?.track({ typing: false });
-                          }, 2000);
+                        // Broadcast "sto scrivendo A [contatto]" via Presence (solo se canale pronto)
+                        if (presenceChRef.current && contattoAttivo) {
+                          try {
+                            presenceChRef.current.track({ typing: true, a: contattoAttivo.nome });
+                            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+                            typingTimeoutRef.current = setTimeout(() => {
+                              try { presenceChRef.current?.track({ typing: false, a: contattoAttivo.nome }); } catch (_) {}
+                            }, 2000);
+                          } catch (_) {}
                         }
                       }}
                       onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); invia(); } }}
