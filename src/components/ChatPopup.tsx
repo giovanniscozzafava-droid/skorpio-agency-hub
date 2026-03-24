@@ -160,22 +160,33 @@ export function ChatPopup({ team }: ChatPopupProps) {
     }
   }, []);
 
-  // Presence channel per "sta scrivendo..."
+  // Presence channel per "sta scrivendo..." — canale GLOBALE condiviso
   useEffect(() => {
     if (!utenteNome) return;
-    const ch = supabase.channel(`chat-presence-${utenteNome}`, {
+    const ch = supabase.channel('chat-typing-global', {
       config: { presence: { key: utenteNome } },
     });
     ch.on('presence', { event: 'sync' }, () => {
-      const state = ch.presenceState<{ typing: boolean }>();
-      const scrivono = Object.entries(state)
-        .filter(([key, presences]) => key !== utenteNome && (presences as any[])[0]?.typing)
-        .map(([key]) => key);
-      setAltriScrivono(scrivono);
-    }).subscribe();
-    presenceChRef.current = ch;
+      try {
+        const state = ch.presenceState<{ typing: boolean; a: string }>();
+        // Mostra "sta scrivendo" solo se la persona sta scrivendo A me
+        const scrivono = Object.entries(state)
+          .filter(([key, presences]) => {
+            const p = (presences as any[])[0];
+            return key !== utenteNome && p?.typing === true && p?.a === utenteNome;
+          })
+          .map(([key]) => key);
+        setAltriScrivono(scrivono);
+      } catch (_) {
+        // ignora errori di presence
+      }
+    }).subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        presenceChRef.current = ch;
+      }
+    });
     return () => {
-      supabase.removeChannel(ch);
+      try { supabase.removeChannel(ch); } catch (_) {}
       presenceChRef.current = null;
     };
   }, [utenteNome]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -244,7 +255,7 @@ export function ChatPopup({ team }: ChatPopupProps) {
     setInvio(true);
     // Resetta typing
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    presenceChRef.current?.track({ typing: false });
+    try { presenceChRef.current?.track({ typing: false, a: contattoAttivo.nome }); } catch (_) {}
     const { data, error } = await supabase
       .from('chat_messaggi')
       .insert({ da: utente.nome, a: contattoAttivo.nome, testo: testo.trim(), tipo: 'messaggio', rif_task: '', letto: false })
@@ -749,13 +760,15 @@ export function ChatPopup({ team }: ChatPopupProps) {
                       value={testo}
                       onChange={e => {
                         setTesto(e.target.value);
-                        // Broadcast "sto scrivendo" via Presence
-                        if (presenceChRef.current) {
-                          presenceChRef.current.track({ typing: true });
-                          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-                          typingTimeoutRef.current = setTimeout(() => {
-                            presenceChRef.current?.track({ typing: false });
-                          }, 2000);
+                        // Broadcast "sto scrivendo A [contatto]" via Presence (solo se canale pronto)
+                        if (presenceChRef.current && contattoAttivo) {
+                          try {
+                            presenceChRef.current.track({ typing: true, a: contattoAttivo.nome });
+                            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+                            typingTimeoutRef.current = setTimeout(() => {
+                              try { presenceChRef.current?.track({ typing: false, a: contattoAttivo.nome }); } catch (_) {}
+                            }, 2000);
+                          } catch (_) {}
                         }
                       }}
                       onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); invia(); } }}
