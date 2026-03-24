@@ -102,10 +102,18 @@ function ClienteCard({ cliente, onClick }: { cliente: Cliente; onClick: () => vo
   const extraGrafiche = Math.max(0, cliente.grafiche_fatte - cliente.grafiche_quota);
   const totalExtra = extraReel + extraGrafiche;
 
+  // Calcola giorni alla fine del mese
+  const now = new Date();
+  const giorniFineM = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate();
+  const sottoQuota = cliente.stato === 'Attivo' && cliente.reel_quota > 0 && cliente.reel_fatti < cliente.reel_quota;
+  const reelMancanti = Math.max(0, cliente.reel_quota - cliente.reel_fatti);
+  const alertFineMese = sottoQuota && giorniFineM <= 5;
+
   return (
     <div
       onClick={onClick}
-      className="bg-card border border-border rounded-xl p-4 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all duration-150 flex flex-col gap-3"
+      className={`bg-card border rounded-xl p-4 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all duration-150 flex flex-col gap-3
+        ${alertFineMese ? 'border-[hsl(var(--clr-amber)/0.6)] shadow-[0_0_0_1px_hsl(var(--clr-amber)/0.2)]' : 'border-border'}`}
     >
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
@@ -137,6 +145,13 @@ function ClienteCard({ cliente, onClick }: { cliente: Cliente; onClick: () => vo
           <div className="flex items-center gap-1">
             <span className="text-xs text-[hsl(var(--clr-red))] font-semibold bg-[hsl(var(--clr-red)/0.1)] px-2 py-0.5 rounded-full border border-[hsl(var(--clr-red)/0.25)]">
               ⚠️ {totalExtra} extra fatturabili
+            </span>
+          </div>
+        )}
+        {alertFineMese && (
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-[hsl(var(--clr-amber))] font-semibold bg-[hsl(var(--clr-amber)/0.1)] px-2 py-0.5 rounded-full border border-[hsl(var(--clr-amber)/0.25)]">
+              🔔 {reelMancanti} reel mancanti — {giorniFineM}gg al fine mese
             </span>
           </div>
         )}
