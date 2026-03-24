@@ -648,11 +648,13 @@ export function ClientiTab() {
   const [fixLoading, setFixLoading] = useState(false);
 
   const now = new Date();
-  const meseStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-  const meseEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-  const giorniFineM = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate();
+  // Mese di riferimento: Aprile (mese 4, indice 3)
+  const meseRif = new Date(now.getFullYear(), 3, 1); // aprile
+  const meseStart = `${meseRif.getFullYear()}-04-01`;
+  const meseEnd = new Date(meseRif.getFullYear(), 4, 0).toISOString().split('T')[0]; // ultimo giorno aprile
+  const giorniFineM = new Date(meseRif.getFullYear(), 4, 0).getDate() - (now.getMonth() === 3 ? now.getDate() : 0);
 
-  // Ricalcola i contatori da DB (Programmato + Pubblicato del mese)
+  // Ricalcola i contatori da DB (Programmato + Pubblicato di aprile)
   const ricalcolaContatori = useCallback(async (clientiData: Cliente[]) => {
     const { data: clps } = await supabase
       .from('contenuti')
@@ -665,14 +667,11 @@ export function ClientiTab() {
     const counts: Record<string, number> = {};
     clps.forEach(c => {
       if (!c.cliente_id) return;
-      // Per 'Pubblicato': conta solo quelli del mese corrente
-      if (c.fase === 'Pubblicato') {
-        if (c.data_pubblicazione && c.data_pubblicazione >= meseStart && c.data_pubblicazione <= meseEnd) {
+      // Conta solo i contenuti con data_pubblicazione in aprile
+      if (c.data_pubblicazione && c.data_pubblicazione >= meseStart && c.data_pubblicazione <= meseEnd) {
+        if (c.fase === 'Pubblicato' || c.fase === 'Programmato') {
           counts[c.cliente_id] = (counts[c.cliente_id] || 0) + 1;
         }
-      } else if (c.fase === 'Programmato') {
-        // Programmato conta sempre (è già schedulato questo mese)
-        counts[c.cliente_id] = (counts[c.cliente_id] || 0) + 1;
       }
     });
 
