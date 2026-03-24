@@ -62,6 +62,7 @@ export function ChatPopup({ team }: ChatPopupProps) {
   const [taskScadenza, setTaskScadenza] = useState('');
   const [salvandoTask, setSalvandoTask] = useState(false);
   const [hoveredMsg, setHoveredMsg] = useState<string | null>(null);
+  const [incomingMittente, setIncomingMittente] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
