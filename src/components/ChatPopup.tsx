@@ -153,6 +153,33 @@ export function ChatPopup({ team }: ChatPopupProps) {
     return () => { supabase.removeChannel(channel); };
   }, [caricaReactions]);
 
+  // Richiedi permesso notifiche push al mount
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // Presence channel per "sta scrivendo..."
+  useEffect(() => {
+    if (!utenteNome) return;
+    const ch = supabase.channel(`chat-presence-${utenteNome}`, {
+      config: { presence: { key: utenteNome } },
+    });
+    ch.on('presence', { event: 'sync' }, () => {
+      const state = ch.presenceState<{ typing: boolean }>();
+      const scrivono = Object.entries(state)
+        .filter(([key, presences]) => key !== utenteNome && (presences as any[])[0]?.typing)
+        .map(([key]) => key);
+      setAltriScrivono(scrivono);
+    }).subscribe();
+    presenceChRef.current = ch;
+    return () => {
+      supabase.removeChannel(ch);
+      presenceChRef.current = null;
+    };
+  }, [utenteNome]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Contatti con preview
   const contatti: ContattoPreview[] = useMemo(() => {
     if (!utente) return [];
