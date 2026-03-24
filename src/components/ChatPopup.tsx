@@ -109,10 +109,19 @@ export function ChatPopup({ team }: ChatPopupProps) {
           if (msg.da === utenteNome || msg.a === utenteNome) {
             setMessaggi(prev => prev.find(m => m.id === msg.id) ? prev : [...prev, msg]);
 
-            // Messaggio IN ARRIVO (non mio) → apri chat invasivamente
+            // Messaggio IN ARRIVO (non mio) → apri chat invasivamente + push notification
             if (msg.da !== utenteNome) {
               sounds.chatUrgente();
               setIncomingMittente(msg.da);
+              // Browser push notification se finestra non in focus
+              if (document.hidden && Notification.permission === 'granted') {
+                new Notification(`💬 ${msg.da}`, {
+                  body: msg.testo.length > 80 ? msg.testo.slice(0, 80) + '…' : msg.testo,
+                  icon: '/favicon.ico',
+                  tag: `chat-${msg.da}`,
+                  renotify: true,
+                });
+              }
             }
           }
         }
