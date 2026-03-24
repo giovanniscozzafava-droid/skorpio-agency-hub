@@ -4,7 +4,7 @@
 import { supabase } from './supabase';
 import type { Contenuto, FaseCLP, TeamMember } from '../types';
 
-// Mappa tipo task → fase CLP che viene completata + prossima fase + prossimo tipo task
+// Mappa tipo task → fase CLP completata + prossima fase + prossimo task
 export const WORKFLOW_MAP: Record<string, {
   faseCurrent: FaseCLP;
   faseNext: FaseCLP;
@@ -24,7 +24,7 @@ export const WORKFLOW_MAP: Record<string, {
     faseNext: 'Montato',
     tipoNext: 'Revisione montaggio',
     assegnatoKeyword: 'Elisa',
-    descrizioneNext: c => `🔍 Revisiona montaggio ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
+    descrizioneNext: c => `🔍 Revisiona ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
   },
   'Revisione montaggio': {
     faseCurrent: 'Montato',
@@ -102,8 +102,88 @@ export async function creaTaskWorkflow(
 }
 
 /**
- * Esegue il workflow completo: completa task corrente → avanza fase CLP → crea task successivo
- * Ritorna la nuova fase CLP se ci sono state modifiche, altrimenti null
+ * Chiamato quando l'utente cambia la fase CLP direttamente dal TaskDetailPanel.
+ * Se la nuova fase coincide con faseNext del suo step di workflow:
+ *   → completa il task corrente
+ *   → avanza il CLP
+ *   → crea il task successivo
+ *   → trigera Drive se fase = Montato
+ * Ritorna { nuovaFase, taskCreato, driveTriggered }
+ */
+export async function avanzaFaseDaTask(
+  taskId: string,
+  taskTipo: string,
+  contenutoId: string,
+  nuovaFase: FaseCLP,
+  team: TeamMember[]
+): Promise<{ completatoTask: boolean; taskCreato: boolean; driveTriggered: boolean }> {
+  const step = WORKFLOW_MAP[taskTipo];
+  const isStepCompletion = step && step.faseNext === nuovaFase;
+
+  // 1. Aggiorna sempre la fase del CLP
+  await supabase.from('contenuti').update({ fase: nuovaFase }).eq('id', contenutoId);
+
+  if (!isStepCompletion) {
+    return { completatoTask: false, taskCreato: false, driveTriggered: false };
+  }
+
+  // 2. Completa il task corrente
+  await supabase.from('task').update({ stato: 'Completato' }).eq('id', taskId);
+
+  // 3. Prendi contenuto fresco
+  const { data: contenuto } = await supabase
+    .from('contenuti')
+    .select('*')
+    .eq('id', contenutoId)
+    .single();
+
+  if (!contenuto) return { completatoTask: true, taskCreato: false, driveTriggered: false };
+
+  // 4. Crea il task successivo
+  const assegnatoA = findMembro(team, step.assegnatoKeyword);
+  const newTask = await creaTaskWorkflow(
+    contenuto as Contenuto,
+    assegnatoA,
+    step.tipoNext,
+    step.descrizioneNext(contenuto as Contenuto),
+    'Da fare',
+    contenuto.data_pubblicazione ?? null,
+    contenuto.ora_pubblicazione?.slice(0, 5) ?? null
+  );
+
+  // 5. Se la fase è Montato → triggera Drive
+  let driveTriggered = false;
+  if (nuovaFase === 'Montato' && !contenuto.link_drive) {
+    driveTriggered = true;
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      await fetch(`${supabaseUrl}/functions/v1/create-drive-folder`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseKey}`,
+          'apikey': supabaseKey,
+        },
+        body: JSON.stringify({
+          contenuto_id: contenuto.id,
+          titolo: contenuto.titolo,
+          cliente_nome: contenuto.cliente_nome,
+          tipo: contenuto.tipo,
+          id_display: contenuto.id_display,
+        }),
+      });
+    } catch (e) {
+      console.error('Errore Drive trigger:', e);
+    }
+  }
+
+  return { completatoTask: true, taskCreato: !!newTask, driveTriggered };
+}
+
+/**
+ * Funzione di completamento via tasto "Completato" del task:
+ * avanza la fase CLP + crea il task successivo.
  */
 export async function completaTaskEAvanzaFase(
   taskTipo: string,
@@ -113,7 +193,6 @@ export async function completaTaskEAvanzaFase(
   const step = WORKFLOW_MAP[taskTipo];
   if (!step) return null;
 
-  // 1. Prendi il contenuto aggiornato
   const { data: contenuto } = await supabase
     .from('contenuti')
     .select('*')
@@ -122,13 +201,11 @@ export async function completaTaskEAvanzaFase(
 
   if (!contenuto) return null;
 
-  // 2. Avanza la fase del CLP
   await supabase
     .from('contenuti')
     .update({ fase: step.faseNext })
     .eq('id', contenutoId);
 
-  // 3. Crea il task successivo
   const assegnatoA = findMembro(team, step.assegnatoKeyword);
   await creaTaskWorkflow(
     contenuto as Contenuto,
@@ -140,5 +217,62 @@ export async function completaTaskEAvanzaFase(
     contenuto.ora_pubblicazione?.slice(0, 5) ?? null
   );
 
+  // Se faseNext = Montato → triggera Drive
+  if (step.faseNext === 'Montato' && !contenuto.link_drive) {
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      await fetch(`${supabaseUrl}/functions/v1/create-drive-folder`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseKey}`,
+          'apikey': supabaseKey,
+        },
+        body: JSON.stringify({
+          contenuto_id: contenuto.id,
+          titolo: contenuto.titolo,
+          cliente_nome: contenuto.cliente_nome,
+          tipo: contenuto.tipo,
+          id_display: contenuto.id_display,
+        }),
+      });
+    } catch (e) {
+      console.error('Errore Drive trigger:', e);
+    }
+  }
+
   return step.faseNext;
+}
+
+/**
+ * Check all'avvio: CLPs in stato "Programmato" con data_pubblicazione <= oggi
+ * vengono portati a "Pubblicato" e il task Pubblicazione di Elisa viene completato.
+ * Ritorna il numero di CLPs auto-pubblicati.
+ */
+export async function checkAutoPubblica(): Promise<number> {
+  const oggi = new Date().toISOString().split('T')[0]; // yyyy-MM-dd
+
+  const { data: daPublicare } = await supabase
+    .from('contenuti')
+    .select('id')
+    .eq('fase', 'Programmato')
+    .lte('data_pubblicazione', oggi);
+
+  if (!daPublicare || daPublicare.length === 0) return 0;
+
+  const ids = daPublicare.map(c => c.id);
+
+  // Porta tutti a Pubblicato
+  await supabase
+    .from('contenuti')
+    .update({ fase: 'Pubblicato' })
+    .in('id', ids);
+
+  // Completa i task Pubblicazione attivi collegati
+  for (const { id } of daPublicare) {
+    await completaTaskPerContenuto(id, 'Pubblicazione');
+  }
+
+  return ids.length;
 }

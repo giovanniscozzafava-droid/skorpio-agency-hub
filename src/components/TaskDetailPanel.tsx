@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import { sounds } from '../lib/sounds';
-import { completaTaskEAvanzaFase, WORKFLOW_MAP } from '../lib/clpWorkflow';
-import type { Task, TeamMember, FaseCLP, Contenuto } from '../types';
+import { avanzaFaseDaTask, completaTaskEAvanzaFase, WORKFLOW_MAP } from '../lib/clpWorkflow';
+import type { Task, TeamMember, FaseCLP } from '../types';
 import { Avatar } from './Avatar';
 
 const STATI: Task['stato'][] = ['Da fare', 'In lavorazione', 'In revisione', 'Completato', 'Non accettato'];
@@ -23,7 +23,6 @@ const PRIORITA_COLORS: Record<string, { dot: string; bg: string; text: string }>
   '🟢 Bassa': { dot: '#22C55E', bg: '#DCFCE7', text: '#16A34A' },
 };
 
-// Pipeline CLP ordinata
 const FASI_PIPELINE: FaseCLP[] = ['Girato', 'Pre montato', 'Montato', 'Revisione', 'Programmato', 'Pubblicato'];
 
 const FASE_STYLE: Record<string, { bg: string; text: string; border: string }> = {
@@ -49,12 +48,11 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   const [saving, setSaving] = useState(false);
   const [clpFase, setClpFase] = useState<FaseCLP | null>(null);
   const [savingFase, setSavingFase] = useState(false);
+  const [taskCompletato, setTaskCompletato] = useState(task.stato === 'Completato');
 
-  // Determina se questo task è legato al workflow CLP
   const isCLPTask = !!(task.id_contenuto && WORKFLOW_MAP[task.tipo]);
   const workflowStep = WORKFLOW_MAP[task.tipo];
 
-  // Carica la fase attuale del CLP collegato
   useEffect(() => {
     if (!task.id_contenuto) return;
     supabase
@@ -67,13 +65,17 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
       });
   }, [task.id_contenuto]);
 
+  useEffect(() => {
+    setTaskCompletato(task.stato === 'Completato');
+  }, [task.stato]);
+
   const scad = task.scadenza ? new Date(task.scadenza) : null;
   const oggi = new Date(); oggi.setHours(0, 0, 0, 0);
   const isScaduto = scad && scad < oggi && task.stato !== 'Completato';
 
+  // ── Cambia solo lo stato del task (senza toccare il CLP) ──────────────────
   const handleStatoChange = async (nuovoStato: Task['stato']) => {
     setSaving(true);
-
     const { data, error } = await supabase
       .from('task')
       .update({ stato: nuovoStato })
@@ -81,38 +83,58 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
       .select()
       .single();
 
-    // Se completato e il task è parte del workflow CLP → avanza fase CLP
     if (!error && nuovoStato === 'Completato' && isCLPTask) {
       sounds.taskCompletato();
-      addToast(`Task completato ✅`, 'success');
-
       const nuovaFase = await completaTaskEAvanzaFase(task.tipo, task.id_contenuto!, team);
       if (nuovaFase) {
         setClpFase(nuovaFase);
-        addToast(`🔄 CLP avanzato a "${nuovaFase}" — nuovo task creato!`, 'success');
+        setTaskCompletato(true);
+        const isDrive = nuovaFase === 'Montato';
+        addToast(
+          `✅ Task completato → CLP avanzato a "${nuovaFase}"${isDrive ? ' + 📁 Drive in creazione…' : ' — nuovo task creato!'}`,
+          'success'
+        );
       }
     } else if (!error) {
       if (nuovoStato === 'Completato') sounds.taskCompletato();
       else sounds.salva();
-      addToast(`Stato cambiato → ${nuovoStato}`, 'success');
+      addToast(`Stato → ${nuovoStato}`, 'success');
     }
 
     setSaving(false);
     if (!error && data) onUpdate(data as Task);
   };
 
-  // Avanza manualmente la fase CLP dal pannello task
+  // ── Cambia la fase CLP: se coincide con faseNext → completa task + avanza ─
   const handleFaseCLPChange = async (nuovaFase: FaseCLP) => {
     if (!task.id_contenuto || savingFase) return;
     setSavingFase(true);
-    const { error } = await supabase
-      .from('contenuti')
-      .update({ fase: nuovaFase })
-      .eq('id', task.id_contenuto);
+
+    const result = await avanzaFaseDaTask(
+      task.id,
+      task.tipo,
+      task.id_contenuto,
+      nuovaFase,
+      team
+    );
+
+    setClpFase(nuovaFase);
     setSavingFase(false);
-    if (!error) {
-      setClpFase(nuovaFase);
-      addToast(`🔄 Fase CLP aggiornata → ${nuovaFase}`, 'success');
+
+    if (result.completatoTask) {
+      setTaskCompletato(true);
+      sounds.taskCompletato();
+      // Rifletti il completamento nel task visualizzato
+      const { data } = await supabase.from('task').select('*').eq('id', task.id).single();
+      if (data) onUpdate(data as Task);
+
+      const msgs: string[] = [`✅ Task completato — CLP → "${nuovaFase}"`];
+      if (result.taskCreato) msgs.push('Nuovo task creato!');
+      if (result.driveTriggered) msgs.push('📁 Drive in creazione…');
+      addToast(msgs.join(' · '), 'success');
+    } else {
+      sounds.salva();
+      addToast(`🔄 Fase CLP → ${nuovaFase}`, 'success');
     }
   };
 
@@ -159,17 +181,11 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
 
   return (
     <>
-      {/* Overlay */}
       <div className="fixed inset-0 z-40 bg-black/20" onClick={onClose} />
 
-      {/* Panel */}
       <div
         className="fixed right-0 top-0 bottom-0 z-50 bg-card flex flex-col animate-slide-in-right"
-        style={{
-          width: 360,
-          borderLeft: '1px solid hsl(var(--border))',
-          boxShadow: '-4px 0 20px rgba(0,0,0,0.08)',
-        }}
+        style={{ width: 360, borderLeft: '1px solid hsl(var(--border))', boxShadow: '-4px 0 20px rgba(0,0,0,0.08)' }}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
@@ -177,7 +193,6 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
           <button onClick={onClose} className="sk-btn-ghost text-lg px-2 py-1">✕</button>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
           {/* Descrizione */}
@@ -187,28 +202,22 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
 
           {/* Badges */}
           <div className="flex flex-wrap gap-2">
-            <span
-              className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full"
-              style={{ background: statoInfo.bg, color: statoInfo.text }}
-            >
+            <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full"
+              style={{ background: statoInfo.bg, color: statoInfo.text }}>
               {task.stato}
             </span>
-            <span
-              className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full"
-              style={{ background: prioritaInfo.bg, color: prioritaInfo.text }}
-            >
+            <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full"
+              style={{ background: prioritaInfo.bg, color: prioritaInfo.text }}>
               {task.priorita}
             </span>
             {isScaduto && (
               <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full"
-                style={{ background: '#FEE2E2', color: '#DC2626' }}>
-                ⚠ SCADUTO
-              </span>
+                style={{ background: '#FEE2E2', color: '#DC2626' }}>⚠ SCADUTO</span>
             )}
           </div>
 
           {/* Info rows */}
-          <div className="space-y-2 text-sm">
+          <div className="space-y-2">
             {[
               ['Tipo', task.tipo || '—'],
               ['Cliente', task.cliente_nome || '—'],
@@ -218,15 +227,12 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
               ['Ora', task.ora ? task.ora.slice(0, 5) : '—'],
             ].map(([label, value]) => (
               <div key={label} className="flex gap-2">
-                <span className="flex-shrink-0 text-xs font-medium w-28" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
-                  {label}
-                </span>
+                <span className="flex-shrink-0 text-xs font-medium w-28" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>{label}</span>
                 <span className="text-xs" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>{value}</span>
               </div>
             ))}
           </div>
 
-          {/* Note */}
           {task.note && (
             <div className="rounded-lg p-3 text-xs whitespace-pre-wrap leading-relaxed"
               style={{ background: 'hsl(210 40% 96%)', color: 'hsl(var(--skorpio-text-secondary))' }}>
@@ -236,7 +242,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
 
           <hr style={{ borderColor: 'hsl(var(--border))' }} />
 
-          {/* ─── FASE CLP (solo per task workflow) ──────────────────────────── */}
+          {/* ─── PIPELINE FASE CLP (solo task workflow) ─────────────────────── */}
           {isCLPTask && (
             <div>
               <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
@@ -244,82 +250,80 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
               </p>
 
               {/* Pipeline visiva */}
-              <div className="flex items-center gap-0 mb-3 overflow-x-auto pb-1">
+              <div className="flex items-center mb-3 overflow-x-auto pb-1">
                 {FASI_PIPELINE.map((fase, i) => {
                   const isCurrent = clpFase === fase;
-                  const style = FASE_STYLE[fase] || FASE_STYLE['Girato'];
                   const isPast = clpFase ? FASI_PIPELINE.indexOf(clpFase) > i : false;
+                  const style = FASE_STYLE[fase] || FASE_STYLE['Girato'];
                   return (
                     <React.Fragment key={fase}>
-                      <div
-                        className="flex flex-col items-center gap-0.5 flex-shrink-0"
-                        style={{ minWidth: 52 }}
-                      >
+                      <div className="flex flex-col items-center gap-0.5 flex-shrink-0" style={{ minWidth: 52 }}>
                         <div
-                          className="w-3 h-3 rounded-full border-2 flex-shrink-0"
+                          className="w-3 h-3 rounded-full border-2"
                           style={{
                             background: isCurrent ? style.text : isPast ? style.text : 'hsl(var(--muted))',
                             borderColor: isCurrent ? style.text : isPast ? style.text : 'hsl(var(--border))',
-                            opacity: isPast ? 0.5 : 1,
+                            opacity: isPast ? 0.45 : 1,
                           }}
                         />
-                        <span
-                          className="text-[9px] font-medium text-center leading-tight"
+                        <span className="text-[9px] font-medium text-center leading-tight"
                           style={{
                             color: isCurrent ? style.text : isPast ? style.text : 'hsl(var(--muted-foreground))',
-                            opacity: isPast ? 0.6 : 1,
+                            opacity: isPast ? 0.55 : 1,
                             fontWeight: isCurrent ? 700 : 400,
-                          }}
-                        >
+                          }}>
                           {fase}
                         </span>
                       </div>
                       {i < FASI_PIPELINE.length - 1 && (
-                        <div
-                          className="flex-1 h-px mx-0.5 flex-shrink-0"
-                          style={{
-                            background: isPast ? style.text : 'hsl(var(--border))',
-                            opacity: isPast ? 0.5 : 1,
-                            minWidth: 6,
-                          }}
-                        />
+                        <div className="flex-1 h-px mx-0.5 flex-shrink-0"
+                          style={{ background: isPast ? style.text : 'hsl(var(--border))', opacity: isPast ? 0.4 : 1, minWidth: 6 }} />
                       )}
                     </React.Fragment>
                   );
                 })}
               </div>
 
-              {/* Bottoni per avanzare/modificare fase */}
+              {/* Bottoni fase — evidenzia la faseNext come "azione principale" */}
               <div className="flex flex-wrap gap-1.5">
                 {FASI_PIPELINE.map(fase => {
                   const style = FASE_STYLE[fase] || FASE_STYLE['Girato'];
                   const isCurrent = clpFase === fase;
+                  const isNextStep = workflowStep?.faseNext === fase && !taskCompletato;
                   return (
                     <button
                       key={fase}
                       onClick={() => handleFaseCLPChange(fase)}
-                      disabled={isCurrent || savingFase}
+                      disabled={isCurrent || savingFase || taskCompletato}
                       className="text-xs px-2.5 py-1.5 rounded-md font-medium transition-all"
                       style={{
-                        background: isCurrent ? style.text : style.bg,
-                        color: isCurrent ? 'white' : style.text,
-                        border: `1px solid ${style.border}`,
-                        opacity: savingFase ? 0.5 : 1,
-                        fontWeight: isCurrent ? 700 : 500,
-                        cursor: isCurrent ? 'default' : 'pointer',
+                        background: isCurrent ? style.text : isNextStep ? style.text : style.bg,
+                        color: isCurrent || isNextStep ? 'white' : style.text,
+                        border: `1px solid ${isNextStep ? style.text : style.border}`,
+                        opacity: (savingFase || taskCompletato) && !isCurrent ? 0.45 : 1,
+                        fontWeight: isCurrent || isNextStep ? 700 : 500,
+                        cursor: isCurrent || taskCompletato ? 'default' : 'pointer',
+                        boxShadow: isNextStep ? `0 0 0 2px ${style.text}40` : 'none',
                       }}
                     >
-                      {isCurrent ? `● ${fase}` : fase}
+                      {isCurrent ? `● ${fase}` : isNextStep ? `→ ${fase}` : fase}
                     </button>
                   );
                 })}
               </div>
 
-              {/* Hint: completando il task viene avanzata la fase automaticamente */}
-              {workflowStep && task.stato !== 'Completato' && (
+              {/* Hint contestuale */}
+              {workflowStep && !taskCompletato && (
+                <div className="mt-2 text-[11px] rounded-md px-2.5 py-1.5"
+                  style={{ background: 'hsl(214 80% 55% / 0.08)', color: 'hsl(214 70% 40%)', border: '1px solid hsl(214 80% 55% / 0.25)' }}>
+                  💡 Clicca <strong>→ {workflowStep.faseNext}</strong> per completare il tuo task e passare il lavoro a <strong>{workflowStep.assegnatoKeyword}</strong>
+                  {workflowStep.faseNext === 'Montato' && <> · 📁 Drive verrà creato automaticamente</>}
+                </div>
+              )}
+              {taskCompletato && (
                 <div className="mt-2 text-[11px] rounded-md px-2.5 py-1.5"
                   style={{ background: 'hsl(142 70% 45% / 0.08)', color: 'hsl(142 60% 35%)', border: '1px solid hsl(142 70% 45% / 0.25)' }}>
-                  ✅ Completando il task, il CLP passerà automaticamente a <strong>{workflowStep.faseNext}</strong>
+                  ✅ Task completato — il lavoro è stato passato al prossimo membro del team
                 </div>
               )}
             </div>
@@ -368,7 +372,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
             </div>
           )}
 
-          {/* ─── AGGIUNGI NOTA ───────────────────────────────────────────────── */}
+          {/* ─── NOTA ────────────────────────────────────────────────────────── */}
           <div>
             <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>AGGIUNGI NOTA</p>
             <textarea
