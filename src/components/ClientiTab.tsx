@@ -279,7 +279,16 @@ function DetailPanel({ cliente, onClose, onUpdate, onDelete }: DetailPanelProps)
   useEffect(() => { setForm({ ...cliente }); }, [cliente.id]);
 
   function set(key: keyof Cliente, val: unknown) {
-    setForm(prev => ({ ...prev, [key]: val }));
+    setForm(prev => {
+      const next = { ...prev, [key]: val };
+      // Auto-popola reel_quota quando si cambia pacchetto
+      if (key === 'pacchetto') {
+        if (val === '8 Reel' && next.reel_quota !== 8) next.reel_quota = 8;
+        if (val === 'Tutto' && next.reel_quota === 0) next.reel_quota = 8;
+        if (val === 'Nessuno') next.reel_quota = 0;
+      }
+      return next;
+    });
   }
 
   async function save() {
