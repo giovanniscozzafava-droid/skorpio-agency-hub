@@ -254,11 +254,10 @@ export async function completaTaskEAvanzaFase(
 
 /**
  * Check all'avvio: CLPs in stato "Programmato" con data_pubblicazione <= oggi
- * vengono portati a "Pubblicato" e il task Pubblicazione di Elisa viene completato.
- * Ritorna il numero di CLPs auto-pubblicati.
+ * vengono portati a "Pubblicato" e il task Programmazione di Elisa viene completato.
  */
 export async function checkAutoPubblica(): Promise<number> {
-  const oggi = new Date().toISOString().split('T')[0]; // yyyy-MM-dd
+  const oggi = new Date().toISOString().split('T')[0];
 
   const { data: daPublicare } = await supabase
     .from('contenuti')
@@ -270,15 +269,10 @@ export async function checkAutoPubblica(): Promise<number> {
 
   const ids = daPublicare.map(c => c.id);
 
-  // Porta tutti a Pubblicato
-  await supabase
-    .from('contenuti')
-    .update({ fase: 'Pubblicato' })
-    .in('id', ids);
+  await supabase.from('contenuti').update({ fase: 'Pubblicato' }).in('id', ids);
 
-  // Completa i task Pubblicazione attivi collegati
   for (const { id } of daPublicare) {
-    await completaTaskPerContenuto(id, 'Pubblicazione');
+    await completaTaskPerContenuto(id, 'Programmazione');
   }
 
   return ids.length;
