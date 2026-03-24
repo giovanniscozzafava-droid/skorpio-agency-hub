@@ -4,7 +4,7 @@
 import { supabase } from './supabase';
 import type { Contenuto, FaseCLP, TeamMember } from '../types';
 
-// Mappa tipo task → fase CLP completata + prossima fase + prossimo task
+// Mappa tipo task → fase CLP corrente + prossima fase + prossimo task
 export const WORKFLOW_MAP: Record<string, {
   faseCurrent: FaseCLP;
   faseNext: FaseCLP;
@@ -28,10 +28,17 @@ export const WORKFLOW_MAP: Record<string, {
   },
   'Revisione montaggio': {
     faseCurrent: 'Montato',
-    faseNext: 'Revisione',
-    tipoNext: 'Pubblicazione',
+    faseNext: 'Revisionato',
+    tipoNext: 'Programmazione',
     assegnatoKeyword: 'Elisa',
-    descrizioneNext: c => `📱 Programma/pubblica ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
+    descrizioneNext: c => `📅 Programma ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
+  },
+  'Programmazione': {
+    faseCurrent: 'Revisionato',
+    faseNext: 'Programmato',
+    tipoNext: '',
+    assegnatoKeyword: 'Elisa',
+    descrizioneNext: () => '',
   },
 };
 
@@ -247,11 +254,10 @@ export async function completaTaskEAvanzaFase(
 
 /**
  * Check all'avvio: CLPs in stato "Programmato" con data_pubblicazione <= oggi
- * vengono portati a "Pubblicato" e il task Pubblicazione di Elisa viene completato.
- * Ritorna il numero di CLPs auto-pubblicati.
+ * vengono portati a "Pubblicato" e il task Programmazione di Elisa viene completato.
  */
 export async function checkAutoPubblica(): Promise<number> {
-  const oggi = new Date().toISOString().split('T')[0]; // yyyy-MM-dd
+  const oggi = new Date().toISOString().split('T')[0];
 
   const { data: daPublicare } = await supabase
     .from('contenuti')
@@ -263,15 +269,10 @@ export async function checkAutoPubblica(): Promise<number> {
 
   const ids = daPublicare.map(c => c.id);
 
-  // Porta tutti a Pubblicato
-  await supabase
-    .from('contenuti')
-    .update({ fase: 'Pubblicato' })
-    .in('id', ids);
+  await supabase.from('contenuti').update({ fase: 'Pubblicato' }).in('id', ids);
 
-  // Completa i task Pubblicazione attivi collegati
   for (const { id } of daPublicare) {
-    await completaTaskPerContenuto(id, 'Pubblicazione');
+    await completaTaskPerContenuto(id, 'Programmazione');
   }
 
   return ids.length;
