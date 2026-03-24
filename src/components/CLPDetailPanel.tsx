@@ -330,13 +330,26 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
       return;
     }
 
-    // Porta il CLP a Girato se era in Idea o Script
+    // Porta il CLP a Girato se era in Idea o Script + triggera workflow task Luca
     if (['Idea', 'Script'].includes(form.fase)) {
       await supabase.from('contenuti').update({ fase: 'Girato' }).eq('id', contenuto.id);
       const { data: fresh } = await supabase.from('contenuti').select('*').eq('id', contenuto.id).single();
       if (fresh) {
         onUpdate(fresh as Contenuto);
         setForm(fresh as Contenuto);
+
+        // ── WORKFLOW: crea task Premontaggio per Luca ──────────────────────
+        const nomeLuca = findMembro(team, 'Luca');
+        const newTask = await creaTaskWorkflow(
+          fresh as any,
+          nomeLuca,
+          'Premontaggio',
+          `🎬 Premontaggia ${contenuto.id_display} – ${contenuto.titolo}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}`,
+          'Da fare',
+          fresh.data_pubblicazione ?? null,
+          fresh.ora_pubblicazione?.slice(0, 5) ?? null
+        );
+        if (newTask) addToast(`📋 Task premontaggio creato per ${nomeLuca}`, 'success');
       }
       addToast('🎬 Fase aggiornata a Girato', 'success');
     }
