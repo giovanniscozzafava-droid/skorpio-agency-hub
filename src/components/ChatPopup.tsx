@@ -160,22 +160,33 @@ export function ChatPopup({ team }: ChatPopupProps) {
     }
   }, []);
 
-  // Presence channel per "sta scrivendo..."
+  // Presence channel per "sta scrivendo..." — canale GLOBALE condiviso
   useEffect(() => {
     if (!utenteNome) return;
-    const ch = supabase.channel(`chat-presence-${utenteNome}`, {
+    const ch = supabase.channel('chat-typing-global', {
       config: { presence: { key: utenteNome } },
     });
     ch.on('presence', { event: 'sync' }, () => {
-      const state = ch.presenceState<{ typing: boolean }>();
-      const scrivono = Object.entries(state)
-        .filter(([key, presences]) => key !== utenteNome && (presences as any[])[0]?.typing)
-        .map(([key]) => key);
-      setAltriScrivono(scrivono);
-    }).subscribe();
-    presenceChRef.current = ch;
+      try {
+        const state = ch.presenceState<{ typing: boolean; a: string }>();
+        // Mostra "sta scrivendo" solo se la persona sta scrivendo A me
+        const scrivono = Object.entries(state)
+          .filter(([key, presences]) => {
+            const p = (presences as any[])[0];
+            return key !== utenteNome && p?.typing === true && p?.a === utenteNome;
+          })
+          .map(([key]) => key);
+        setAltriScrivono(scrivono);
+      } catch (_) {
+        // ignora errori di presence
+      }
+    }).subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        presenceChRef.current = ch;
+      }
+    });
     return () => {
-      supabase.removeChannel(ch);
+      try { supabase.removeChannel(ch); } catch (_) {}
       presenceChRef.current = null;
     };
   }, [utenteNome]); // eslint-disable-line react-hooks/exhaustive-deps
