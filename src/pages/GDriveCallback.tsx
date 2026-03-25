@@ -5,8 +5,8 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 /**
  * Pagina di callback per il flusso OAuth di Google Drive.
  * Aperta come popup da ImpostazioniPanel.
- * Prende ?code dalla URL, lo scambia con i token via edge function,
- * poi notifica la finestra padre e si chiude.
+ * Il team_id arriva come parametro OAuth "state" nell'URL (non da sessionStorage,
+ * che non è condiviso cross-frame quando il popup è aperto da window.top).
  */
 export default function GDriveCallback() {
   const [status, setStatus]   = useState<'loading' | 'success' | 'error'>('loading');
@@ -17,6 +17,8 @@ export default function GDriveCallback() {
       const params = new URLSearchParams(window.location.search);
       const code   = params.get('code');
       const error  = params.get('error');
+      // team_id arriva come state OAuth (passato nella URL di autorizzazione)
+      const state  = params.get('state');
 
       if (error || !code) {
         setStatus('error');
@@ -24,10 +26,11 @@ export default function GDriveCallback() {
         return;
       }
 
-      const teamId = sessionStorage.getItem('gdrive_team_id');
+      // Fallback a sessionStorage per retrocompatibilità
+      const teamId = state || sessionStorage.getItem('gdrive_team_id');
       if (!teamId) {
         setStatus('error');
-        setMessage('Sessione scaduta, riprova.');
+        setMessage('Sessione scaduta — riprova la connessione.');
         return;
       }
 
@@ -43,7 +46,8 @@ export default function GDriveCallback() {
             body: JSON.stringify({
               code,
               redirect_uri: `${window.location.origin}/gdrive-callback`,
-              team_id: teamId,
+              team_id:      teamId,
+              state:        state,
             }),
           }
         );
@@ -59,8 +63,14 @@ export default function GDriveCallback() {
         setStatus('success');
         setMessage('Google Drive connesso! Puoi chiudere questa finestra.');
 
-        if (window.opener) {
-          window.opener.postMessage({ type: 'GDRIVE_CONNECTED', teamId }, window.location.origin);
+        // Notifica la finestra padre (che può essere window.opener o window.top)
+        const target = window.opener || (window.top !== window ? window.top : null);
+        if (target) {
+          try {
+            target.postMessage({ type: 'GDRIVE_CONNECTED', teamId }, window.location.origin);
+          } catch {
+            // cross-origin parent — ignora
+          }
           setTimeout(() => window.close(), 1500);
         }
       } catch (e: unknown) {
@@ -86,7 +96,7 @@ export default function GDriveCallback() {
             : 'Errore connessione'}
         </h1>
         <p className="text-sm text-muted-foreground">{message}</p>
-        {status === 'error' && (
+        {status !== 'loading' && (
           <button
             onClick={() => window.close()}
             className="mt-2 text-xs text-primary underline"

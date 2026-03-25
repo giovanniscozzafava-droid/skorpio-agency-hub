@@ -4,9 +4,8 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 
 /**
  * Pagina di callback per il flusso OAuth di Google Calendar.
- * Viene aperta come popup da ImpostazioniPanel.
- * Prende il ?code dalla URL, lo scambia con i token via edge function,
- * poi si chiude e notifica la finestra padre.
+ * Il team_id arriva come parametro OAuth "state" nell'URL (non da sessionStorage,
+ * che non è condiviso cross-frame quando il popup è aperto da window.top).
  */
 export default function GCalCallback() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
@@ -15,8 +14,10 @@ export default function GCalCallback() {
   useEffect(() => {
     const run = async () => {
       const params = new URLSearchParams(window.location.search);
-      const code = params.get('code');
-      const error = params.get('error');
+      const code   = params.get('code');
+      const error  = params.get('error');
+      // team_id arriva come state OAuth
+      const state  = params.get('state');
 
       if (error || !code) {
         setStatus('error');
@@ -24,10 +25,11 @@ export default function GCalCallback() {
         return;
       }
 
-      const team_id = sessionStorage.getItem('gcal_team_id');
+      // Fallback a sessionStorage per retrocompatibilità
+      const team_id = state || sessionStorage.getItem('gcal_team_id');
       if (!team_id) {
         setStatus('error');
-        setMessage('Session scaduta, riprova.');
+        setMessage('Sessione scaduta — riprova la connessione.');
         return;
       }
 
@@ -44,6 +46,7 @@ export default function GCalCallback() {
               code,
               redirect_uri: `${window.location.origin}/gcal-callback`,
               team_id,
+              state,
             }),
           }
         );
@@ -59,14 +62,19 @@ export default function GCalCallback() {
         setStatus('success');
         setMessage('Google Calendar connesso! Puoi chiudere questa finestra.');
 
-        // Notifica la finestra padre e chiudi
-        if (window.opener) {
-          window.opener.postMessage({ type: 'GCAL_CONNECTED', team_id }, window.location.origin);
+        // Notifica la finestra padre (opener o top)
+        const target = window.opener || (window.top !== window ? window.top : null);
+        if (target) {
+          try {
+            target.postMessage({ type: 'GCAL_CONNECTED', team_id }, window.location.origin);
+          } catch {
+            // cross-origin parent — ignora
+          }
           setTimeout(() => window.close(), 1500);
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         setStatus('error');
-        setMessage(e.message || 'Errore sconosciuto');
+        setMessage(e instanceof Error ? e.message : 'Errore sconosciuto');
       }
     };
 
@@ -83,7 +91,7 @@ export default function GCalCallback() {
           {status === 'loading' ? 'Connessione a Google Calendar' : status === 'success' ? 'Connesso!' : 'Errore'}
         </h1>
         <p className="text-sm text-muted-foreground">{message}</p>
-        {status === 'error' && (
+        {status !== 'loading' && (
           <button
             onClick={() => window.close()}
             className="mt-2 text-xs text-primary underline"
