@@ -1,6 +1,6 @@
 // ─── google-drive-transfer ────────────────────────────────────────────────────
 // Legge un file da Supabase Storage (temp-uploads) e lo carica su Google Drive
-// tramite upload resumable server-side, poi elimina il file temporaneo.
+// nella cartella corretta (clip/ o file_esportato/) server-side.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -13,6 +13,20 @@ const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const GOOGLE_CLIENT_ID     = Deno.env.get('GOOGLE_CLIENT_ID')!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET')!;
+const SKORPIO_CLIP_ROOT    = Deno.env.get('SKORPIO_CLIP_ROOT_FOLDER_ID') || '1LH4K5CJD1NuKEAOyZLC7iYrEzQkqgogY';
+
+function slugify(str: string): string {
+  return str
+    .toLowerCase()
+    .replace(/[àáâãäå]/g, 'a')
+    .replace(/[èéêë]/g, 'e')
+    .replace(/[ìíîï]/g, 'i')
+    .replace(/[òóôõö]/g, 'o')
+    .replace(/[ùúûü]/g, 'u')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 50);
+}
 
 // ── Token refresh ─────────────────────────────────────────────────────────────
 async function getValidAccessToken(supabase: ReturnType<typeof createClient>, teamId: string): Promise<string> {
@@ -56,7 +70,7 @@ async function getValidAccessToken(supabase: ReturnType<typeof createClient>, te
   return data.access_token;
 }
 
-// ── Trova o crea cartella Drive ───────────────────────────────────────────────
+// ── Drive helpers ─────────────────────────────────────────────────────────────
 async function findFolder(token: string, name: string, parentId: string): Promise<string | null> {
   const q = encodeURIComponent(
     `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`
@@ -89,18 +103,66 @@ async function findOrCreateFolder(token: string, name: string, parentId: string)
   return createFolder(token, name, parentId);
 }
 
-async function findOrCreateRootFolder(token: string, name: string): Promise<string> {
-  const q = encodeURIComponent(
-    `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false`
-  );
-  const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)&spaces=drive`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  const data = await res.json();
-  if (!res.ok) throw new Error(`Drive search error: ${JSON.stringify(data)}`);
-  if (data.files?.length > 0) return data.files[0].id;
-  return createFolder(token, name);
+/**
+ * Ottieni o crea la struttura cartelle per un CLP:
+ * SKORPIO_Clip/{NomeCliente}/{CLP_ID}_{slug}/clip/   oppure   .../file_esportato/
+ * Se i folder IDs sono già in DB, li usa direttamente (più veloce).
+ */
+async function getTargetFolderId(
+  token: string,
+  supabase: ReturnType<typeof createClient>,
+  zone: 'clip' | 'file_esportato',
+  contenutoId: string | null,
+  clienteName: string,
+  idDisplay: string,
+  titolo: string
+): Promise<{ folderId: string; clipFolderId: string; exportFolderId: string }> {
+  // Leggi i folder IDs già salvati (se esistono)
+  let clipFolderId = '';
+  let exportFolderId = '';
+
+  if (contenutoId) {
+    const { data: cnt } = await supabase
+      .from('contenuti')
+      .select('drive_clip_folder_id, drive_export_folder_id')
+      .eq('id', contenutoId)
+      .single();
+
+    if (cnt?.drive_clip_folder_id && cnt?.drive_export_folder_id) {
+      clipFolderId   = cnt.drive_clip_folder_id;
+      exportFolderId = cnt.drive_export_folder_id;
+      return {
+        folderId: zone === 'clip' ? clipFolderId : exportFolderId,
+        clipFolderId,
+        exportFolderId,
+      };
+    }
+  }
+
+  // Crea struttura completa
+  const clpFolderName  = idDisplay ? `${idDisplay}_${slugify(titolo)}` : slugify(titolo);
+  const clienteId      = await findOrCreateFolder(token, clienteName || 'Senza cliente', SKORPIO_CLIP_ROOT);
+  const clpId          = await findOrCreateFolder(token, clpFolderName, clienteId);
+  clipFolderId         = await findOrCreateFolder(token, 'clip', clpId);
+  exportFolderId       = await findOrCreateFolder(token, 'file_esportato', clpId);
+
+  // Salva i folder IDs in DB
+  if (contenutoId) {
+    await supabase
+      .from('contenuti')
+      .update({
+        drive_clip_folder_id:   clipFolderId,
+        drive_export_folder_id: exportFolderId,
+        link_drive: `https://drive.google.com/drive/folders/${clpId}`,
+      })
+      .eq('id', contenutoId);
+  }
+
+  return {
+    folderId: zone === 'clip' ? clipFolderId : exportFolderId,
+    clipFolderId,
+    exportFolderId,
+  };
 }
 
 // ── Handler principale ────────────────────────────────────────────────────────
@@ -108,7 +170,18 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    const { storagePath, fileName, mimeType, fileSize, clientName, teamId } = await req.json();
+    const {
+      storagePath,
+      fileName,
+      mimeType,
+      fileSize,
+      clientName,
+      teamId,
+      zone = 'clip',       // 'clip' | 'file_esportato'
+      contenutoId = null,  // uuid del contenuto (per recuperare folder IDs)
+      idDisplay = '',
+      titolo = '',
+    } = await req.json();
 
     if (!storagePath || !fileName || !mimeType || !fileSize || !clientName || !teamId) {
       return new Response(
@@ -117,13 +190,19 @@ serve(async (req) => {
       );
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    const supabase    = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     const accessToken = await getValidAccessToken(supabase, teamId);
 
-    // ── Struttura cartelle Drive: Fuyue Agency / {clientName} / 📹 Contenuti
-    const rootId    = await findOrCreateRootFolder(accessToken, 'Fuyue Agency');
-    const clientId  = await findOrCreateFolder(accessToken, clientName, rootId);
-    const contentId = await findOrCreateFolder(accessToken, '📹 Contenuti', clientId);
+    // ── Ottieni la cartella di destinazione corretta
+    const { folderId, clipFolderId, exportFolderId } = await getTargetFolderId(
+      accessToken,
+      supabase,
+      zone as 'clip' | 'file_esportato',
+      contenutoId,
+      clientName,
+      idDisplay,
+      titolo
+    );
 
     // ── Inizia sessione upload resumable su Drive
     const initRes = await fetch(
@@ -136,7 +215,7 @@ serve(async (req) => {
           'X-Upload-Content-Type':   mimeType,
           'X-Upload-Content-Length': String(fileSize),
         },
-        body: JSON.stringify({ name: fileName, parents: [contentId], mimeType }),
+        body: JSON.stringify({ name: fileName, parents: [folderId], mimeType }),
       }
     );
 
@@ -156,9 +235,6 @@ serve(async (req) => {
       throw new Error(`Impossibile scaricare da Storage: ${storageError?.message}`);
     }
 
-    // ── Carica su Drive in un unico request (server-side, nessun CORS)
-    // Per file molto grandi (>5GB), potremmo fare chunked — ma edge function
-    // ha timeout di 150s, quindi gestiamo fino a ~4GB su connessione veloce server-server
     const fileBuffer = await storageData.arrayBuffer();
 
     const uploadRes = await fetch(uploadUrl, {
@@ -179,16 +255,21 @@ serve(async (req) => {
     const fileId  = driveFile.id;
     const fileUrl = `https://drive.google.com/file/d/${fileId}/view`;
 
-    // ── Aggiorna folder id nel team
-    await supabase.from('team').update({ google_drive_folder_id: rootId }).eq('id', teamId);
-
     // ── Elimina il file temporaneo da Supabase Storage
     await supabase.storage.from('temp-uploads').remove([storagePath]);
 
-    console.log(`[google-drive-transfer] ✅ Trasferito "${fileName}" → Drive ID: ${fileId}`);
+    console.log(`[google-drive-transfer] ✅ "${fileName}" → Drive zone=${zone} ID: ${fileId}`);
 
     return new Response(
-      JSON.stringify({ fileId, fileUrl, fileName, folderId: contentId }),
+      JSON.stringify({
+        fileId,
+        fileUrl,
+        fileName,
+        folderId,
+        clipFolderId,
+        exportFolderId,
+        zone,
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 

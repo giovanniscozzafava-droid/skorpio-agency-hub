@@ -8,19 +8,23 @@ const corsHeaders = {
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const GOOGLE_CLIENT_ID     = Deno.env.get('GOOGLE_CALENDAR_CLIENT_ID')!;
-const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CALENDAR_CLIENT_SECRET')!;
+const GOOGLE_CLIENT_ID     = Deno.env.get('GOOGLE_CLIENT_ID')!;
+const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET')!;
 
-// Mappa tipo contenuto → sottocartella cliente
-function getSubfolderForTipo(tipo: string | null): string {
-  const t = (tipo || '').toLowerCase();
-  if (t === 'grafica' || t === 'grafiche' || t === 'foto' || t === 'carosello' || t === 'post') {
-    return '🖼️ Grafiche';
-  }
-  if (t === 'adv' || t === 'advertising' || t === 'sponsorizzato') {
-    return '📣 ADV';
-  }
-  return '📹 Contenuti';
+// SKORPIO: cartella root fissa, non la ricerchiamo — usiamo direttamente l'ID
+const SKORPIO_CLIP_ROOT = Deno.env.get('SKORPIO_CLIP_ROOT_FOLDER_ID') || '1LH4K5CJD1NuKEAOyZLC7iYrEzQkqgogY';
+
+function slugify(str: string): string {
+  return str
+    .toLowerCase()
+    .replace(/[àáâãäå]/g, 'a')
+    .replace(/[èéêë]/g, 'e')
+    .replace(/[ìíîï]/g, 'i')
+    .replace(/[òóôõö]/g, 'o')
+    .replace(/[ùúûü]/g, 'u')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 50);
 }
 
 // ── Ottieni un access_token valido, rinnovando se scaduto ─────────────────────
@@ -40,12 +44,10 @@ async function getValidAccessToken(teamId: string): Promise<string> {
   const nowMs    = Date.now();
   const expiryMs = member.google_drive_token_expiry ?? 0;
 
-  // Usa token corrente se scade tra più di 3 minuti
   if (member.google_drive_access_token && expiryMs - nowMs > 3 * 60 * 1000) {
     return member.google_drive_access_token;
   }
 
-  // Refresh
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -105,18 +107,6 @@ async function findOrCreateFolder(accessToken: string, name: string, parentId: s
   return await createFolder(accessToken, name, parentId);
 }
 
-// ── Trova o crea cartella root (senza parent) ─────────────────────────────────
-async function findOrCreateRootFolder(accessToken: string, name: string): Promise<string> {
-  const q = encodeURIComponent(`name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false and 'root' in parents`);
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&spaces=drive`, {
-    headers: { 'Authorization': `Bearer ${accessToken}` },
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(`Drive search error: ${JSON.stringify(data)}`);
-  if (data.files?.length > 0) return data.files[0].id;
-  return await createFolder(accessToken, name);
-}
-
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -139,32 +129,47 @@ Deno.serve(async (req) => {
 
     const accessToken = await getValidAccessToken(team_id);
 
-    // Struttura: Fuyue Agency / {clientName} / {subfolder} / {titolo}
+    // ── Struttura: SKORPIO_Clip/{NomeCliente}/{CLP_ID}_{titolo-slug}/
     const clienteFolderName = cliente_nome || 'Senza cliente';
-    const subfolderName     = getSubfolderForTipo(tipo);
+    const clpFolderName = id_display
+      ? `${id_display}_${slugify(titolo)}`
+      : slugify(titolo);
 
-    const rootId       = await findOrCreateRootFolder(accessToken, 'Fuyue Agency');
-    const clienteId    = await findOrCreateFolder(accessToken, clienteFolderName, rootId);
-    const subFolderId  = await findOrCreateFolder(accessToken, subfolderName, clienteId);
-    const contentFolderId = await createFolder(accessToken, titolo, subFolderId);
+    // 1. Cartella cliente dentro la root SKORPIO_Clip
+    const clienteId = await findOrCreateFolder(accessToken, clienteFolderName, SKORPIO_CLIP_ROOT);
 
-    const contentFolderUrl = `https://drive.google.com/drive/folders/${contentFolderId}`;
+    // 2. Cartella CLP
+    const clpId = await findOrCreateFolder(accessToken, clpFolderName, clienteId);
 
-    // Aggiorna link_drive nel DB
+    // 3. Sottocartelle clip/ e file_esportato/
+    const clipFolderId    = await findOrCreateFolder(accessToken, 'clip', clpId);
+    const exportFolderId  = await findOrCreateFolder(accessToken, 'file_esportato', clpId);
+
+    const clpFolderUrl = `https://drive.google.com/drive/folders/${clpId}`;
+
+    // Aggiorna DB: link_drive + drive_clip_folder_id + drive_export_folder_id
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     await supabase
       .from('contenuti')
-      .update({ link_drive: contentFolderUrl })
+      .update({
+        link_drive: clpFolderUrl,
+        drive_clip_folder_id: clipFolderId,
+        drive_export_folder_id: exportFolderId,
+      })
       .eq('id', contenuto_id);
 
-    const fullPath = `Fuyue Agency/${clienteFolderName}/${subfolderName}/${titolo}`;
-    console.log(`✅ Cartella Drive creata: ${fullPath} → ${contentFolderUrl}`);
+    const fullPath = `SKORPIO_Clip/${clienteFolderName}/${clpFolderName}`;
+    console.log(`✅ Cartella Drive creata: ${fullPath} → ${clpFolderUrl}`);
+    console.log(`   📁 clip/ → ${clipFolderId}`);
+    console.log(`   📁 file_esportato/ → ${exportFolderId}`);
 
     return new Response(JSON.stringify({
       success: true,
-      folder_id:   contentFolderId,
-      folder_url:  contentFolderUrl,
-      folder_path: fullPath,
+      folder_id:         clpId,
+      folder_url:        clpFolderUrl,
+      folder_path:       fullPath,
+      clip_folder_id:    clipFolderId,
+      export_folder_id:  exportFolderId,
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

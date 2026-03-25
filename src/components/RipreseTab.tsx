@@ -475,7 +475,7 @@ function ClipDetailPanel({ clip, clp, team, onClose, onUpdated }: ClipDetailPane
                 </button>
               )}
             </div>
-            <ClipFileUpload clip={clip} onUpdated={onUpdated} variant="panel" />
+            <ClipFileUpload clip={clip} clp={clp} onUpdated={onUpdated} variant="panel" />
           </div>
         </div>
       </div>
@@ -940,6 +940,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
                     <td className={`${tdCls} text-center relative`} onClick={e => e.stopPropagation()}>
                       <ClipFileUpload
                         clip={clip}
+                        clp={clp}
                         onUpdated={patch => updateClipLocally(clip.id, patch)}
                         variant="row"
                       />

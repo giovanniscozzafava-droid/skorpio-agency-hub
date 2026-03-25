@@ -84,6 +84,8 @@ export type Contenuto = {
   note: string;
   note_revisione: string;
   link_drive: string;
+  drive_clip_folder_id?: string | null;
+  drive_export_folder_id?: string | null;
   generato_da_ai: boolean;
   created_at: string;
   updated_at: string;
@@ -101,7 +103,7 @@ export type LogRipresa = {
   formato: string;
   operatore: string;
   riga: number | null;
-  // Google Drive storage fields
+  // Raw clip files (zona clip/) — one record per clip Sony
   file_id: string | null;
   file_url: string | null;
   file_name: string | null;
@@ -109,6 +111,16 @@ export type LogRipresa = {
   file_mime_type: string | null;
   file_uploaded_at: string | null;
   file_deleted_at: string | null;
+  // Exported file (zona file_esportato/) — il video finale montato
+  exported_file_id: string | null;
+  exported_file_url: string | null;
+  exported_file_name: string | null;
+  exported_file_size: number | null;
+  exported_file_mime_type: string | null;
+  exported_file_uploaded_at: string | null;
+  // Stats aggregate
+  raw_files_count: number;
+  raw_files_size: number;
   created_at: string;
   updated_at: string;
 };

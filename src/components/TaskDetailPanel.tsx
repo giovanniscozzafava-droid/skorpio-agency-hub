@@ -12,6 +12,20 @@ import { it } from 'date-fns/locale';
 import { CalendarIcon } from 'lucide-react';
 import { parseLocalDate } from '../lib/dateUtils';
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+async function invokeEdge(path: string, body: object) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/${path}`, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || `Edge error ${res.status}`);
+  return data;
+}
+
 const STATI: Task['stato'][] = ['Da fare', 'In lavorazione', 'In revisione', 'Completato', 'Non accettato'];
 
 const STATO_COLORS: Record<string, { bg: string; text: string }> = {
@@ -56,6 +70,13 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   const [savingFase, setSavingFase] = useState(false);
   const [taskCompletato, setTaskCompletato] = useState(task.stato === 'Completato');
 
+  // ── Cleanup task state ─────────────────────────────────────────────────────
+  const [cleanupInfo, setCleanupInfo] = useState<{ count: number; totalSize: number; clipFolderId: string } | null>(null);
+  const [loadingCleanup, setLoadingCleanup] = useState(false);
+  const [showCleanupConfirm, setShowCleanupConfirm] = useState(false);
+  const [deletingCleanup, setDeletingCleanup] = useState(false);
+  const isCleanupTask = task.tipo === 'Cleanup';
+
   // ── Programmazione date picker ─────────────────────────────────────────────
   const [dataPub, setDataPub] = useState<Date | undefined>(
     task.scadenza ? parseLocalDate(task.scadenza) : undefined
@@ -66,6 +87,49 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
 
   const isCLPTask = !!(task.id_contenuto && WORKFLOW_MAP[task.tipo]);
   const workflowStep = WORKFLOW_MAP[task.tipo];
+
+  // Load cleanup info when it's a Cleanup task
+  useEffect(() => {
+    if (!isCleanupTask || !task.id_contenuto) return;
+    setLoadingCleanup(true);
+    supabase
+      .from('contenuti')
+      .select('drive_clip_folder_id')
+      .eq('id', task.id_contenuto)
+      .single()
+      .then(async ({ data }) => {
+        if (!data?.drive_clip_folder_id || !utente?.id) { setLoadingCleanup(false); return; }
+        try {
+          const result = await invokeEdge('google-drive-list-files', { folderId: data.drive_clip_folder_id, teamId: utente.id });
+          setCleanupInfo({ count: result.count, totalSize: result.totalSize, clipFolderId: data.drive_clip_folder_id });
+        } catch { /* ignore */ }
+        setLoadingCleanup(false);
+      });
+  }, [task.id_contenuto, isCleanupTask, utente?.id]);
+
+  const handleDeleteRawFiles = async () => {
+    if (!cleanupInfo || !utente?.id) return;
+    setDeletingCleanup(true);
+    try {
+      await invokeEdge('google-drive-delete-folder-contents', { folderId: cleanupInfo.clipFolderId, teamId: utente.id });
+      // Mark raw files deleted in DB
+      if (task.id_contenuto) {
+        const { data: clips } = await supabase.from('log_riprese').select('id').eq('contenuto_id', task.id_contenuto);
+        if (clips && clips.length > 0) {
+          await supabase.from('log_riprese').update({ file_deleted_at: new Date().toISOString(), file_id: null, file_url: null }).in('id', clips.map((c: any) => c.id));
+        }
+      }
+      await supabase.from('task').update({ stato: 'Completato' }).eq('id', task.id);
+      const { data: updated } = await supabase.from('task').select('*').eq('id', task.id).single();
+      if (updated) onUpdate(updated as Task);
+      addToast('🗑️ File grezzi eliminati. File esportato conservato.', 'success');
+      setShowCleanupConfirm(false);
+      setTaskCompletato(true);
+    } catch (err: any) {
+      addToast(`❌ Errore eliminazione: ${err.message}`, 'error');
+    }
+    setDeletingCleanup(false);
+  };
 
   useEffect(() => {
     if (!task.id_contenuto) return;
@@ -478,8 +542,54 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
               )}
             </div>
           )}
-
-
+          {/* ─── CLEANUP TASK: bottone elimina file grezzi ──────────────── */}
+          {isCleanupTask && !taskCompletato && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                🗑️ AZIONI CLEANUP
+              </p>
+              <div className="rounded-xl p-3 space-y-2"
+                style={{ background: 'hsl(0 80% 55% / 0.06)', border: '1px solid hsl(0 80% 55% / 0.2)' }}>
+                {loadingCleanup ? (
+                  <p className="text-xs text-muted-foreground">Verifica file su Drive…</p>
+                ) : cleanupInfo ? (
+                  <>
+                    <p className="text-xs" style={{ color: 'hsl(0 70% 40%)' }}>
+                      📁 {cleanupInfo.count} file grezzi · {cleanupInfo.totalSize > 0 ? `${(cleanupInfo.totalSize / 1024 / 1024 / 1024).toFixed(2)} GB` : '—'} da liberare
+                    </p>
+                    {!showCleanupConfirm ? (
+                      <button
+                        onClick={() => setShowCleanupConfirm(true)}
+                        className="w-full py-2 rounded-lg text-xs font-semibold transition-all"
+                        style={{ background: 'hsl(0 80% 55%)', color: 'white' }}
+                      >
+                        🗑️ Cancella file da montare
+                      </button>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium" style={{ color: 'hsl(0 70% 40%)' }}>
+                          Stai per cancellare {cleanupInfo.count} file dalla cartella clip/. Il file esportato non verrà toccato. Confermi?
+                        </p>
+                        <div className="flex gap-2">
+                          <button onClick={handleDeleteRawFiles} disabled={deletingCleanup}
+                            className="flex-1 py-1.5 rounded-lg text-xs font-semibold"
+                            style={{ background: 'hsl(0 80% 55%)', color: 'white', opacity: deletingCleanup ? 0.6 : 1 }}>
+                            {deletingCleanup ? '⏳ Eliminando…' : '✅ Sì, elimina'}
+                          </button>
+                          <button onClick={() => setShowCleanupConfirm(false)}
+                            className="flex-1 py-1.5 rounded-lg text-xs font-medium border border-border hover:bg-muted">
+                            Annulla
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Nessun file trovato nella cartella clip/ — già pulita o Drive non connesso.</p>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* ─── CAMBIA STATO TASK ──────────────────────────────────────────── */}
           <div>

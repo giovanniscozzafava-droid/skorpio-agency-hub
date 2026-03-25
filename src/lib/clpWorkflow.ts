@@ -277,7 +277,53 @@ export async function checkAutoPubblica(): Promise<number> {
 
   for (const { id } of daPublicare) {
     await completaTaskPerContenuto(id, 'Programmazione');
+    // Crea task cleanup per Elisa (non blocca se fallisce)
+    try {
+      const { data: contenuto } = await supabase.from('contenuti').select('*').eq('id', id).single();
+      if (contenuto) {
+        const { data: teamData } = await supabase.from('team').select('*');
+        const team = (teamData || []) as any[];
+        await creaTaskCleanup(contenuto as Contenuto, team);
+      }
+    } catch (e) {
+      console.error('[checkAutoPubblica] errore creaTaskCleanup:', e);
+    }
   }
 
   return ids.length;
+}
+
+/**
+ * Crea il task di cleanup per Elisa quando un CLP viene pubblicato.
+ * Il task include le info sui file grezzi da eliminare.
+ */
+export async function creaTaskCleanup(contenuto: Contenuto, team: any[]): Promise<void> {
+  // Controlla se esiste già un task cleanup per questo contenuto
+  const { data: existing } = await supabase
+    .from('task')
+    .select('id')
+    .eq('id_contenuto', contenuto.id)
+    .eq('tipo', 'Cleanup')
+    .neq('stato', 'Completato')
+    .neq('stato', 'Archiviato');
+
+  if (existing && existing.length > 0) return;
+
+  const nomeElisa = findMembro(team, 'Elisa');
+
+  const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
+
+  await supabase.from('task').insert({
+    id_display: idData ?? `TSK${Date.now()}`,
+    descrizione: `🗑️ Cleanup ${contenuto.id_display} – ${contenuto.titolo}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}`,
+    tipo: 'Cleanup',
+    stato: 'Da fare',
+    assegnato_a: nomeElisa,
+    assegnato_da: 'Sistema',
+    cliente_id: contenuto.cliente_id,
+    cliente_nome: contenuto.cliente_nome || '',
+    id_contenuto: contenuto.id,
+    priorita: '🟢 Bassa',
+    note: `La clip ${contenuto.id_display} è stata pubblicata. Cancella i file grezzi dalla cartella clip/ su Google Drive. Il file esportato resta.`,
+  });
 }
