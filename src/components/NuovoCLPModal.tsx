@@ -366,6 +366,11 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
           </div>
 
           <div className="flex justify-end gap-3 pt-2">
+            {driveWarning && (
+              <p className="text-xs flex-1 text-left" style={{ color: '#D97706' }}>
+                ⚠️ CLP creato ma cartelle Drive non create. Riprova dalla sincronizzazione.
+              </p>
+            )}
             <button type="button" onClick={onClose} className="sk-btn-ghost">Annulla</button>
             <button type="submit" disabled={saving} className="sk-btn-primary">
               {saving ? 'Creazione…' : '✅ Crea CLP'}
