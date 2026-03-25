@@ -85,13 +85,72 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
     setAuditRunning(false);
   };
 
-  // ── Google Calendar ───────────────────────────────────────────────────────
-  const [gcalLoading, setGcalLoading]     = useState(false);
-  const [gcalConnected, setGcalConnected] = useState(false);
+  // ── Sync Drive Folders ────────────────────────────────────────────────────
+  const [syncRunning, setSyncRunning] = useState(false);
+  const [syncLog, setSyncLog] = useState<Array<{ icon: string; label: string; detail: string }>>([]);
+  const [syncSummary, setSyncSummary] = useState<string | null>(null);
+  const syncLogRef = useRef<HTMLDivElement>(null);
 
-  // ── Google Drive ──────────────────────────────────────────────────────────
-  const [gdriveLoading, setGdriveLoading]     = useState(false);
-  const [gdriveConnected, setGdriveConnected] = useState(false);
+  const runDriveSync = useCallback(async () => {
+    if (!utente) return;
+    setSyncRunning(true);
+    setSyncLog([]);
+    setSyncSummary(null);
+
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/functions/v1/sync-drive-folders`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY },
+          body: JSON.stringify({ team_id: utente.id }),
+        }
+      );
+
+      if (!res.ok || !res.body) {
+        const err = await res.text();
+        addToast(`❌ Errore sincronizzazione: ${err}`, 'error');
+        setSyncRunning(false);
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue;
+          try {
+            const msg = JSON.parse(line.slice(5).trim());
+            if (msg.type === 'log') {
+              setSyncLog(prev => [...prev, { icon: msg.icon, label: msg.label, detail: msg.detail }]);
+              setTimeout(() => syncLogRef.current?.scrollTo({ top: syncLogRef.current.scrollHeight, behavior: 'smooth' }), 50);
+            } else if (msg.type === 'section' || msg.type === 'section_done') {
+              setSyncLog(prev => [...prev, { icon: '', label: msg.text, detail: '' }]);
+            } else if (msg.type === 'done') {
+              setSyncSummary(
+                `✅ Completato — Clienti: ${msg.clientiCreati} create, ${msg.clientiEsistenti} esistenti · CLP: ${msg.clpCreati} create/aggiornate, ${msg.clpEsistenti} OK, ${msg.clpSkipped} saltate`
+              );
+            } else if (msg.type === 'error') {
+              addToast(`❌ ${msg.message}`, 'error');
+            }
+          } catch { /* non JSON, skip */ }
+        }
+      }
+    } catch (e: unknown) {
+      addToast(`❌ Errore connessione: ${e instanceof Error ? e.message : String(e)}`, 'error');
+    } finally {
+      setSyncRunning(false);
+    }
+  }, [utente, addToast]);
+
+
 
   useEffect(() => {
     if (utente) {
