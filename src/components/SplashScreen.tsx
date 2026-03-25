@@ -131,9 +131,12 @@ export function SplashScreen() {
       )}
 
       {/* Footer */}
-      <p className="mt-16 text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>
-        v1.0 — {new Date().getFullYear()} Fuyue Digital Agency
-      </p>
+      <div className="mt-16 flex items-center gap-2">
+        <img src={fuyueLogo} alt="Fuyue" className="h-4 w-auto opacity-30" />
+        <p className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>
+          v1.0 — {new Date().getFullYear()}
+        </p>
+      </div>
     </div>
   );
 }
