@@ -194,6 +194,9 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
     assegnato_montaggio: '',
   });
   const [saving, setSaving] = useState(false);
+  const [driveWarning, setDriveWarning] = useState(false);
+
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 
   const set = (k: string, v: string) => setForm(prev => ({ ...prev, [k]: v }));
 
@@ -207,8 +210,10 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
       seq_name: 'clp_seq',
     });
 
+    const id_display = seqData || `CLP${Date.now()}`;
+
     const payload = {
-      id_display: seqData || `CLP${Date.now()}`,
+      id_display,
       titolo: form.titolo.trim(),
       cliente_id: form.cliente_id || null,
       cliente_nome: form.cliente_nome || '',
@@ -228,6 +233,33 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
 
     setSaving(false);
     if (!error && data) {
+      // Auto-crea cartelle Drive in background (fire & forget)
+      const { data: teamData } = await supabase
+        .from('team')
+        .select('id, google_drive_connected')
+        .eq('google_drive_connected', true)
+        .limit(1)
+        .single();
+
+      if (teamData?.id) {
+        fetch(`${SUPABASE_URL}/functions/v1/create-drive-folder`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify({
+            contenuto_id: data.id,
+            titolo: data.titolo,
+            cliente_nome: data.cliente_nome || '',
+            id_display: data.id_display,
+            team_id: teamData.id,
+          }),
+        }).catch(() => setDriveWarning(true));
+      } else {
+        setDriveWarning(true);
+      }
+
       onCreated(data as Contenuto);
       onClose();
     }
@@ -334,6 +366,11 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
           </div>
 
           <div className="flex justify-end gap-3 pt-2">
+            {driveWarning && (
+              <p className="text-xs flex-1 text-left" style={{ color: '#D97706' }}>
+                ⚠️ CLP creato ma cartelle Drive non create. Riprova dalla sincronizzazione.
+              </p>
+            )}
             <button type="button" onClick={onClose} className="sk-btn-ghost">Annulla</button>
             <button type="submit" disabled={saving} className="sk-btn-primary">
               {saving ? 'Creazione…' : '✅ Crea CLP'}
