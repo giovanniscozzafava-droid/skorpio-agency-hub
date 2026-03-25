@@ -216,7 +216,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
       // 📁 Se la fase è Montato e non c'è ancora link Drive → crea cartella
       if (form.fase === 'Montato' && !updatedData.link_drive) {
         addToast('📁 Creazione cartella Drive…', 'info');
-        const url = await createDriveFolder(updatedData);
+        const url = await createDriveFolder(updatedData, utente?.id);
         if (url) {
           const { data: fresh } = await supabase.from('contenuti').select('*').eq('id', contenuto.id).single();
           if (fresh) onUpdate(fresh as Contenuto);
