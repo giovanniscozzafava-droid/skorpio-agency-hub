@@ -6,6 +6,7 @@ import type { Task, TeamMember, Cliente } from '../types';
 import { Avatar } from './Avatar';
 import { TaskDetailPanel } from './TaskDetailPanel';
 import { NuovoTaskModal } from './NuovoTaskModal';
+import { parseLocalDate } from '../lib/dateUtils';
 
 // ─── Orologio live al secondo per task con scadenza ──────────────────────────
 function getTargetDate(scadenza: string, ora: string | null): Date {
