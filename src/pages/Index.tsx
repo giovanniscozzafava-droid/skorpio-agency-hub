@@ -16,7 +16,7 @@ import type { TeamMember, Cliente, Task } from '../types';
 import { supabase } from '../integrations/supabase/client';
 
 function MainApp() {
-  const { utente, session, tab } = useApp();
+  const { utente, session, tab, setTab } = useApp();
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [clienti, setClienti] = useState<Cliente[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -70,10 +70,7 @@ function MainApp() {
       <DeadlineAlertModal
         tasks={tasks}
         utente={utente}
-        onGoToTask={(taskId) => {
-          // Porta l'utente alla tab kanban
-          const { setTab } = useApp();
-        }}
+        onGoToTask={() => setTab('kanban')}
       />
     </div>
   );
