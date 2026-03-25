@@ -314,7 +314,7 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
       {uploading && progress && (
         <div className="space-y-1">
           <div className="flex justify-between text-xs text-muted-foreground">
-            <span>Caricamento su Google Drive…</span>
+            <span>{progress.percent < 84 ? 'Caricamento su storage locale…' : 'Trasferimento su Google Drive…'}</span>
             <span>{progress.percent}%</span>
           </div>
           <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
