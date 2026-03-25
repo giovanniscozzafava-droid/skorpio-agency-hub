@@ -78,6 +78,26 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
     return () => window.removeEventListener('message', handler);
   }, [addToast]);
 
+  // Gestisce il caso in cui OAuth è avvenuto nella finestra principale (popup bloccato)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('gdrive_connected') === '1') {
+      setGdriveConnected(true);
+      addToast('✅ Google Drive connesso! I file verranno caricati nel tuo My Drive.', 'success');
+      // Rimuovi il parametro dall'URL senza ricaricare la pagina
+      const url = new URL(window.location.href);
+      url.searchParams.delete('gdrive_connected');
+      window.history.replaceState({}, '', url.toString());
+    }
+    if (params.get('gcal_connected') === '1') {
+      setGcalConnected(true);
+      addToast('✅ Google Calendar connesso con successo!', 'success');
+      const url = new URL(window.location.href);
+      url.searchParams.delete('gcal_connected');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [addToast]);
+
   // ── Handlers Google Calendar ──────────────────────────────────────────────
   const connectGoogleCalendar = useCallback(async () => {
     if (!utente) return;
