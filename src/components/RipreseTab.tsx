@@ -968,10 +968,23 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
               {filtered.map(clip => {
                 const clp = clip.contenuto_id ? contenuti[clip.contenuto_id] : null;
                 const isDeleting = deletingId === clip.id;
+                const isDragTarget = rowDragTarget === clip.id;
                 return (
                   <tr key={clip.id}
-                    className="hover:bg-muted/40 transition-colors group cursor-pointer"
+                    className={`hover:bg-muted/40 transition-colors group cursor-pointer ${isDragTarget ? 'bg-primary/5 outline outline-2 outline-primary/40' : ''}`}
                     onClick={() => setDetailClip(clip)}
+                    onDragOver={e => { e.preventDefault(); setRowDragTarget(clip.id); }}
+                    onDragLeave={() => setRowDragTarget(null)}
+                    onDrop={e => {
+                      e.preventDefault();
+                      setRowDragTarget(null);
+                      const files = Array.from(e.dataTransfer.files).filter(f =>
+                        f.type.startsWith('video/') || /\.(mp4|mov|avi|mxf|r3d)$/i.test(f.name)
+                      );
+                      if (files.length === 0) return;
+                      e.stopPropagation();
+                      setDropZonePicker({ files, clip });
+                    }}
                   >
                     {/* Clip ID */}
                     <td className={`${tdCls} font-mono font-semibold text-[hsl(var(--clr-blue))]`}>
