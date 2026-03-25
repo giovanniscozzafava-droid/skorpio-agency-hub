@@ -113,9 +113,11 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
       );
       const { url } = await res.json();
       if (url) {
-        const popup = window.open(url, 'gcal_oauth', 'width=500,height=600,left=200,top=100');
+        // Apri nella finestra top (non nell'iframe della preview)
+        const target = window.top || window;
+        const popup = target.open(url, 'gcal_oauth', 'width=500,height=600,left=200,top=100');
         if (!popup) {
-          window.location.href = url;
+          target.location.href = url;
         }
       }
 
