@@ -83,7 +83,7 @@ function Section({ title }: { title: string }) {
 }
 
 export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, onDelete, onFaseChange }: CLPDetailPanelProps) {
-  const { addToast } = useApp();
+  const { addToast, utente } = useApp();
   const [form, setForm] = useState<Contenuto>({ ...contenuto });
   const [saving, setSaving] = useState(false);
   const [creatingDrive, setCreatingDrive] = useState(false);
