@@ -160,7 +160,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
 
     if (!error && nuovoStato === 'Completato' && isCLPTask) {
       sounds.taskCompletato();
-      const nuovaFase = await completaTaskEAvanzaFase(task.tipo, task.id_contenuto!, team);
+      const nuovaFase = await completaTaskEAvanzaFase(task.tipo, task.id_contenuto!, team, utente?.id);
       if (nuovaFase) {
         setClpFase(nuovaFase);
         setTaskCompletato(true);
