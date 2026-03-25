@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import { Avatar } from './Avatar';
-import type { TeamMember, Task } from '../types';
+import type { TeamMember } from '../types';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-const SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID as string;
-const GCAL_REDIRECT_URI = `${window.location.origin}/gcal-callback`;
+const SUPABASE_URL        = import.meta.env.VITE_SUPABASE_URL as string;
+const GCAL_REDIRECT_URI   = `${window.location.origin}/gcal-callback`;
+const GDRIVE_REDIRECT_URI = `${window.location.origin}/gdrive-callback`;
 
 const COLORI_PRESET = [
   '#F59E0B', '#EC4899', '#06B6D4', '#22C55E',
@@ -35,32 +35,33 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
   const isAdmin = utente?.ruolo === 'Admin';
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Gestione team
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState<MembroForm>(EMPTY_FORM);
-  const [saving, setSaving] = useState(false);
+  const [showForm, setShowForm]     = useState(false);
+  const [form, setForm]             = useState<MembroForm>(EMPTY_FORM);
+  const [saving, setSaving]         = useState(false);
 
-  // Dialog riassegnazione
   const [deleteTarget, setDeleteTarget] = useState<TeamMember | null>(null);
-  const [taskCount, setTaskCount] = useState(0);
-  const [riassegnaA, setRiassegnaA] = useState('');
-  const [deleting, setDeleting] = useState(false);
+  const [taskCount, setTaskCount]       = useState(0);
+  const [riassegnaA, setRiassegnaA]     = useState('');
+  const [deleting, setDeleting]         = useState(false);
 
-  // Sezione attiva
   const [section, setSection] = useState<'profilo' | 'team' | 'integrazioni'>('profilo');
 
-  // Google Calendar state
-  const [gcalLoading, setGcalLoading] = useState(false);
+  // ── Google Calendar ───────────────────────────────────────────────────────
+  const [gcalLoading, setGcalLoading]     = useState(false);
   const [gcalConnected, setGcalConnected] = useState(false);
 
-  // Inizializza stato GCal dall'utente
+  // ── Google Drive ──────────────────────────────────────────────────────────
+  const [gdriveLoading, setGdriveLoading]     = useState(false);
+  const [gdriveConnected, setGdriveConnected] = useState(false);
+
   useEffect(() => {
     if (utente) {
       setGcalConnected(!!(utente as any).google_calendar_connected);
+      setGdriveConnected(!!(utente as any).google_drive_connected);
     }
   }, [utente]);
 
-  // Ascolta callback OAuth dalla finestra popup
+  // Ascolta callback OAuth dalle finestre popup
   useEffect(() => {
     const handler = (e: MessageEvent) => {
       if (e.origin !== window.location.origin) return;
@@ -68,12 +69,16 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
         setGcalConnected(true);
         addToast('✅ Google Calendar connesso con successo!', 'success');
       }
+      if (e.data?.type === 'GDRIVE_CONNECTED') {
+        setGdriveConnected(true);
+        addToast('✅ Google Drive connesso! I file verranno caricati nel tuo My Drive.', 'success');
+      }
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
   }, [addToast]);
 
-  // Handler OAuth Google Calendar
+  // ── Handlers Google Calendar ──────────────────────────────────────────────
   const connectGoogleCalendar = useCallback(async () => {
     if (!utente) return;
     setGcalLoading(true);
@@ -88,11 +93,10 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
       );
       const { url } = await res.json();
       if (url) {
-        // Salva team_id nel sessionStorage per il callback
         sessionStorage.setItem('gcal_team_id', utente.id);
         window.open(url, '_blank', 'width=500,height=600');
       }
-    } catch (e) {
+    } catch {
       addToast('❌ Errore connessione Google Calendar', 'error');
     } finally {
       setGcalLoading(false);
@@ -113,10 +117,57 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
       );
       setGcalConnected(false);
       addToast('🔌 Google Calendar disconnesso', 'info');
-    } catch (e) {
+    } catch {
       addToast('❌ Errore disconnessione', 'error');
     } finally {
       setGcalLoading(false);
+    }
+  }, [utente, addToast]);
+
+  // ── Handlers Google Drive ─────────────────────────────────────────────────
+  const connectGoogleDrive = useCallback(async () => {
+    if (!utente) return;
+    setGdriveLoading(true);
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/functions/v1/google-drive-oauth?action=get_url`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY },
+          body: JSON.stringify({ redirect_uri: GDRIVE_REDIRECT_URI }),
+        }
+      );
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (data.url) {
+        sessionStorage.setItem('gdrive_team_id', utente.id);
+        window.open(data.url, '_blank', 'width=500,height=600');
+      }
+    } catch (e: unknown) {
+      addToast(`❌ Errore connessione Google Drive: ${e instanceof Error ? e.message : ''}`, 'error');
+    } finally {
+      setGdriveLoading(false);
+    }
+  }, [utente, addToast]);
+
+  const disconnectGoogleDrive = useCallback(async () => {
+    if (!utente) return;
+    setGdriveLoading(true);
+    try {
+      await fetch(
+        `${SUPABASE_URL}/functions/v1/google-drive-oauth?action=disconnect`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY },
+          body: JSON.stringify({ team_id: utente.id }),
+        }
+      );
+      setGdriveConnected(false);
+      addToast('🔌 Google Drive disconnesso', 'info');
+    } catch {
+      addToast('❌ Errore disconnessione Google Drive', 'error');
+    } finally {
+      setGdriveLoading(false);
     }
   }, [utente, addToast]);
 
