@@ -26,7 +26,7 @@ const STATO_CLIP_CFG: Record<string, { bg: string; text: string; border: string 
 };
 
 
-async function createDriveFolder(contenuto: Contenuto): Promise<string | null> {
+async function createDriveFolder(contenuto: Contenuto, teamId?: string): Promise<string | null> {
   try {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -43,6 +43,7 @@ async function createDriveFolder(contenuto: Contenuto): Promise<string | null> {
         cliente_nome: contenuto.cliente_nome,
         tipo: contenuto.tipo,
         id_display: contenuto.id_display,
+        team_id: teamId,
       }),
     });
     const result = await res.json();
