@@ -45,7 +45,7 @@ function slugify(str: string): string {
     .slice(0, 40);
 }
 
-const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB
+
 
 async function invokeEdge(path: string, options: RequestInit = {}) {
   const url = `${SUPABASE_URL}/functions/v1/${path}`;
