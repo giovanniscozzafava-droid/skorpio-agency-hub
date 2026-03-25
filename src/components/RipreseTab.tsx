@@ -1128,6 +1128,23 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
           />
         );
       })()}
+
+      {/* Drop zone picker — appears when dragging files onto a row */}
+      {dropZonePicker && (
+        <RowDropZonePicker
+          files={dropZonePicker.files}
+          clip={dropZonePicker.clip}
+          onPick={(zone) => {
+            const { files, clip } = dropZonePicker;
+            setDropZonePicker(null);
+            // Store for inline upload trigger — we propagate via a CustomEvent
+            const evt = new CustomEvent('row-drop-upload', { detail: { files, zone, clipId: clip.id } });
+            window.dispatchEvent(evt);
+          }}
+          onCancel={() => setDropZonePicker(null)}
+        />
+      )}
     </div>
   );
 }
+
