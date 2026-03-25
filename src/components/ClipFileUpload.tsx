@@ -304,7 +304,7 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
       {!uploading && retryFile && (
         <button
           onClick={() => doUpload(retryFile)}
-          className="w-full py-2 rounded-lg border border-amber-500/50 text-amber-600 text-sm font-medium hover:bg-muted transition-colors"
+          className="w-full py-2 rounded-lg border border-border text-muted-foreground text-sm font-medium hover:bg-muted transition-colors"
         >
           🔄 Riprova upload — {retryFile.name}
         </button>
