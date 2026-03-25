@@ -164,11 +164,10 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       if (data.url) {
-        // Apri nella finestra top (non nell'iframe della preview)
-        const target = window.top || window;
-        const popup = target.open(data.url, 'gdrive_oauth', 'width=500,height=600,left=200,top=100');
+        const popup = window.open(data.url, 'gdrive_oauth', 'width=500,height=600,left=200,top=100');
         if (!popup) {
-          target.location.href = data.url;
+          // Popup bloccato → redirect nella finestra corrente
+          window.location.href = data.url;
         }
       }
 
