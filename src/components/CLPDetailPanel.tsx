@@ -13,6 +13,7 @@ import {
   completaTaskPerContenuto,
   creaTaskWorkflow,
 } from '../lib/clpWorkflow';
+import { ArubaUpload } from './ArubaUpload';
 
 const STATI_CLIP: LogRipresa['stato'][] = ['Da girare', 'Grezza', 'Buona', 'Scartata', 'Usata'];
 const FORMATI_CLIP = ['Verticale 9:16', 'Orizzontale 16:9', 'Quadrato 1:1', 'Foto', 'Raw / LOG', 'Slow Motion', 'Drone', 'Altro'];
@@ -839,6 +840,37 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
                 )}
               </div>
             )}
+          </div>
+
+          {/* ─── ARUBA DRIVE ─── */}
+          <div className="mt-3 rounded-lg p-3 border" style={{ background: 'hsl(205 100% 97%)', borderColor: 'hsl(205 80% 80%)' }}>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-bold uppercase tracking-widest" style={{ color: 'hsl(205 60% 35%)' }}>
+                ☁️ Aruba Drive
+              </label>
+              <ArubaUpload
+                percorso={`${form.cliente_nome || 'Generali'}/${form.tipo || 'Contenuti'}/${form.titolo || form.id_display}`}
+                contenutoId={form.id}
+                label="⬆️ Carica file"
+                onUploaded={async (url, nomeFile) => {
+                  // Invia notifica al collega assegnato al montaggio
+                  if (form.assegnato_montaggio && form.assegnato_montaggio !== '') {
+                    await supabase.from('notifiche').insert({
+                      destinatario: form.assegnato_montaggio,
+                      tipo: 'drive_upload',
+                      titolo: '☁️ File caricato su Aruba Drive',
+                      messaggio: `"${nomeFile}" per ${form.id_display} – ${form.titolo}`,
+                      task_id_display: form.id_display,
+                    });
+                  }
+                  addToast(`📎 Link salvato per ${nomeFile}`, 'success');
+                }}
+              />
+            </div>
+            <p className="text-xs" style={{ color: 'hsl(205 40% 50%)' }}>
+              Carica clip, video montati o file audio. Verranno salvati in{' '}
+              <strong>{form.cliente_nome || 'Generali'}/{form.tipo || 'Contenuti'}/{form.titolo || form.id_display}</strong>
+            </p>
           </div>
 
           {/* Metadati */}

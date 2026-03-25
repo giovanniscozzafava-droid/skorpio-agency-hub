@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import type { LogRipresa, Cliente, TeamMember, Contenuto } from '../types';
+import { ArubaUpload } from './ArubaUpload';
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
@@ -731,6 +732,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
                 <th className={thCls}>Fase CLP</th>
                 <th className={thCls}>Formato</th>
                 <th className={thCls}>Operatore</th>
+                <th className={`${thCls} w-8 text-center`}>☁️</th>
                 <th className={`${thCls} w-8 text-center`}>🗑️</th>
               </tr>
             </thead>
@@ -799,28 +801,42 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
                       <span className="text-xs text-muted-foreground">{clip.operatore || '—'}</span>
                     </td>
 
-                    {/* Delete */}
-                    <td className={`${tdCls} text-center`}>
-                      {isDeleting ? (
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => deleteClip(clip.id)}
-                            className="text-[10px] px-1.5 py-0.5 rounded bg-[hsl(var(--clr-red))] text-white font-semibold hover:opacity-80">
-                            Sì
-                          </button>
-                          <button onClick={() => setDeletingId(null)}
-                            className="text-[10px] px-1.5 py-0.5 rounded border border-border hover:bg-muted">
-                            No
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => setDeletingId(clip.id)}
-                          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-[hsl(var(--clr-red))] transition-all text-sm"
-                        >
-                          🗑️
-                        </button>
-                      )}
-                    </td>
+                     {/* Aruba Upload */}
+                     <td className={`${tdCls} text-center`}>
+                       <div className="opacity-0 group-hover:opacity-100 transition-all">
+                         <ArubaUpload
+                           variant="icon"
+                           percorso={`${clip.cliente_nome || 'Generali'}/Clip/${clip.id_contenuto_display || clip.id_clip}`}
+                           contenutoId={clip.contenuto_id || ''}
+                           onUploaded={(_url, nomeFile) => {
+                             addToast(`✅ "${nomeFile}" caricato per clip ${clip.id_clip}`, 'success');
+                           }}
+                         />
+                       </div>
+                     </td>
+
+                     {/* Delete */}
+                     <td className={`${tdCls} text-center`}>
+                       {isDeleting ? (
+                         <div className="flex items-center gap-1">
+                           <button onClick={() => deleteClip(clip.id)}
+                             className="text-[10px] px-1.5 py-0.5 rounded bg-[hsl(var(--clr-red))] text-white font-semibold hover:opacity-80">
+                             Sì
+                           </button>
+                           <button onClick={() => setDeletingId(null)}
+                             className="text-[10px] px-1.5 py-0.5 rounded border border-border hover:bg-muted">
+                             No
+                           </button>
+                         </div>
+                       ) : (
+                         <button
+                           onClick={() => setDeletingId(clip.id)}
+                           className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-[hsl(var(--clr-red))] transition-all text-sm"
+                         >
+                           🗑️
+                         </button>
+                       )}
+                     </td>
                   </tr>
                 );
               })}
