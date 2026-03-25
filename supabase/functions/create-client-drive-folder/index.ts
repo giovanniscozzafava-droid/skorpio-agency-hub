@@ -1,124 +1,168 @@
+// ─── create-client-drive-folder ──────────────────────────────────────────────
+// Crea la cartella cliente su Google Drive usando OAuth2 utente (non Service Account).
+// Struttura: Fuyue Agency / {clienteNome} / [📹 Contenuti, 🖼️ Grafiche, 📋 Documenti, 📣 ADV]
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-async function getGoogleAccessToken(serviceAccountJson: string): Promise<string> {
-  const sa = JSON.parse(serviceAccountJson);
-  const now = Math.floor(Date.now() / 1000);
-  const header = { alg: 'RS256', typ: 'JWT' };
-  const payload = {
-    iss: sa.client_email,
-    scope: 'https://www.googleapis.com/auth/drive',
-    aud: 'https://oauth2.googleapis.com/token',
-    iat: now,
-    exp: now + 3600,
-  };
+const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const GOOGLE_CLIENT_ID     = Deno.env.get('GOOGLE_CALENDAR_CLIENT_ID')!;
+const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CALENDAR_CLIENT_SECRET')!;
 
-  const encode = (obj: object) =>
-    btoa(JSON.stringify(obj)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+// ── Ottieni un access_token valido, rinnovando se scaduto ─────────────────────
+async function getValidAccessToken(teamId: string): Promise<string> {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  const headerB64 = encode(header);
-  const payloadB64 = encode(payload);
-  const signingInput = `${headerB64}.${payloadB64}`;
+  const { data: member, error } = await supabase
+    .from('team')
+    .select('google_drive_access_token, google_drive_refresh_token, google_drive_token_expiry, google_drive_connected')
+    .eq('id', teamId)
+    .single();
 
-  const pemBody = sa.private_key
-    .replace('-----BEGIN PRIVATE KEY-----', '')
-    .replace('-----END PRIVATE KEY-----', '')
-    .replace(/\s/g, '');
-  const derBuffer = Uint8Array.from(atob(pemBody), c => c.charCodeAt(0));
+  if (error || !member) throw new Error('Membro team non trovato');
+  if (!member.google_drive_connected) throw new Error('Google Drive non connesso — connettilo in Impostazioni → Integrazioni');
+  if (!member.google_drive_refresh_token) throw new Error('Refresh token mancante — riconnetti Google Drive');
 
-  const privateKey = await crypto.subtle.importKey(
-    'pkcs8', derBuffer,
-    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    false, ['sign']
-  );
+  const nowMs    = Date.now();
+  const expiryMs = member.google_drive_token_expiry ?? 0;
 
-  const encoder = new TextEncoder();
-  const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', privateKey, encoder.encode(signingInput));
-  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(signature)))
-    .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+  if (member.google_drive_access_token && expiryMs - nowMs > 3 * 60 * 1000) {
+    return member.google_drive_access_token;
+  }
 
-  const jwt = `${signingInput}.${sigB64}`;
-
-  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+  const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt }),
+    body: new URLSearchParams({
+      client_id:     GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      refresh_token: member.google_drive_refresh_token,
+      grant_type:    'refresh_token',
+    }),
   });
 
-  const tokenData = await tokenRes.json();
-  if (!tokenRes.ok) throw new Error(`Token exchange failed: ${JSON.stringify(tokenData)}`);
-  return tokenData.access_token;
+  const data = await res.json();
+  if (data.error) throw new Error(`Refresh token fallito: ${data.error_description || data.error}`);
+
+  const newExpiry = nowMs + data.expires_in * 1000;
+  await supabase.from('team').update({
+    google_drive_access_token: data.access_token,
+    google_drive_token_expiry: newExpiry,
+  }).eq('id', teamId);
+
+  return data.access_token;
 }
 
-async function createDriveFolder(accessToken: string, name: string, parentId: string): Promise<{ id: string; url: string }> {
+// ── Cerca cartella per nome dentro un parent ──────────────────────────────────
+async function findFolder(accessToken: string, name: string, parentId: string): Promise<string | null> {
+  const q = encodeURIComponent(
+    `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`
+  );
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)&spaces=drive`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  const data = await res.json();
+  if (!res.ok) throw new Error(`Drive search error: ${JSON.stringify(data)}`);
+  return data.files?.length > 0 ? data.files[0].id : null;
+}
+
+// ── Crea cartella ─────────────────────────────────────────────────────────────
+async function createFolder(accessToken: string, name: string, parentId?: string): Promise<string> {
+  const body: Record<string, unknown> = { name, mimeType: 'application/vnd.google-apps.folder' };
+  if (parentId) body.parents = [parentId];
   const res = await fetch('https://www.googleapis.com/drive/v3/files', {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] }),
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(`Drive API [${res.status}]: ${JSON.stringify(data)}`);
-  return { id: data.id, url: `https://drive.google.com/drive/folders/${data.id}` };
+  const d = await res.json();
+  if (!res.ok) throw new Error(`Drive create error [${res.status}]: ${JSON.stringify(d)}`);
+  return d.id;
 }
 
+// ── Trova o crea cartella ─────────────────────────────────────────────────────
+async function findOrCreateFolder(accessToken: string, name: string, parentId: string): Promise<string> {
+  const existing = await findFolder(accessToken, name, parentId);
+  if (existing) return existing;
+  return createFolder(accessToken, name, parentId);
+}
+
+// ── Trova o crea cartella root ────────────────────────────────────────────────
+async function findOrCreateRootFolder(accessToken: string, name: string): Promise<string> {
+  const q = encodeURIComponent(
+    `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false`
+  );
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)&spaces=drive`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  const data = await res.json();
+  if (!res.ok) throw new Error(`Drive search error: ${JSON.stringify(data)}`);
+  if (data.files?.length > 0) return data.files[0].id;
+  return createFolder(accessToken, name);
+}
+
+// ── Handler principale ────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    const { cliente_id, cliente_nome, id_display } = await req.json();
+    const { cliente_id, cliente_nome, id_display, team_id } = await req.json();
+
     if (!cliente_id || !cliente_nome) {
-      return new Response(JSON.stringify({ error: 'cliente_id e cliente_nome obbligatori' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      return new Response(
+        JSON.stringify({ error: 'cliente_id e cliente_nome obbligatori' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    const serviceAccountJson = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON');
-    const parentFolderId = Deno.env.get('GOOGLE_DRIVE_PARENT_FOLDER_ID');
-    if (!serviceAccountJson) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON non configurato');
-    if (!parentFolderId) throw new Error('GOOGLE_DRIVE_PARENT_FOLDER_ID non configurato');
+    if (!team_id) {
+      return new Response(
+        JSON.stringify({ error: 'team_id obbligatorio — passa l\'ID del membro team connesso a Google Drive' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    const accessToken = await getGoogleAccessToken(serviceAccountJson);
+    const accessToken = await getValidAccessToken(team_id);
 
-    // Crea la cartella principale del cliente: solo nome
-    const folderName = cliente_nome;
-    const clientFolder = await createDriveFolder(accessToken, folderName, parentFolderId);
+    // Struttura: Fuyue Agency / {clienteNome} / [sottocartelle]
+    const rootId     = await findOrCreateRootFolder(accessToken, 'Fuyue Agency');
+    const clientId   = await findOrCreateFolder(accessToken, cliente_nome, rootId);
 
-    // Crea sottocartelle standard
+    // Crea sottocartelle standard (usa findOrCreate per idempotenza)
     const subfolders = ['📹 Contenuti', '🖼️ Grafiche', '📋 Documenti', '📣 ADV'];
-    await Promise.all(subfolders.map(name => createDriveFolder(accessToken, name, clientFolder.id)));
+    await Promise.all(subfolders.map(name => findOrCreateFolder(accessToken, name, clientId)));
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const clientUrl = `https://drive.google.com/drive/folders/${clientId}`;
 
-    await fetch(`${supabaseUrl}/rest/v1/clienti?id=eq.${cliente_id}`, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${supabaseKey}`,
-        'apikey': supabaseKey,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal',
-      },
-      body: JSON.stringify({ link_drive: clientFolder.url }),
-    });
+    // Aggiorna link_drive nel DB
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    await supabase
+      .from('clienti')
+      .update({ link_drive: clientUrl })
+      .eq('id', cliente_id);
 
-    console.log(`✅ Cartella cliente creata: ${folderName} → ${clientFolder.url}`);
+    console.log(`✅ Cartella cliente creata: Fuyue Agency/${cliente_nome} → ${clientUrl}`);
 
     return new Response(JSON.stringify({
-      success: true,
-      folder_id: clientFolder.id,
-      folder_url: clientFolder.url,
-      folder_name: folderName,
-      subfolders: subfolders.length,
+      success:     true,
+      folder_id:   clientId,
+      folder_url:  clientUrl,
+      folder_path: `Fuyue Agency/${cliente_nome}`,
+      subfolders:  subfolders.length,
     }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (err) {
     console.error('Errore create-client-drive-folder:', err);
-    return new Response(JSON.stringify({ error: String(err) }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    return new Response(
+      JSON.stringify({ error: String(err) }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
 });
