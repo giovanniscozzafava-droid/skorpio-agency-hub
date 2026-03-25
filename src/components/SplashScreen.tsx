@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { sounds } from '../lib/sounds';
 import { useApp } from '../context/AppContext';
 import type { TeamMember } from '../types';
+import fuyueLogo from '@/assets/fuyue-logo-white.svg';
 
 export function SplashScreen() {
   const [team, setTeam] = useState<TeamMember[]>([]);

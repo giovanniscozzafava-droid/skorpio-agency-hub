@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import type { TeamMember } from '../types';
 import { Avatar } from './Avatar';
 import { ImpostazioniPanel } from './ImpostazioniPanel';
+import fuyueLogo from '@/assets/fuyue-logo-white.svg';
 import { NotificheDropdown } from './NotificheDropdown';
 import { useNotifiche } from '@/hooks/useNotifiche';
 
