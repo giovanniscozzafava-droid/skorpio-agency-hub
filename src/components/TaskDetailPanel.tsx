@@ -58,7 +58,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
 
   // ── Programmazione date picker ─────────────────────────────────────────────
   const [dataPub, setDataPub] = useState<Date | undefined>(
-    task.scadenza ? new Date(task.scadenza) : undefined
+    task.scadenza ? parseLocalDate(task.scadenza) : undefined
   );
   const [oraPub, setOraPub] = useState<string>(task.ora ? task.ora.slice(0, 5) : '');
   const [savingProg, setSavingProg] = useState(false);
