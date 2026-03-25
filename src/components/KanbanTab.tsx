@@ -342,7 +342,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
     <div className="p-4">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <h2 className="font-bold text-lg" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
             Kanban Board
           </h2>
@@ -359,6 +359,17 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
             />
             LIVE
           </div>
+          {/* Filtro In scadenza oggi */}
+          <button
+            onClick={() => setFiltraOggi(f => !f)}
+            className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold transition-all"
+            style={filtraOggi
+              ? { background: '#FEE2E2', color: '#DC2626', border: '1px solid rgba(220,38,38,0.4)' }
+              : { background: '#F1F5F9', color: '#64748B', border: '1px solid #E2E8F0' }
+            }
+          >
+            ⏰ In scadenza oggi {filtraOggi && '×'}
+          </button>
         </div>
         <button
           onClick={() => setShowNuovoTask(true)}
