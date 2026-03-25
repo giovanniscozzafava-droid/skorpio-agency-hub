@@ -433,7 +433,84 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
                 Connessioni esterne
               </h3>
 
-              {/* Google Calendar Card */}
+              {/* ── Google Drive Card ─────────────────────────────────────── */}
+              <div
+                className="rounded-xl border p-4 space-y-3"
+                style={{
+                  borderColor: gdriveConnected ? '#86EFAC' : 'hsl(var(--border))',
+                  background:  gdriveConnected ? '#F0FDF4' : 'hsl(210 20% 98%)',
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center text-xl"
+                      style={{ background: '#FFF', border: '1px solid hsl(var(--border))', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}
+                    >
+                      ☁️
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
+                        Google Drive
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                        {gdriveConnected
+                          ? '✅ Connesso — upload clip attivo su My Drive'
+                          : 'Carica le clip video nel tuo Google Drive'}
+                      </p>
+                    </div>
+                  </div>
+                  <div
+                    className="w-3 h-3 rounded-full flex-shrink-0"
+                    style={{ background: gdriveConnected ? '#22C55E' : '#D1D5DB' }}
+                  />
+                </div>
+
+                {gdriveConnected ? (
+                  <div className="space-y-2">
+                    <div className="rounded-lg p-3 text-xs" style={{ background: '#DCFCE7', border: '1px solid #86EFAC' }}>
+                      <p className="font-semibold" style={{ color: '#15803D' }}>Dove vengono salvati i file:</p>
+                      <ul className="mt-1 space-y-0.5" style={{ color: '#166534' }}>
+                        <li>• 📁 My Drive → <strong>SKORPIO_Clip</strong> → {'{'}Nome Cliente{'}'}</li>
+                        <li>• 🔄 Token rinnovato automaticamente</li>
+                        <li>• 💾 7 TB disponibili con Google Workspace</li>
+                      </ul>
+                    </div>
+                    <button
+                      onClick={disconnectGoogleDrive}
+                      disabled={gdriveLoading}
+                      className="w-full py-2 rounded-lg text-xs font-semibold border transition-all disabled:opacity-50"
+                      style={{ color: '#EF4444', borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.05)' }}
+                    >
+                      {gdriveLoading ? '⏳ Disconnessione…' : '🔌 Disconnetti Google Drive'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="rounded-lg p-3 text-xs" style={{ background: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+                      <p className="font-semibold" style={{ color: '#1D4ED8' }}>Come funziona:</p>
+                      <ul className="mt-1 space-y-0.5" style={{ color: '#1E40AF' }}>
+                        <li>• Autorizza l'accesso al tuo Google Drive personale</li>
+                        <li>• I file clip vengono salvati in <strong>SKORPIO_Clip/</strong></li>
+                        <li>• Il token si rinnova automaticamente (no scadenze)</li>
+                      </ul>
+                    </div>
+                    <button
+                      onClick={connectGoogleDrive}
+                      disabled={gdriveLoading}
+                      className="w-full py-2.5 rounded-lg text-xs font-bold text-white transition-all disabled:opacity-50"
+                      style={{ background: gdriveLoading ? '#94A3B8' : '#4285F4' }}
+                    >
+                      {gdriveLoading ? '⏳ Apertura finestra…' : '🔗 Connetti Google Drive'}
+                    </button>
+                    <p className="text-[10px] text-center" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                      Si aprirà una finestra Google per autorizzare l'accesso
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Google Calendar Card ──────────────────────────────────── */}
               <div
                 className="rounded-xl border p-4 space-y-3"
                 style={{
