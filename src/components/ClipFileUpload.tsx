@@ -464,7 +464,7 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
               <span>{progress.percent}%</span>
             </div>
             <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
-              <div className="h-full rounded-full bg-green-500 transition-all duration-300"
+              <div className="h-full rounded-full bg-[hsl(var(--clr-green))] transition-all duration-300"
                 style={{ width: `${progress.percent}%` }} />
             </div>
             <p className="text-xs text-muted-foreground">{formatBytes(progress.loaded)} / {formatBytes(progress.total)}</p>
