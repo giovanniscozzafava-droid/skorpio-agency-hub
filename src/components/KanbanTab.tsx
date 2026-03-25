@@ -123,11 +123,13 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [liveActive, setLiveActive] = useState(false);
   const [newTaskIds, setNewTaskIds] = useState<Set<string>>(new Set());
+  // Filtro rapido "In scadenza oggi"
+  const [filtraOggi, setFiltraOggi] = useState(false);
 
   // Batch accumulator: flush toast ogni 1.5s
   const pendingEventsRef = useRef<RealtimeEvent[]>([]);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isMyAction = useRef(false); // flag set before optimistic updates
+  const isMyAction = useRef(false);
 
   const flushNotifications = useCallback(() => {
     const events = pendingEventsRef.current;
