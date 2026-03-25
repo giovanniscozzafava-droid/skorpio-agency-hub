@@ -119,6 +119,19 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
           if (xhr.status >= 200 && xhr.status < 300) {
             resolve();
           } else {
+            console.error('[ClipFileUpload] Storage upload failed', {
+              status: xhr.status,
+              statusText: xhr.statusText,
+              responseText: xhr.responseText,
+              url,
+              fileSize: file.size,
+              mimeType,
+              authTokenPresent: !!authToken,
+              authTokenIsAnon: authToken === SUPABASE_KEY,
+            });
+            let parsedError: unknown = xhr.responseText;
+            try { parsedError = JSON.parse(xhr.responseText); } catch { /* keep raw */ }
+            console.error('[ClipFileUpload] Parsed error:', JSON.stringify(parsedError));
             reject(new Error(`Storage upload fallito (${xhr.status}): ${xhr.responseText}`));
           }
         });
