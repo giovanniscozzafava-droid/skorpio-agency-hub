@@ -63,9 +63,10 @@ function getUrgentTasks(tasks: Task[], utente: TeamMember) {
 
 function getMinutesRemaining(task: Task): number {
   const now = new Date();
-  const scadenzaDate = task.ora
-    ? new Date(`${task.scadenza}T${task.ora}`)
-    : new Date(`${task.scadenza}T23:59:59`);
+  const oraClean = task.ora ? task.ora.substring(0, 5) : null;
+  const scadenzaDate = oraClean
+    ? new Date(`${task.scadenza}T${oraClean}:00Z`)
+    : new Date(`${task.scadenza}T23:59:59Z`);
   return Math.floor((scadenzaDate.getTime() - now.getTime()) / 60000);
 }
 
