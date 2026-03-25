@@ -60,9 +60,9 @@ export default function GCalCallback() {
 
         sessionStorage.removeItem('gcal_team_id');
         setStatus('success');
-        setMessage('Google Calendar connesso! Puoi chiudere questa finestra.');
+        setMessage('Google Calendar connesso! Reindirizzamento in corso…');
 
-        // Notifica la finestra padre (opener o top)
+        // Notifica la finestra padre (popup) o reindirizza se siamo nella finestra principale
         const target = window.opener || (window.top !== window ? window.top : null);
         if (target) {
           try {
@@ -71,6 +71,11 @@ export default function GCalCallback() {
             // cross-origin parent — ignora
           }
           setTimeout(() => window.close(), 1500);
+        } else {
+          // Siamo nella finestra principale (popup bloccato) — reindirizza alla home
+          setTimeout(() => {
+            window.location.href = '/?gcal_connected=1';
+          }, 1500);
         }
       } catch (e: unknown) {
         setStatus('error');
