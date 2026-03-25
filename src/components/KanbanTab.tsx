@@ -10,6 +10,7 @@ import { parseLocalDate } from '../lib/dateUtils';
 
 // ─── Orologio live al secondo per task con scadenza ──────────────────────────
 function getTargetDate(scadenza: string, ora: string | null): Date {
+  // Usa T... locale per evitare shift UTC→IT
   return new Date(`${scadenza}T${ora ? ora.slice(0, 5) : '23:59'}:00`);
 }
 
