@@ -84,11 +84,11 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   }, [task.stato]);
 
   useEffect(() => {
-    setDataPub(task.scadenza ? new Date(task.scadenza) : undefined);
+    setDataPub(task.scadenza ? parseLocalDate(task.scadenza) : undefined);
     setOraPub(task.ora ? task.ora.slice(0, 5) : '');
   }, [task.scadenza, task.ora]);
 
-  const scad = task.scadenza ? new Date(task.scadenza) : null;
+  const scad = task.scadenza ? parseLocalDate(task.scadenza) : null;
   const oggi = new Date(); oggi.setHours(0, 0, 0, 0);
   const isScaduto = scad && scad < oggi && task.stato !== 'Completato';
 
