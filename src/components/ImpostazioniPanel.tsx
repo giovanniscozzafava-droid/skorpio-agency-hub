@@ -157,6 +157,8 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
   const connectGoogleDrive = useCallback(async () => {
     if (!utente) return;
     setGdriveLoading(true);
+    // Apri il popup SUBITO (prima dell'await) per evitare il blocco popup del browser
+    const popup = window.open('', 'gdrive_oauth', 'width=500,height=600,left=200,top=100');
     try {
       const res = await fetch(
         `${SUPABASE_URL}/functions/v1/google-drive-oauth?action=get_url`,
@@ -169,14 +171,17 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       if (data.url) {
-        const popup = window.open(data.url, 'gdrive_oauth', 'width=500,height=600,left=200,top=100');
-        if (!popup) {
+        if (popup && !popup.closed) {
+          popup.location.href = data.url;
+        } else {
           // Popup bloccato → redirect nella finestra corrente
           window.location.href = data.url;
         }
+      } else {
+        popup?.close();
       }
-
     } catch (e: unknown) {
+      popup?.close();
       addToast(`❌ Errore connessione Google Drive: ${e instanceof Error ? e.message : ''}`, 'error');
     } finally {
       setGdriveLoading(false);
