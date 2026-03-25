@@ -197,7 +197,8 @@ export async function avanzaFaseDaTask(
 export async function completaTaskEAvanzaFase(
   taskTipo: string,
   contenutoId: string,
-  team: TeamMember[]
+  team: TeamMember[],
+  teamId?: string
 ): Promise<FaseCLP | null> {
   const step = WORKFLOW_MAP[taskTipo];
   if (!step) return null;
