@@ -4,6 +4,7 @@ import type { TeamMember, ChatMessaggio, Task } from '../types';
 import { Avatar } from './Avatar';
 import { supabase } from '../lib/supabase';
 import { sounds } from '../lib/sounds';
+import { ArubaUpload } from './ArubaUpload';
 
 interface ChatPopupProps {
   team: TeamMember[];

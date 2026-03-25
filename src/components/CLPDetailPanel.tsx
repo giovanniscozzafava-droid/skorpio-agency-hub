@@ -13,6 +13,7 @@ import {
   completaTaskPerContenuto,
   creaTaskWorkflow,
 } from '../lib/clpWorkflow';
+import { ArubaUpload } from './ArubaUpload';
 
 const STATI_CLIP: LogRipresa['stato'][] = ['Da girare', 'Grezza', 'Buona', 'Scartata', 'Usata'];
 const FORMATI_CLIP = ['Verticale 9:16', 'Orizzontale 16:9', 'Quadrato 1:1', 'Foto', 'Raw / LOG', 'Slow Motion', 'Drone', 'Altro'];
