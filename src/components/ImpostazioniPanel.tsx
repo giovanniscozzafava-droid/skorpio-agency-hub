@@ -900,6 +900,64 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
               )}
             </div>
           )}
+
+          {/* ── SEZIONE AUDIT ── */}
+          {section === 'audit' && isAdmin && (
+            <div className="px-5 py-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider"
+                  style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                  🔍 Audit Clienti ↔ CLP
+                </h3>
+                <button
+                  onClick={runAudit}
+                  disabled={auditRunning}
+                  className="text-xs px-3 py-1.5 rounded-lg font-semibold text-white disabled:opacity-50"
+                  style={{ background: auditRunning ? '#94A3B8' : '#3B82F6' }}
+                >
+                  {auditRunning ? '⏳ Analisi…' : '▶ Esegui audit'}
+                </button>
+              </div>
+
+              <div className="rounded-xl p-3 text-xs"
+                style={{ background: 'hsl(214 80% 55% / 0.08)', border: '1px solid hsl(214 80% 55% / 0.20)', color: 'hsl(214 70% 44%)' }}>
+                Analizza tutti i CLP e verifica che ogni cliente_nome corrisponda a un record valido nella tabella Clienti. Mostra discrepanze e clienti mancanti.
+              </div>
+
+              {auditDone && (
+                <div className="space-y-2">
+                  {(auditReport as any[]).map((row, i) => (
+                    <div
+                      key={i}
+                      className="flex items-start gap-2.5 p-2.5 rounded-lg"
+                      style={{
+                        background: row.inClienti ? 'hsl(142 70% 45% / 0.07)' : 'hsl(0 80% 55% / 0.08)',
+                        border: `1px solid ${row.inClienti ? 'hsl(142 70% 45% / 0.20)' : 'hsl(0 80% 55 / 0.25)'}`,
+                      }}
+                    >
+                      <span className="text-base flex-shrink-0">{row.inClienti ? '✅' : '⚠️'}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-xs truncate"
+                          style={{ color: row.inClienti ? 'hsl(142 60% 35%)' : 'hsl(0 70% 38%)' }}>
+                          "{row.cliente}"
+                        </p>
+                        <p className="text-xs mt-0.5"
+                          style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                          {row.clpCount} CLP — {row.inClienti
+                            ? '✓ allineato'
+                            : '✗ NON presente in tabella Clienti'}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                  <p className="text-xs text-center pt-2"
+                    style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                    {(auditReport as any[]).filter((r: any) => r.inClienti).length}/{(auditReport as any[]).length} clienti allineati
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
