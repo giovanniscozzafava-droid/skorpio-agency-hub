@@ -681,6 +681,11 @@ export type Database = {
           google_calendar_id: string | null
           google_calendar_refresh_token: string | null
           google_calendar_token_expiry: number | null
+          google_drive_access_token: string | null
+          google_drive_connected: boolean | null
+          google_drive_folder_id: string | null
+          google_drive_refresh_token: string | null
+          google_drive_token_expiry: number | null
           id: string
           label: string | null
           nome: string
@@ -696,6 +701,11 @@ export type Database = {
           google_calendar_id?: string | null
           google_calendar_refresh_token?: string | null
           google_calendar_token_expiry?: number | null
+          google_drive_access_token?: string | null
+          google_drive_connected?: boolean | null
+          google_drive_folder_id?: string | null
+          google_drive_refresh_token?: string | null
+          google_drive_token_expiry?: number | null
           id?: string
           label?: string | null
           nome: string
@@ -711,6 +721,11 @@ export type Database = {
           google_calendar_id?: string | null
           google_calendar_refresh_token?: string | null
           google_calendar_token_expiry?: number | null
+          google_drive_access_token?: string | null
+          google_drive_connected?: boolean | null
+          google_drive_folder_id?: string | null
+          google_drive_refresh_token?: string | null
+          google_drive_token_expiry?: number | null
           id?: string
           label?: string | null
           nome?: string
