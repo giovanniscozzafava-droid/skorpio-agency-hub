@@ -64,7 +64,7 @@ async function invokeEdge(path: string, options: RequestInit = {}) {
 }
 
 export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUploadProps) {
-  const { addToast } = useApp();
+  const { addToast, utente } = useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState<UploadProgress | null>(null);
@@ -72,10 +72,18 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [retryFile, setRetryFile] = useState<File | null>(null);
 
-  const hasFile = !!(clip.file_id && !clip.file_deleted_at);
+  const hasFile  = !!(clip.file_id && !clip.file_deleted_at);
   const wasDeleted = !!(clip.file_deleted_at);
 
+  const driveConnected = !!(utente as any)?.google_drive_connected;
+
   const doUpload = useCallback(async (file: File) => {
+    if (!utente) { addToast('❌ Utente non trovato', 'error'); return; }
+    if (!driveConnected) {
+      addToast('⚠️ Connetti prima Google Drive nelle Impostazioni → Integrazioni', 'warning');
+      return;
+    }
+
     setUploading(true);
     setProgress({ loaded: 0, total: file.size, percent: 2 });
     setRetryFile(null);
@@ -91,7 +99,7 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
       setProgress({ loaded: 0, total: file.size, percent: 5 });
       const { uploadUrl } = await invokeEdge('google-drive-upload-init', {
         method: 'POST',
-        body: JSON.stringify({ fileName, mimeType, fileSize: file.size, clientName }),
+        body: JSON.stringify({ fileName, mimeType, fileSize: file.size, clientName, teamId: utente.id }),
       });
 
       // Step 2 — Upload chunked direttamente su Google Drive
