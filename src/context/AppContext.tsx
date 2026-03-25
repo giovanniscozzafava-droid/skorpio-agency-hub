@@ -95,6 +95,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     autoLink();
   }, [session?.user?.id]);
 
+  // ── Listener globale postMessage da popup OAuth Google ───────────────────
+  useEffect(() => {
+    const handler = async (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
+      if (e.data?.type === 'GDRIVE_CONNECTED' || e.data?.type === 'GCAL_CONNECTED') {
+        // Ricarica il profilo utente dal DB per avere i token aggiornati
+        if (utente) {
+          const { data } = await supabase.from('team').select('*').eq('id', utente.id).single();
+          if (data) setUtente(data as TeamMember);
+        }
+        const label = e.data.type === 'GDRIVE_CONNECTED' ? 'Google Drive' : 'Google Calendar';
+        const id = Math.random().toString(36).slice(2);
+        setToasts(prev => [...prev, { id, msg: `✅ ${label} connesso con successo!`, tipo: 'success' }]);
+        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [utente]);
+
   // ── Auto-pubblica CLPs programmati con data <= oggi ──────────────────────
   useEffect(() => {
     checkAutoPubblica().then(n => {
