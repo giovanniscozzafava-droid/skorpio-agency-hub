@@ -146,7 +146,11 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
       if (data.error) throw new Error(data.error);
       if (data.url) {
         sessionStorage.setItem('gdrive_team_id', utente.id);
-        window.open(data.url, '_blank', 'width=500,height=600');
+        const popup = (window.top || window).open(data.url, 'gdrive_oauth', 'width=500,height=600,left=200,top=100');
+        if (!popup) {
+          (window.top || window).location.href = data.url;
+        }
+
       }
     } catch (e: unknown) {
       addToast(`❌ Errore connessione Google Drive: ${e instanceof Error ? e.message : ''}`, 'error');
