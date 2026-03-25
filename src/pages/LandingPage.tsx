@@ -807,15 +807,10 @@ export function LandingPage({ onAuthenticated }: LandingPageProps) {
       <footer className="py-8 px-6" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-6 h-6">
-              <svg viewBox="0 0 32 32" fill="none" className="w-full h-full">
-                <rect width="32" height="32" rx="8" fill="rgba(59,130,246,0.1)" stroke="rgba(59,130,246,0.3)" strokeWidth="1"/>
-                <path d="M8 10 L16 8 L24 10 L22 18 L16 24 L10 18 Z" stroke="#93C5FD" strokeWidth="1.5" fill="none"/>
-                <circle cx="16" cy="16" r="2.5" fill="#3B82F6"/>
-              </svg>
-            </div>
+            <span className="text-lg">🦂</span>
             <span className="font-bold text-white text-[14px]">SKORPIO</span>
-            <span className="text-[12px]" style={{ color: 'rgba(255,255,255,0.2)' }}>— Fuyue Digital Agency</span>
+            <span className="text-[12px]" style={{ color: 'rgba(255,255,255,0.2)' }}>—</span>
+            <img src={fuyueLogo} alt="Fuyue Digital Agency" className="h-4 w-auto opacity-40" />
           </div>
           <div className="flex items-center gap-6 text-[11px]" style={{ color: 'rgba(255,255,255,0.2)' }}>
             <span>© {new Date().getFullYear()} Fuyue Digital Agency</span>
