@@ -306,14 +306,10 @@ export function LandingPage({ onAuthenticated }: LandingPageProps) {
         <div className="max-w-6xl mx-auto px-6 h-[62px] flex items-center justify-between">
           {/* Logo */}
           <div className="flex items-center gap-3">
-            <div className="relative w-8 h-8">
-              <svg viewBox="0 0 32 32" fill="none" className="w-full h-full">
-                <rect width="32" height="32" rx="8" fill="rgba(59,130,246,0.15)" stroke="rgba(59,130,246,0.4)" strokeWidth="1"/>
-                <path d="M8 10 L16 8 L24 10 L22 18 L16 24 L10 18 Z" stroke="#93C5FD" strokeWidth="1.5" fill="none"/>
-                <circle cx="16" cy="16" r="2.5" fill="#3B82F6"/>
-              </svg>
-            </div>
+            <span className="text-2xl">🦂</span>
             <span className="font-bold text-[17px] tracking-tight">SKORPIO</span>
+            <span className="text-xs hidden sm:block" style={{ color: 'rgba(255,255,255,0.2)' }}>by</span>
+            <img src={fuyueLogo} alt="Fuyue" className="hidden sm:block h-4 w-auto opacity-50" />
           </div>
 
           {/* Nav links */}
