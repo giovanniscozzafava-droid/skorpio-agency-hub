@@ -1,14 +1,21 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
-import { getStorageService } from '../services/storage';
 import type { LogRipresa } from '../types';
-import type { UploadProgress } from '../services/storage';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 interface ClipFileUploadProps {
   clip: LogRipresa;
   onUpdated: (patch: Partial<LogRipresa>) => void;
-  variant?: 'row' | 'panel'; // row = compact table cell, panel = full detail panel
+  variant?: 'row' | 'panel';
+}
+
+interface UploadProgress {
+  loaded: number;
+  total: number;
+  percent: number;
 }
 
 function formatBytes(bytes: number): string {
@@ -25,6 +32,19 @@ function formatDate(iso: string): string {
   });
 }
 
+function slugify(str: string): string {
+  return str
+    .toLowerCase()
+    .replace(/[àáâãäå]/g, 'a')
+    .replace(/[èéêë]/g, 'e')
+    .replace(/[ìíîï]/g, 'i')
+    .replace(/[òóôõö]/g, 'o')
+    .replace(/[ùúûü]/g, 'u')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+}
+
 export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUploadProps) {
   const { addToast } = useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -39,31 +59,47 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
 
   const doUpload = useCallback(async (file: File) => {
     setUploading(true);
-    setProgress({ loaded: 0, total: file.size, percent: 0 });
+    setProgress({ loaded: 0, total: file.size, percent: 5 });
     setRetryFile(null);
 
-    const storage = getStorageService();
-
     try {
-      const result = await storage.upload(
-        file,
-        {
-          clipId: clip.id_clip,
-          clientName: clip.cliente_nome || 'Generale',
-          clipTitle: clip.titolo || clip.id_clip,
-          operatorName: clip.operatore || undefined,
-        },
-        (prog) => setProgress(prog)
-      );
+      const ext = file.name.split('.').pop() || 'mp4';
+      const slug = slugify(clip.titolo || clip.id_clip);
+      const fileName = `${clip.id_clip}_${slug}.${ext}`;
+      const percorso = `SKORPIO_Clip/${clip.cliente_nome || 'Generale'}`;
 
-      // Save to Supabase
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('percorso', percorso);
+      fd.append('contenuto_id', clip.contenuto_id || '');
+      fd.append('nome_file', fileName);
+
+      setProgress({ loaded: 0, total: file.size, percent: 20 });
+
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/aruba-webdav-upload`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+          apikey: SUPABASE_KEY,
+        },
+        body: fd,
+      });
+
+      setProgress({ loaded: file.size * 0.9, total: file.size, percent: 90 });
+
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Upload fallito');
+
+      const fileUrl = data.url as string;
+      const fileId = fileUrl; // su Aruba usiamo l'URL come ID univoco
+
       const patch: Partial<LogRipresa> = {
-        file_id: result.fileId,
-        file_url: result.fileUrl,
-        file_name: result.fileName,
-        file_size: result.fileSize,
-        file_mime_type: result.mimeType,
-        file_uploaded_at: result.uploadedAt,
+        file_id: fileId,
+        file_url: fileUrl,
+        file_name: fileName,
+        file_size: file.size,
+        file_mime_type: file.type || 'video/mp4',
+        file_uploaded_at: new Date().toISOString(),
         file_deleted_at: null,
       };
 
@@ -74,12 +110,14 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
 
       if (error) throw error;
 
+      setProgress({ loaded: file.size, total: file.size, percent: 100 });
       onUpdated(patch);
-      addToast(`✅ "${result.fileName}" caricato su Google Drive`, 'success');
+      addToast(`✅ "${fileName}" caricato su Aruba Drive`, 'success');
     } catch (err: unknown) {
       console.error('[ClipFileUpload] upload failed:', err);
       setRetryFile(file);
-      addToast('❌ Upload fallito. Clicca "Riprova" per riprovare.', 'error');
+      const msg = err instanceof Error ? err.message : 'Errore sconosciuto';
+      addToast(`❌ Upload fallito: ${msg.slice(0, 80)}`, 'error');
     } finally {
       setUploading(false);
       setProgress(null);
@@ -97,9 +135,6 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
 
   async function handleDeleteFile() {
     if (!clip.file_id) return;
-    const storage = getStorageService();
-
-    const deleted = await storage.deleteFile(clip.file_id);
 
     const patch: Partial<LogRipresa> = {
       file_id: null,
@@ -109,23 +144,18 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
 
     await supabase.from('log_riprese').update(patch).eq('id', clip.id);
     onUpdated(patch);
-
-    if (deleted) {
-      addToast('🗑️ File rimosso da Google Drive. Copia locale conservata.', 'success');
-    } else {
-      addToast('⚠️ Errore rimozione Drive — record aggiornato comunque', 'warn');
-    }
+    addToast('🗑️ File rimosso. Metadati conservati come riferimento.', 'success');
     setShowDeleteConfirm(false);
   }
 
-  // ─── ROW variant (compact table cell) ────────────────────────────────────
+  // ─── ROW variant ─────────────────────────────────────────────────────────
   if (variant === 'row') {
     if (uploading && progress) {
       return (
         <div className="flex items-center gap-1 min-w-[60px]">
           <div className="w-12 h-1 rounded-full bg-muted overflow-hidden">
             <div
-              className="h-full bg-[hsl(var(--clr-blue))] transition-all"
+              className="h-full bg-primary transition-all"
               style={{ width: `${progress.percent}%` }}
             />
           </div>
@@ -137,7 +167,7 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
     if (wasDeleted) {
       return (
         <span
-          title={`File rimosso il ${formatDate(clip.file_deleted_at!)}${clip.file_name ? ` — ${clip.file_name}` : ''} — archiviato localmente`}
+          title={`File rimosso il ${formatDate(clip.file_deleted_at!)}${clip.file_name ? ` — ${clip.file_name}` : ''} — archiviato su Aruba`}
           className="text-muted-foreground/40 cursor-help text-base"
         >
           ☁️
@@ -147,31 +177,30 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
 
     if (hasFile) {
       return (
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 relative">
           <a
             href={clip.file_url!}
             target="_blank"
             rel="noopener noreferrer"
             title={clip.file_name || 'Apri file'}
-            className="text-[hsl(var(--clr-blue))] hover:opacity-70 text-sm transition-opacity"
+            className="text-primary hover:opacity-70 text-sm transition-opacity"
           >
             🎬
           </a>
           <button
             onClick={() => setShowDeleteConfirm(true)}
-            title="Rimuovi da Drive"
-            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-[hsl(var(--clr-red))] text-xs transition-all"
+            title="Rimuovi file"
+            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive text-xs transition-all"
           >
             🗑️
           </button>
           {showDeleteConfirm && (
-            <div className="absolute z-50 bg-card border border-border rounded-lg shadow-xl p-3 text-xs w-44"
-              style={{ transform: 'translateX(-50%)' }}>
-              <p className="text-foreground font-medium mb-2">Rimuovere da Drive?</p>
+            <div className="absolute z-50 bg-card border border-border rounded-lg shadow-xl p-3 text-xs w-44 top-6 left-0">
+              <p className="text-foreground font-medium mb-2">Rimuovere il file?</p>
               <div className="flex gap-2">
                 <button
                   onClick={handleDeleteFile}
-                  className="flex-1 py-1 rounded bg-[hsl(var(--clr-red))] text-white font-semibold hover:opacity-80"
+                  className="flex-1 py-1 rounded bg-destructive text-destructive-foreground font-semibold hover:opacity-80"
                 >Sì</button>
                 <button
                   onClick={() => setShowDeleteConfirm(false)}
@@ -189,7 +218,7 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
         <input
           ref={fileInputRef}
           type="file"
-          accept="video/*,audio/*,.mp4,.mov,.avi,.mp3,.wav"
+          accept="video/*,audio/*,.mp4,.mov,.avi,.mp3,.wav,.mxf,.r3d"
           className="hidden"
           onChange={e => {
             const f = e.target.files?.[0];
@@ -201,15 +230,15 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
           <button
             onClick={() => doUpload(retryFile)}
             title="Riprova upload"
-            className="text-[hsl(var(--clr-amber))] hover:opacity-70 text-sm transition-opacity"
+            className="text-amber-500 hover:opacity-70 text-sm transition-opacity"
           >
             🔄
           </button>
         ) : (
           <button
             onClick={() => fileInputRef.current?.click()}
-            title="Carica file su Google Drive"
-            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-[hsl(var(--clr-blue))] text-sm transition-all"
+            title="Carica file su Aruba Drive"
+            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary text-sm transition-all"
           >
             ☁️↑
           </button>
@@ -218,18 +247,18 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
     );
   }
 
-  // ─── PANEL variant (detail section) ──────────────────────────────────────
+  // ─── PANEL variant ────────────────────────────────────────────────────────
   return (
     <div className="space-y-3">
       {uploading && progress && (
         <div className="space-y-1">
           <div className="flex justify-between text-xs text-muted-foreground">
-            <span>Caricamento su Google Drive…</span>
+            <span>Caricamento su Aruba Drive…</span>
             <span>{progress.percent}%</span>
           </div>
           <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
             <div
-              className="h-full rounded-full bg-[hsl(var(--clr-blue))] transition-all duration-300"
+              className="h-full rounded-full bg-primary transition-all duration-300"
               style={{ width: `${progress.percent}%` }}
             />
           </div>
@@ -252,18 +281,16 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
           }}
           onClick={() => fileInputRef.current?.click()}
           className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
-            dragging
-              ? 'border-[hsl(var(--clr-blue))] bg-[hsl(var(--clr-blue)/0.06)]'
-              : 'border-border hover:border-[hsl(var(--clr-blue)/0.5)] hover:bg-muted/40'
+            dragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-muted/40'
           }`}
         >
           <div className="text-3xl mb-2">☁️</div>
           <p className="text-sm font-medium text-foreground">Trascina un file video qui</p>
-          <p className="text-xs text-muted-foreground mt-1">o clicca per selezionare · MP4, MOV, AVI · max 4 GB</p>
+          <p className="text-xs text-muted-foreground mt-1">o clicca per selezionare · MP4, MOV, AVI, MXF · max 4 GB</p>
           <input
             ref={fileInputRef}
             type="file"
-            accept="video/*,audio/*,.mp4,.mov,.avi,.mp3,.wav"
+            accept="video/*,audio/*,.mp4,.mov,.avi,.mp3,.wav,.mxf,.r3d"
             className="hidden"
             onChange={e => {
               const f = e.target.files?.[0];
@@ -277,7 +304,7 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
       {!uploading && retryFile && (
         <button
           onClick={() => doUpload(retryFile)}
-          className="w-full py-2 rounded-lg border border-[hsl(var(--clr-amber))] text-[hsl(var(--clr-amber))] text-sm font-medium hover:bg-[hsl(var(--clr-amber)/0.1)] transition-colors"
+          className="w-full py-2 rounded-lg border border-amber-500/50 text-amber-600 text-sm font-medium hover:bg-amber-50 transition-colors"
         >
           🔄 Riprova upload — {retryFile.name}
         </button>
@@ -285,11 +312,11 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
 
       {hasFile && !uploading && (
         <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
-          {/* Video preview */}
-          {(clip.file_mime_type?.startsWith('video/') || clip.file_name?.match(/\.(mp4|mov|avi|webm)$/i)) && (
+          {/* Video preview — solo se URL diretto (non drive.google.com) */}
+          {clip.file_url && (clip.file_mime_type?.startsWith('video/') || clip.file_name?.match(/\.(mp4|mov|avi|webm)$/i)) && (
             <div className="rounded-lg overflow-hidden bg-black aspect-video">
               <video
-                src={clip.file_url!}
+                src={clip.file_url}
                 controls
                 className="w-full h-full object-contain"
                 preload="metadata"
@@ -314,13 +341,13 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
                 href={clip.file_url!}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-3 py-1.5 rounded-lg bg-[hsl(var(--clr-blue)/0.12)] text-[hsl(var(--clr-blue))] text-xs font-medium hover:opacity-80 transition-opacity"
+                className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:opacity-80 transition-opacity"
               >
                 ↗ Apri
               </a>
               <button
                 onClick={() => setShowDeleteConfirm(true)}
-                className="px-3 py-1.5 rounded-lg bg-[hsl(var(--clr-red)/0.1)] text-[hsl(var(--clr-red))] text-xs font-medium hover:opacity-80 transition-opacity"
+                className="px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive text-xs font-medium hover:opacity-80 transition-opacity"
               >
                 🗑️ Rimuovi
               </button>
@@ -328,17 +355,17 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
           </div>
 
           {showDeleteConfirm && (
-            <div className="rounded-lg border border-[hsl(var(--clr-red)/0.3)] bg-[hsl(var(--clr-red)/0.06)] p-3 space-y-2">
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
               <p className="text-sm font-medium text-foreground">
-                Rimuovere il file da Google Drive?
+                Rimuovere il file da Aruba Drive?
               </p>
               <p className="text-xs text-muted-foreground">
-                Il nome e la dimensione verranno conservati come riferimento. Il file non sarà più accessibile online.
+                Il nome e la dimensione verranno conservati come riferimento storico.
               </p>
               <div className="flex gap-2">
                 <button
                   onClick={handleDeleteFile}
-                  className="flex-1 py-1.5 rounded-lg bg-[hsl(var(--clr-red))] text-white text-xs font-semibold hover:opacity-80"
+                  className="flex-1 py-1.5 rounded-lg bg-destructive text-destructive-foreground text-xs font-semibold hover:opacity-80"
                 >
                   Sì, rimuovi
                 </button>
