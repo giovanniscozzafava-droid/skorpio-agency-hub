@@ -194,13 +194,11 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
     assegnato_montaggio: '',
   });
   const [saving, setSaving] = useState(false);
-  const [driveWarning, _setDriveWarning] = useState(false); // placeholder — set inside handleSubmit
-
-  const set = (k: string, v: string) => setForm(prev => ({ ...prev, [k]: v }));
-
   const [driveWarning, setDriveWarning] = useState(false);
 
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+
+  const set = (k: string, v: string) => setForm(prev => ({ ...prev, [k]: v }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
