@@ -1,6 +1,7 @@
 // ─── google-drive-upload-init ────────────────────────────────────────────────
-// Usa OAuth2 dell'utente (access_token / refresh_token) per creare una sessione
-// di upload resumable su Google Drive, sotto SKORPIO_Clip/{clientName}/
+// Usa OAuth2 dell'utente per creare una sessione upload resumable su Google Drive.
+// Struttura cartelle: Fuyue Agency / {clientName} / 📹 Contenuti /
+// (identica a create-drive-folder — i file clip finiscono nella stessa cartella)
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -25,18 +26,16 @@ async function getValidAccessToken(teamId: string): Promise<string> {
     .single();
 
   if (error || !member) throw new Error('Membro team non trovato');
-  if (!member.google_drive_connected) throw new Error('Google Drive non connesso per questo utente');
+  if (!member.google_drive_connected) throw new Error('Google Drive non connesso — connettilo in Impostazioni → Integrazioni');
   if (!member.google_drive_refresh_token) throw new Error('Refresh token mancante — riconnetti Google Drive');
 
-  const nowMs = Date.now();
+  const nowMs    = Date.now();
   const expiryMs = member.google_drive_token_expiry ?? 0;
 
-  // Rinnova se scade entro 3 minuti
   if (member.google_drive_access_token && expiryMs - nowMs > 3 * 60 * 1000) {
     return member.google_drive_access_token;
   }
 
-  // Refresh
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -60,55 +59,55 @@ async function getValidAccessToken(teamId: string): Promise<string> {
   return data.access_token;
 }
 
-// ── Trova o crea cartella Drive ───────────────────────────────────────────────
-async function findOrCreateFolder(accessToken: string, name: string, parentId?: string): Promise<string> {
-  const q = parentId
-    ? `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`
-    : `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-
-  const searchRes = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)&spaces=drive`,
+// ── Cerca cartella per nome dentro un parent ──────────────────────────────────
+async function findFolder(accessToken: string, name: string, parentId: string): Promise<string | null> {
+  const q = encodeURIComponent(
+    `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`
+  );
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)&spaces=drive`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
-  const searchData = await searchRes.json();
-  if (searchData.files?.length > 0) return searchData.files[0].id;
+  const data = await res.json();
+  if (!res.ok) throw new Error(`Drive search error: ${JSON.stringify(data)}`);
+  return data.files?.length > 0 ? data.files[0].id : null;
+}
 
-  const body: Record<string, unknown> = {
-    name,
-    mimeType: 'application/vnd.google-apps.folder',
-  };
+// ── Crea cartella ─────────────────────────────────────────────────────────────
+async function createFolder(accessToken: string, name: string, parentId?: string): Promise<string> {
+  const body: Record<string, unknown> = { name, mimeType: 'application/vnd.google-apps.folder' };
   if (parentId) body.parents = [parentId];
-
-  const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+  const res = await fetch('https://www.googleapis.com/drive/v3/files', {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const created = await createRes.json();
-  if (!created.id) throw new Error(`Impossibile creare cartella "${name}": ${JSON.stringify(created)}`);
-  return created.id;
+  const d = await res.json();
+  if (!res.ok) throw new Error(`Drive create error [${res.status}]: ${JSON.stringify(d)}`);
+  return d.id;
 }
 
-// ── Trova o crea cartella root in My Drive ────────────────────────────────────
+// ── Trova o crea cartella ─────────────────────────────────────────────────────
+async function findOrCreateFolder(accessToken: string, name: string, parentId: string): Promise<string> {
+  const existing = await findFolder(accessToken, name, parentId);
+  if (existing) return existing;
+  return createFolder(accessToken, name, parentId);
+}
+
+// ── Trova o crea cartella root (senza parent) ─────────────────────────────────
 async function findOrCreateRootFolder(accessToken: string, name: string): Promise<string> {
-  const q = `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false`;
-  const searchRes = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)&spaces=drive`,
+  const q = encodeURIComponent(
+    `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false`
+  );
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)&spaces=drive`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
-  const searchData = await searchRes.json();
-  if (searchData.files?.length > 0) return searchData.files[0].id;
-
-  const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder' }),
-  });
-  const created = await createRes.json();
-  if (!created.id) throw new Error(`Impossibile creare cartella root "${name}": ${JSON.stringify(created)}`);
-  return created.id;
+  const data = await res.json();
+  if (!res.ok) throw new Error(`Drive search error: ${JSON.stringify(data)}`);
+  if (data.files?.length > 0) return data.files[0].id;
+  return createFolder(accessToken, name);
 }
-
 
 // ── Handler principale ────────────────────────────────────────────────────────
 serve(async (req) => {
@@ -126,25 +125,26 @@ serve(async (req) => {
 
     const accessToken = await getValidAccessToken(teamId);
 
-    // Struttura: Fuyue Agency / {clientName} / {subfolder}
-    const rootId   = await findOrCreateRootFolder(accessToken, 'Fuyue Agency');
-    const clientId = await findOrCreateFolder(accessToken, clientName, rootId);
+    // Struttura: Fuyue Agency / {clientName} / 📹 Contenuti /
+    // Uguale a create-drive-folder → i clip finiscono nella cartella 📹 Contenuti del cliente
+    const rootId      = await findOrCreateRootFolder(accessToken, 'Fuyue Agency');
+    const clientId    = await findOrCreateFolder(accessToken, clientName, rootId);
+    const contentId   = await findOrCreateFolder(accessToken, '📹 Contenuti', clientId);
 
-
-    // Sessione upload resumable
+    // Sessione upload resumable — il file va dentro 📹 Contenuti
     const initRes = await fetch(
       'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,size,mimeType,webViewLink',
       {
         method: 'POST',
         headers: {
-          Authorization:            `Bearer ${accessToken}`,
-          'Content-Type':           'application/json',
-          'X-Upload-Content-Type':  mimeType,
+          Authorization:             `Bearer ${accessToken}`,
+          'Content-Type':            'application/json',
+          'X-Upload-Content-Type':   mimeType,
           'X-Upload-Content-Length': String(fileSize),
         },
         body: JSON.stringify({
-          name:     fileName,
-          parents:  [clientId],
+          name:    fileName,
+          parents: [contentId],
           mimeType,
         }),
       }
@@ -159,12 +159,12 @@ serve(async (req) => {
       );
     }
 
-    // Salva folder ID per evitare ricreazioni future
+    // Aggiorna google_drive_folder_id con l'id root
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     await supabase.from('team').update({ google_drive_folder_id: rootId }).eq('id', teamId);
 
     return new Response(
-      JSON.stringify({ uploadUrl, folderId: clientId, rootFolderId: rootId }),
+      JSON.stringify({ uploadUrl, folderId: contentId, rootFolderId: rootId }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
