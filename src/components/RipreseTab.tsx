@@ -940,6 +940,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
                     <td className={`${tdCls} text-center relative`} onClick={e => e.stopPropagation()}>
                       <ClipFileUpload
                         clip={clip}
+                        clp={clp}
                         onUpdated={patch => updateClipLocally(clip.id, patch)}
                         variant="row"
                       />
