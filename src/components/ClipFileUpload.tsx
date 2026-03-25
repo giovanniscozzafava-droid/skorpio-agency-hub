@@ -230,7 +230,7 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
           <button
             onClick={() => doUpload(retryFile)}
             title="Riprova upload"
-            className="text-amber-500 hover:opacity-70 text-sm transition-opacity"
+            className="text-muted-foreground hover:opacity-70 text-sm transition-opacity"
           >
             🔄
           </button>
