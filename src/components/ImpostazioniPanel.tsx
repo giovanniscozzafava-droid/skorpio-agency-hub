@@ -102,6 +102,8 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
   const connectGoogleCalendar = useCallback(async () => {
     if (!utente) return;
     setGcalLoading(true);
+    // Apri il popup SUBITO (prima dell'await) per evitare il blocco popup del browser
+    const popup = window.open('', 'gcal_oauth', 'width=500,height=600,left=200,top=100');
     try {
       const res = await fetch(
         `${SUPABASE_URL}/functions/v1/google-calendar-oauth?action=get_url`,
@@ -113,14 +115,17 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
       );
       const { url } = await res.json();
       if (url) {
-        const popup = window.open(url, 'gcal_oauth', 'width=500,height=600,left=200,top=100');
-        if (!popup) {
+        if (popup && !popup.closed) {
+          popup.location.href = url;
+        } else {
           // Popup bloccato → redirect nella finestra corrente
           window.location.href = url;
         }
+      } else {
+        popup?.close();
       }
-
     } catch {
+      popup?.close();
       addToast('❌ Errore connessione Google Calendar', 'error');
     } finally {
       setGcalLoading(false);
