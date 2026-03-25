@@ -99,6 +99,10 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
       setProgress({ loaded: 0, total: file.size, percent: 3 });
       const storagePath = `${utente.id}/${Date.now()}_${fileName}`;
 
+      // Recupera il JWT della sessione utente (necessario per le RLS policy)
+      const { data: { session } } = await supabase.auth.getSession();
+      const authToken = session?.access_token || SUPABASE_KEY;
+
       // Upload con progress tracking tramite XMLHttpRequest
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -124,7 +128,7 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
 
         xhr.open('POST', url);
         xhr.setRequestHeader('apikey', SUPABASE_KEY);
-        xhr.setRequestHeader('Authorization', `Bearer ${SUPABASE_KEY}`);
+        xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
         xhr.setRequestHeader('Content-Type', mimeType);
         xhr.setRequestHeader('x-upsert', 'true');
         xhr.send(file);
