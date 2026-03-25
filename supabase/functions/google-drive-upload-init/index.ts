@@ -1,3 +1,5 @@
+// ─── google-drive-upload-init ────────────────────────────────────────────────
+// Usa Google Service Account per creare una sessione di upload resumable su Drive.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 
 const corsHeaders = {
@@ -5,75 +7,86 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID');
-const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET');
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+// ── Service Account JWT ───────────────────────────────────────────────────────
 
-const ROOT_FOLDER_NAME = 'SKORPIO_Clip';
+function base64url(data: Uint8Array): string {
+  const base64 = btoa(String.fromCharCode(...data));
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
 
-async function getAccessToken(teamMemberId: string): Promise<string | null> {
-  // Fetch token from team table
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/team?id=eq.${teamMemberId}&select=google_calendar_access_token,google_calendar_refresh_token,google_calendar_token_expiry`, {
-    headers: {
-      'apikey': SUPABASE_SERVICE_ROLE_KEY!,
-      'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-    },
-  });
-  const rows = await res.json();
-  if (!rows || rows.length === 0) return null;
+function base64urlStr(str: string): string {
+  const bytes = new TextEncoder().encode(str);
+  return base64url(bytes);
+}
 
-  const row = rows[0];
-  const now = Date.now();
-  
-  // If token is still valid (with 5min buffer), return it
-  if (row.google_calendar_access_token && row.google_calendar_token_expiry && (row.google_calendar_token_expiry - 300000) > now) {
-    return row.google_calendar_access_token;
-  }
+async function getServiceAccountToken(): Promise<string> {
+  const saJson = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON');
+  if (!saJson) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON non configurato');
 
-  // Refresh the token
-  if (!row.google_calendar_refresh_token) return null;
-  
+  const sa = JSON.parse(saJson);
+  const scope = 'https://www.googleapis.com/auth/drive';
+  const now = Math.floor(Date.now() / 1000);
+
+  const header = base64urlStr(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+  const payload = base64urlStr(JSON.stringify({
+    iss: sa.client_email,
+    scope,
+    aud: 'https://oauth2.googleapis.com/token',
+    exp: now + 3600,
+    iat: now,
+  }));
+
+  const signingInput = `${header}.${payload}`;
+
+  // Import private key
+  const pemBody = sa.private_key
+    .replace(/-----BEGIN PRIVATE KEY-----/, '')
+    .replace(/-----END PRIVATE KEY-----/, '')
+    .replace(/\s/g, '');
+  const keyData = Uint8Array.from(atob(pemBody), c => c.charCodeAt(0));
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'pkcs8',
+    keyData,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  const signature = await crypto.subtle.sign(
+    'RSASSA-PKCS1-v1_5',
+    cryptoKey,
+    new TextEncoder().encode(signingInput)
+  );
+
+  const jwt = `${signingInput}.${base64url(new Uint8Array(signature))}`;
+
+  // Exchange JWT for access token
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID!,
-      client_secret: GOOGLE_CLIENT_SECRET!,
-      refresh_token: row.google_calendar_refresh_token,
-      grant_type: 'refresh_token',
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion: jwt,
     }),
   });
 
   const tokenData = await tokenRes.json();
-  if (!tokenData.access_token) return null;
-
-  const newExpiry = now + (tokenData.expires_in * 1000);
-
-  // Save refreshed token
-  await fetch(`${SUPABASE_URL}/rest/v1/team?id=eq.${teamMemberId}`, {
-    method: 'PATCH',
-    headers: {
-      'apikey': SUPABASE_SERVICE_ROLE_KEY!,
-      'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      google_calendar_access_token: tokenData.access_token,
-      google_calendar_token_expiry: newExpiry,
-    }),
-  });
-
+  if (!tokenData.access_token) {
+    throw new Error(`Errore token SA: ${JSON.stringify(tokenData)}`);
+  }
   return tokenData.access_token;
 }
 
+// ── Drive helpers ─────────────────────────────────────────────────────────────
+
 async function findOrCreateFolder(accessToken: string, name: string, parentId?: string): Promise<string> {
-  const query = parentId
-    ? `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`
-    : `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+  const q = parentId
+    ? `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`
+    : `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
 
   const searchRes = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name)`,
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&spaces=drive`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   const searchData = await searchRes.json();
@@ -82,22 +95,26 @@ async function findOrCreateFolder(accessToken: string, name: string, parentId?: 
     return searchData.files[0].id;
   }
 
-  // Create folder
+  const body: Record<string, unknown> = {
+    name,
+    mimeType: 'application/vnd.google-apps.folder',
+  };
+  if (parentId) body.parents = [parentId];
+
   const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      name,
-      mimeType: 'application/vnd.google-apps.folder',
-      parents: parentId ? [parentId] : undefined,
-    }),
+    body: JSON.stringify(body),
   });
   const created = await createRes.json();
+  if (!created.id) throw new Error(`Impossibile creare cartella "${name}": ${JSON.stringify(created)}`);
   return created.id;
 }
+
+// ── Main handler ──────────────────────────────────────────────────────────────
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -105,47 +122,26 @@ serve(async (req) => {
   }
 
   try {
-    const { fileName, mimeType, fileSize, clientName, teamMemberId } = await req.json();
+    const { fileName, mimeType, fileSize, clientName } = await req.json();
 
     if (!fileName || !mimeType || !fileSize || !clientName) {
-      return new Response(JSON.stringify({ error: 'Parametri mancanti' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      return new Response(JSON.stringify({ error: 'Parametri mancanti: fileName, mimeType, fileSize, clientName' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Get first connected team member with Google Drive if no teamMemberId
-    let memberId = teamMemberId;
-    if (!memberId) {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/team?google_calendar_connected=eq.true&select=id&limit=1`, {
-        headers: {
-          'apikey': SUPABASE_SERVICE_ROLE_KEY!,
-          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        },
-      });
-      const rows = await res.json();
-      if (rows && rows.length > 0) memberId = rows[0].id;
-    }
+    const accessToken = await getServiceAccountToken();
 
-    if (!memberId) {
-      return new Response(JSON.stringify({ error: 'Nessun account Google Drive connesso' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
+    // Cartella root configurata (opzionale)
+    const rootFolderEnv = Deno.env.get('GOOGLE_DRIVE_PARENT_FOLDER_ID') || undefined;
 
-    const accessToken = await getAccessToken(memberId);
-    if (!accessToken) {
-      return new Response(JSON.stringify({ error: 'Token Google Drive non disponibile' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
+    // SKORPIO_Clip root
+    const rootFolderId = await findOrCreateFolder(accessToken, 'SKORPIO_Clip', rootFolderEnv);
 
-    // Find/create SKORPIO_Clip root folder
-    const rootFolderId = await findOrCreateFolder(accessToken, ROOT_FOLDER_NAME);
-    
-    // Find/create client subfolder
+    // Sottocartella cliente
     const clientFolderId = await findOrCreateFolder(accessToken, clientName, rootFolderId);
 
-    // Create resumable upload session
+    // Sessione resumable
     const initRes = await fetch(
       `https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,size,mimeType,webViewLink`,
       {
@@ -166,19 +162,20 @@ serve(async (req) => {
 
     const uploadUrl = initRes.headers.get('Location');
     if (!uploadUrl) {
-      return new Response(JSON.stringify({ error: 'Impossibile creare sessione di upload' }), {
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      const body = await initRes.text();
+      return new Response(JSON.stringify({ error: `Impossibile creare sessione upload: ${body}` }), {
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     return new Response(JSON.stringify({ uploadUrl, folderId: clientFolderId, rootFolderId }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (err: unknown) {
     console.error('[google-drive-upload-init]', err);
-    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Errore' }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Errore sconosciuto' }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });

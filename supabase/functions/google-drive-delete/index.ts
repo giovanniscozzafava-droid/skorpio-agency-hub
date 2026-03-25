@@ -1,3 +1,5 @@
+// ─── google-drive-delete ─────────────────────────────────────────────────────
+// Usa Google Service Account per eliminare un file da Drive.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 
 const corsHeaders = {
@@ -5,57 +7,52 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID');
-const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET');
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+function base64url(data: Uint8Array): string {
+  const base64 = btoa(String.fromCharCode(...data));
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
 
-async function getAccessToken(): Promise<string | null> {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/team?google_calendar_connected=eq.true&select=id,google_calendar_access_token,google_calendar_refresh_token,google_calendar_token_expiry&limit=1`, {
-    headers: {
-      'apikey': SUPABASE_SERVICE_ROLE_KEY!,
-      'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-    },
-  });
-  const rows = await res.json();
-  if (!rows || rows.length === 0) return null;
+function base64urlStr(str: string): string {
+  return base64url(new TextEncoder().encode(str));
+}
 
-  const row = rows[0];
-  const now = Date.now();
+async function getServiceAccountToken(): Promise<string> {
+  const saJson = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON');
+  if (!saJson) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON non configurato');
 
-  if (row.google_calendar_access_token && row.google_calendar_token_expiry && (row.google_calendar_token_expiry - 300000) > now) {
-    return row.google_calendar_access_token;
-  }
+  const sa = JSON.parse(saJson);
+  const now = Math.floor(Date.now() / 1000);
 
-  if (!row.google_calendar_refresh_token) return null;
+  const header = base64urlStr(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+  const payload = base64urlStr(JSON.stringify({
+    iss: sa.client_email,
+    scope: 'https://www.googleapis.com/auth/drive',
+    aud: 'https://oauth2.googleapis.com/token',
+    exp: now + 3600,
+    iat: now,
+  }));
+
+  const signingInput = `${header}.${payload}`;
+  const pemBody = sa.private_key.replace(/-----BEGIN PRIVATE KEY-----/, '').replace(/-----END PRIVATE KEY-----/, '').replace(/\s/g, '');
+  const keyData = Uint8Array.from(atob(pemBody), c => c.charCodeAt(0));
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'pkcs8', keyData,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false, ['sign']
+  );
+
+  const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', cryptoKey, new TextEncoder().encode(signingInput));
+  const jwt = `${signingInput}.${base64url(new Uint8Array(signature))}`;
 
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID!,
-      client_secret: GOOGLE_CLIENT_SECRET!,
-      refresh_token: row.google_calendar_refresh_token,
-      grant_type: 'refresh_token',
-    }),
+    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt }),
   });
 
   const tokenData = await tokenRes.json();
-  if (!tokenData.access_token) return null;
-
-  await fetch(`${SUPABASE_URL}/rest/v1/team?id=eq.${row.id}`, {
-    method: 'PATCH',
-    headers: {
-      'apikey': SUPABASE_SERVICE_ROLE_KEY!,
-      'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      google_calendar_access_token: tokenData.access_token,
-      google_calendar_token_expiry: now + (tokenData.expires_in * 1000),
-    }),
-  });
-
+  if (!tokenData.access_token) throw new Error(`Errore token SA: ${JSON.stringify(tokenData)}`);
   return tokenData.access_token;
 }
 
@@ -66,19 +63,13 @@ serve(async (req) => {
 
   try {
     const { fileId } = await req.json();
-
     if (!fileId) {
       return new Response(JSON.stringify({ error: 'fileId mancante' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const accessToken = await getAccessToken();
-    if (!accessToken) {
-      return new Response(JSON.stringify({ error: 'Token Google Drive non disponibile' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
+    const accessToken = await getServiceAccountToken();
 
     const deleteRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
       method: 'DELETE',
@@ -87,19 +78,19 @@ serve(async (req) => {
 
     if (deleteRes.status === 204 || deleteRes.status === 200) {
       return new Response(JSON.stringify({ success: true }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     const body = await deleteRes.text();
     return new Response(JSON.stringify({ error: `Drive API error ${deleteRes.status}: ${body}` }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (err: unknown) {
     console.error('[google-drive-delete]', err);
     return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Errore' }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });

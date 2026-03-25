@@ -28,7 +28,7 @@ function formatBytes(bytes: number): string {
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('it-IT', {
-    day: '2-digit', month: 'short', year: 'numeric'
+    day: '2-digit', month: 'short', year: 'numeric',
   });
 }
 
@@ -45,6 +45,24 @@ function slugify(str: string): string {
     .slice(0, 40);
 }
 
+const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB
+
+async function invokeEdge(path: string, options: RequestInit = {}) {
+  const url = `${SUPABASE_URL}/functions/v1/${path}`;
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || `Edge function error ${res.status}`);
+  return data;
+}
+
 export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUploadProps) {
   const { addToast } = useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -59,65 +77,83 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
 
   const doUpload = useCallback(async (file: File) => {
     setUploading(true);
-    setProgress({ loaded: 0, total: file.size, percent: 5 });
+    setProgress({ loaded: 0, total: file.size, percent: 2 });
     setRetryFile(null);
 
     try {
       const ext = file.name.split('.').pop() || 'mp4';
       const slug = slugify(clip.titolo || clip.id_clip);
       const fileName = `${clip.id_clip}_${slug}.${ext}`;
-      const percorso = `SKORPIO_Clip/${clip.cliente_nome || 'Generale'}`;
+      const mimeType = file.type || 'video/mp4';
+      const clientName = clip.cliente_nome || 'Generale';
 
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('percorso', percorso);
-      fd.append('contenuto_id', clip.contenuto_id || '');
-      fd.append('nome_file', fileName);
-
-      setProgress({ loaded: 0, total: file.size, percent: 20 });
-
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/aruba-webdav-upload`, {
+      // Step 1 — Ottieni URL di upload resumable dall'edge function
+      setProgress({ loaded: 0, total: file.size, percent: 5 });
+      const { uploadUrl } = await invokeEdge('google-drive-upload-init', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-          apikey: SUPABASE_KEY,
-        },
-        body: fd,
+        body: JSON.stringify({ fileName, mimeType, fileSize: file.size, clientName }),
       });
 
-      setProgress({ loaded: file.size * 0.9, total: file.size, percent: 90 });
+      // Step 2 — Upload chunked direttamente su Google Drive
+      let uploadedBytes = 0;
+      let fileId = '';
 
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'Upload fallito');
+      while (uploadedBytes < file.size) {
+        const end = Math.min(uploadedBytes + CHUNK_SIZE - 1, file.size - 1);
+        const chunk = file.slice(uploadedBytes, end + 1);
 
-      const fileUrl = data.url as string;
-      const fileId = fileUrl; // su Aruba usiamo l'URL come ID univoco
+        const res = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Range': `bytes ${uploadedBytes}-${end}/${file.size}`,
+            'Content-Type': mimeType,
+          },
+          body: chunk,
+        });
 
+        if (res.status === 308) {
+          // Incompleto — continua
+          const range = res.headers.get('Range');
+          uploadedBytes = range ? parseInt(range.split('-')[1]) + 1 : uploadedBytes + chunk.size;
+        } else if (res.status === 200 || res.status === 201) {
+          const data = await res.json();
+          fileId = data.id;
+          uploadedBytes = file.size;
+        } else {
+          const body = await res.text();
+          throw new Error(`Chunk upload fallito (${res.status}): ${body}`);
+        }
+
+        const pct = Math.round(5 + (uploadedBytes / file.size) * 90);
+        setProgress({ loaded: uploadedBytes, total: file.size, percent: pct });
+      }
+
+      if (!fileId) throw new Error('Upload completato ma nessun file ID restituito');
+
+      const fileUrl = `https://drive.google.com/file/d/${fileId}/view`;
+
+      // Step 3 — Salva metadati su Supabase
       const patch: Partial<LogRipresa> = {
         file_id: fileId,
         file_url: fileUrl,
         file_name: fileName,
         file_size: file.size,
-        file_mime_type: file.type || 'video/mp4',
+        file_mime_type: mimeType,
         file_uploaded_at: new Date().toISOString(),
         file_deleted_at: null,
       };
 
-      const { error } = await supabase
-        .from('log_riprese')
-        .update(patch)
-        .eq('id', clip.id);
-
+      const { error } = await supabase.from('log_riprese').update(patch).eq('id', clip.id);
       if (error) throw error;
 
       setProgress({ loaded: file.size, total: file.size, percent: 100 });
       onUpdated(patch);
-      addToast(`✅ "${fileName}" caricato su Aruba Drive`, 'success');
+      addToast(`✅ "${fileName}" caricato su Google Drive`, 'success');
     } catch (err: unknown) {
       console.error('[ClipFileUpload] upload failed:', err);
       setRetryFile(file);
       const msg = err instanceof Error ? err.message : 'Errore sconosciuto';
-      addToast(`❌ Upload fallito: ${msg.slice(0, 80)}`, 'error');
+      addToast(`❌ Upload fallito: ${msg.slice(0, 100)}`, 'error');
     } finally {
       setUploading(false);
       setProgress(null);
@@ -125,9 +161,9 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
   }, [clip, onUpdated, addToast]);
 
   const handleFile = useCallback((file: File) => {
-    const maxSize = 4 * 1024 * 1024 * 1024; // 4GB
+    const maxSize = 15 * 1024 * 1024 * 1024; // 15 GB
     if (file.size > maxSize) {
-      addToast('❌ File troppo grande (max 4 GB)', 'error');
+      addToast('❌ File troppo grande (max 15 GB)', 'error');
       return;
     }
     doUpload(file);
@@ -135,6 +171,16 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
 
   async function handleDeleteFile() {
     if (!clip.file_id) return;
+
+    // Elimina da Google Drive via edge function
+    try {
+      await invokeEdge('google-drive-delete', {
+        method: 'POST',
+        body: JSON.stringify({ fileId: clip.file_id }),
+      });
+    } catch (err) {
+      console.warn('[ClipFileUpload] delete from Drive failed:', err);
+    }
 
     const patch: Partial<LogRipresa> = {
       file_id: null,
@@ -144,7 +190,7 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
 
     await supabase.from('log_riprese').update(patch).eq('id', clip.id);
     onUpdated(patch);
-    addToast('🗑️ File rimosso. Metadati conservati come riferimento.', 'success');
+    addToast('🗑️ File rimosso da Google Drive. Metadati conservati.', 'success');
     setShowDeleteConfirm(false);
   }
 
@@ -167,7 +213,7 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
     if (wasDeleted) {
       return (
         <span
-          title={`File rimosso il ${formatDate(clip.file_deleted_at!)}${clip.file_name ? ` — ${clip.file_name}` : ''} — archiviato su Aruba`}
+          title={`File rimosso il ${formatDate(clip.file_deleted_at!)}${clip.file_name ? ` — ${clip.file_name}` : ''} — archiviato su Google Drive`}
           className="text-muted-foreground/40 cursor-help text-base"
         >
           ☁️
@@ -182,7 +228,7 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
             href={clip.file_url!}
             target="_blank"
             rel="noopener noreferrer"
-            title={clip.file_name || 'Apri file'}
+            title={clip.file_name || 'Apri su Google Drive'}
             className="text-primary hover:opacity-70 text-sm transition-opacity"
           >
             🎬
@@ -195,8 +241,8 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
             🗑️
           </button>
           {showDeleteConfirm && (
-            <div className="absolute z-50 bg-card border border-border rounded-lg shadow-xl p-3 text-xs w-44 top-6 left-0">
-              <p className="text-foreground font-medium mb-2">Rimuovere il file?</p>
+            <div className="absolute z-50 bg-card border border-border rounded-lg shadow-xl p-3 text-xs w-48 top-6 left-0">
+              <p className="text-foreground font-medium mb-2">Rimuovere da Drive?</p>
               <div className="flex gap-2">
                 <button
                   onClick={handleDeleteFile}
@@ -237,7 +283,7 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
         ) : (
           <button
             onClick={() => fileInputRef.current?.click()}
-            title="Carica file su Aruba Drive"
+            title="Carica file su Google Drive"
             className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary text-sm transition-all"
           >
             ☁️↑
@@ -253,7 +299,7 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
       {uploading && progress && (
         <div className="space-y-1">
           <div className="flex justify-between text-xs text-muted-foreground">
-            <span>Caricamento su Aruba Drive…</span>
+            <span>Caricamento su Google Drive…</span>
             <span>{progress.percent}%</span>
           </div>
           <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
@@ -286,7 +332,7 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
         >
           <div className="text-3xl mb-2">☁️</div>
           <p className="text-sm font-medium text-foreground">Trascina un file video qui</p>
-          <p className="text-xs text-muted-foreground mt-1">o clicca per selezionare · MP4, MOV, AVI, MXF · max 4 GB</p>
+          <p className="text-xs text-muted-foreground mt-1">o clicca per selezionare · MP4, MOV, AVI, MXF · max 15 GB</p>
           <input
             ref={fileInputRef}
             type="file"
@@ -312,20 +358,6 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
 
       {hasFile && !uploading && (
         <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
-          {/* Video preview — solo se URL diretto (non drive.google.com) */}
-          {clip.file_url && (clip.file_mime_type?.startsWith('video/') || clip.file_name?.match(/\.(mp4|mov|avi|webm)$/i)) && (
-            <div className="rounded-lg overflow-hidden bg-black aspect-video">
-              <video
-                src={clip.file_url}
-                controls
-                className="w-full h-full object-contain"
-                preload="metadata"
-              >
-                Il tuo browser non supporta il video inline.
-              </video>
-            </div>
-          )}
-
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-foreground truncate" title={clip.file_name || ''}>
@@ -343,7 +375,7 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
                 rel="noopener noreferrer"
                 className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:opacity-80 transition-opacity"
               >
-                ↗ Apri
+                ↗ Apri su Drive
               </a>
               <button
                 onClick={() => setShowDeleteConfirm(true)}
@@ -357,7 +389,7 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
           {showDeleteConfirm && (
             <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
               <p className="text-sm font-medium text-foreground">
-                Rimuovere il file da Aruba Drive?
+                Rimuovere il file da Google Drive?
               </p>
               <p className="text-xs text-muted-foreground">
                 Il nome e la dimensione verranno conservati come riferimento storico.
@@ -385,7 +417,7 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
         <div className="rounded-xl border border-border bg-muted/20 p-4 text-center space-y-1">
           <div className="text-2xl text-muted-foreground/40">☁️</div>
           <p className="text-xs text-muted-foreground font-medium">
-            File rimosso il {formatDate(clip.file_deleted_at!)} — archiviato localmente
+            File rimosso il {formatDate(clip.file_deleted_at!)} — era su Google Drive
           </p>
           {clip.file_name && (
             <p className="text-xs text-muted-foreground">{clip.file_name}{clip.file_size ? ` · ${formatBytes(clip.file_size)}` : ''}</p>
