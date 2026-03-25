@@ -298,7 +298,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
               ['Cliente', task.cliente_nome || '—'],
               ['Contenuto', task.id_contenuto || '—'],
               ['Assegnato da', task.assegnato_da || '—'],
-              ['Scadenza', task.scadenza ? new Date(task.scadenza).toLocaleDateString('it-IT') : '—'],
+              ['Scadenza', task.scadenza ? parseLocalDate(task.scadenza).toLocaleDateString('it-IT') : '—'],
               ['Ora', task.ora ? task.ora.slice(0, 5) : '—'],
             ].map(([label, value]) => (
               <div key={label} className="flex gap-2">
