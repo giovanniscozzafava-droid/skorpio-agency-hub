@@ -10,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { CalendarIcon } from 'lucide-react';
+import { parseLocalDate } from '../lib/dateUtils';
 
 const STATI: Task['stato'][] = ['Da fare', 'In lavorazione', 'In revisione', 'Completato', 'Non accettato'];
 
