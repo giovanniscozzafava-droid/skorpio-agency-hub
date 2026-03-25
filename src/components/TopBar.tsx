@@ -46,6 +46,8 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
         <div className="flex items-center gap-2 mr-4 flex-shrink-0">
           <span className="text-xl">🦂</span>
           <span className="font-bold text-white text-lg tracking-tight hidden sm:block">SKORPIO</span>
+          <span className="hidden lg:block text-xs mx-1" style={{ color: 'rgba(255,255,255,0.2)' }}>by</span>
+          <img src={fuyueLogo} alt="Fuyue" className="hidden lg:block h-4 w-auto opacity-50 hover:opacity-80 transition-opacity" />
         </div>
 
         {/* Contatori */}
