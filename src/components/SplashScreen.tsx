@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { sounds } from '../lib/sounds';
 import { useApp } from '../context/AppContext';
 import type { TeamMember } from '../types';
+import fuyueLogo from '@/assets/fuyue-logo-white.svg';
 
 export function SplashScreen() {
   const [team, setTeam] = useState<TeamMember[]>([]);
@@ -41,9 +42,11 @@ export function SplashScreen() {
       <div className="mb-12 text-center animate-fade-in">
         <div className="text-7xl mb-3 select-none">🦂</div>
         <h1 className="text-5xl font-bold text-white tracking-tight">SKORPIO</h1>
-        <p className="text-sm mt-2" style={{ color: 'rgba(255,255,255,0.45)' }}>
-          Fuyue Digital Agency — Gestionale Interno
-        </p>
+        <div className="flex items-center justify-center gap-2 mt-3">
+          <span className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>by</span>
+          <img src={fuyueLogo} alt="Fuyue Digital Agency" className="h-5 w-auto opacity-60" />
+          <span className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>— Gestionale Interno</span>
+        </div>
       </div>
 
       {/* Titolo */}
@@ -128,9 +131,12 @@ export function SplashScreen() {
       )}
 
       {/* Footer */}
-      <p className="mt-16 text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>
-        v1.0 — {new Date().getFullYear()} Fuyue Digital Agency
-      </p>
+      <div className="mt-16 flex items-center gap-2">
+        <img src={fuyueLogo} alt="Fuyue" className="h-4 w-auto opacity-30" />
+        <p className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>
+          v1.0 — {new Date().getFullYear()}
+        </p>
+      </div>
     </div>
   );
 }
