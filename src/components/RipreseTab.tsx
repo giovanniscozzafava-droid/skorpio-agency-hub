@@ -712,6 +712,33 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
   return (
     <div className="flex flex-col h-full">
 
+      {/* ── Drive Alert Banner (>85% or pubblicati con raw) ── */}
+      {clipsPublicatiConRaw.length > 0 && (
+        <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2 border-b border-[hsl(var(--clr-amber)/0.4)] bg-[hsl(var(--clr-amber)/0.08)]">
+          <span className="text-sm">⚠️</span>
+          <p className="text-xs text-[hsl(var(--clr-amber))] flex-1">
+            <span className="font-semibold">{clipsPublicatiConRaw.length} clip Pubblicate</span> hanno ancora file grezzi su Drive
+            {totalRawSizePublicati > 0 && <span className="text-muted-foreground"> · {formatBytes(totalRawSizePublicati)} liberabili</span>}
+          </p>
+          <button
+            onClick={() => {
+              setFiltroPubblicatiConRaw(true);
+            }}
+            className="flex-shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-[hsl(var(--clr-amber))] text-white hover:opacity-90 transition-opacity"
+          >
+            Mostra clip da pulire
+          </button>
+          {filtroPubblicatiConRaw && (
+            <button
+              onClick={() => setFiltroPubblicatiConRaw(false)}
+              className="flex-shrink-0 text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              ✕ Reset
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex-shrink-0 border-b border-border bg-card">
         <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
