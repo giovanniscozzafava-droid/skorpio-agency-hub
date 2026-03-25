@@ -8,7 +8,7 @@ interface Props {
   onGoToTask?: (taskId: string) => void;
 }
 
-const STORAGE_KEY = 'deadline_alert_dismissed';
+const STORAGE_KEY = 'deadline_alert_dismissed_v2';
 const SNOOZE_MINUTES = 30;
 const HOURS_BEFORE = 12;
 
