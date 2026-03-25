@@ -88,6 +88,49 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   const isCLPTask = !!(task.id_contenuto && WORKFLOW_MAP[task.tipo]);
   const workflowStep = WORKFLOW_MAP[task.tipo];
 
+  // Load cleanup info when it's a Cleanup task
+  useEffect(() => {
+    if (!isCleanupTask || !task.id_contenuto) return;
+    setLoadingCleanup(true);
+    supabase
+      .from('contenuti')
+      .select('drive_clip_folder_id')
+      .eq('id', task.id_contenuto)
+      .single()
+      .then(async ({ data }) => {
+        if (!data?.drive_clip_folder_id || !utente?.id) { setLoadingCleanup(false); return; }
+        try {
+          const result = await invokeEdge('google-drive-list-files', { folderId: data.drive_clip_folder_id, teamId: utente.id });
+          setCleanupInfo({ count: result.count, totalSize: result.totalSize, clipFolderId: data.drive_clip_folder_id });
+        } catch { /* ignore */ }
+        setLoadingCleanup(false);
+      });
+  }, [task.id_contenuto, isCleanupTask, utente?.id]);
+
+  const handleDeleteRawFiles = async () => {
+    if (!cleanupInfo || !utente?.id) return;
+    setDeletingCleanup(true);
+    try {
+      await invokeEdge('google-drive-delete-folder-contents', { folderId: cleanupInfo.clipFolderId, teamId: utente.id });
+      // Mark raw files deleted in DB
+      if (task.id_contenuto) {
+        const { data: clips } = await supabase.from('log_riprese').select('id').eq('contenuto_id', task.id_contenuto);
+        if (clips && clips.length > 0) {
+          await supabase.from('log_riprese').update({ file_deleted_at: new Date().toISOString(), file_id: null, file_url: null }).in('id', clips.map((c: any) => c.id));
+        }
+      }
+      await supabase.from('task').update({ stato: 'Completato' }).eq('id', task.id);
+      const { data: updated } = await supabase.from('task').select('*').eq('id', task.id).single();
+      if (updated) onUpdate(updated as Task);
+      addToast('🗑️ File grezzi eliminati. File esportato conservato.', 'success');
+      setShowCleanupConfirm(false);
+      setTaskCompletato(true);
+    } catch (err: any) {
+      addToast(`❌ Errore eliminazione: ${err.message}`, 'error');
+    }
+    setDeletingCleanup(false);
+  };
+
   useEffect(() => {
     if (!task.id_contenuto) return;
     supabase
