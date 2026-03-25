@@ -22,7 +22,7 @@ serve(async (req) => {
     // ── 1. GET auth URL ────────────────────────────────────────────────────
     if (action === 'get_url') {
       const body = await req.json();
-      const { redirect_uri } = body;
+      const { redirect_uri, team_id } = body;
 
       const params = new URLSearchParams({
         client_id: GOOGLE_CLIENT_ID,
@@ -31,6 +31,8 @@ serve(async (req) => {
         scope: 'https://www.googleapis.com/auth/calendar.events',
         access_type: 'offline',
         prompt: 'consent',
+        // Passa team_id come state OAuth per evitare dipendenze da sessionStorage cross-frame
+        state: team_id || '',
       });
 
       return new Response(
@@ -42,7 +44,10 @@ serve(async (req) => {
     // ── 2. Exchange code for tokens ───────────────────────────────────────
     if (action === 'exchange') {
       const body = await req.json();
-      const { code, redirect_uri, team_id } = body;
+      const { code, redirect_uri } = body;
+      // team_id può arrivare dal body oppure dallo state OAuth (nuovo flusso popup)
+      const team_id = body.team_id || body.state;
+
 
       const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
