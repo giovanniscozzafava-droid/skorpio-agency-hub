@@ -67,6 +67,14 @@ function MainApp() {
       </div>
       <ChatPopup team={team} />
       <ToastContainer />
+      <DeadlineAlertModal
+        tasks={tasks}
+        utente={utente}
+        onGoToTask={(taskId) => {
+          // Porta l'utente alla tab kanban
+          const { setTab } = useApp();
+        }}
+      />
     </div>
   );
 }
