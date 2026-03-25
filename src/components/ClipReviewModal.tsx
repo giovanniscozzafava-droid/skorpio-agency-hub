@@ -93,7 +93,7 @@ export function ClipReviewModal({ clip, clp, team, onClose, onApproved }: ClipRe
       // Generate display ID for the task
       const { data: idData } = await supabase.rpc('generate_display_id', {
         prefix: 'TSK',
-        seq_name: 'tsk_seq',
+        seq_name: 'task_seq',
       });
 
       const { error } = await supabase.from('task').insert({
