@@ -149,8 +149,13 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
       setSyncRunning(false);
     }
   }, [utente, addToast]);
+  // ── Google Calendar ───────────────────────────────────────────────────────
+  const [gcalLoading, setGcalLoading]     = useState(false);
+  const [gcalConnected, setGcalConnected] = useState(false);
 
-
+  // ── Google Drive ──────────────────────────────────────────────────────────
+  const [gdriveLoading, setGdriveLoading]     = useState(false);
+  const [gdriveConnected, setGdriveConnected] = useState(false);
 
   useEffect(() => {
     if (utente) {
