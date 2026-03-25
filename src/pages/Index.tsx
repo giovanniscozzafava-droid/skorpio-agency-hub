@@ -11,11 +11,12 @@ import { RipreseTab } from '../components/RipreseTab';
 import { CalendarioTab } from '../components/CalendarioTab';
 import { CreativeEngineTab } from '../components/CreativeEngineTab';
 import { ChatPopup } from '../components/ChatPopup';
+import { DeadlineAlertModal } from '../components/DeadlineAlertModal';
 import type { TeamMember, Cliente, Task } from '../types';
 import { supabase } from '../integrations/supabase/client';
 
 function MainApp() {
-  const { utente, session, tab } = useApp();
+  const { utente, session, tab, setTab } = useApp();
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [clienti, setClienti] = useState<Cliente[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -66,6 +67,11 @@ function MainApp() {
       </div>
       <ChatPopup team={team} />
       <ToastContainer />
+      <DeadlineAlertModal
+        tasks={tasks}
+        utente={utente}
+        onGoToTask={() => setTab('kanban')}
+      />
     </div>
   );
 }
