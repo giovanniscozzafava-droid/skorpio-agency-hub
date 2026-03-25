@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../integrations/supabase/client';
 import { lovable } from '../integrations/lovable/index';
 import { sounds } from '../lib/sounds';
+import fuyueLogo from '@/assets/fuyue-logo-white.svg';
 
 type Mode = 'login' | 'signup' | 'forgot';
 
