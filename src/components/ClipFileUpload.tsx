@@ -184,7 +184,7 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
     try {
       await invokeEdge('google-drive-delete', {
         method: 'POST',
-        body: JSON.stringify({ fileId: clip.file_id }),
+        body: JSON.stringify({ fileId: clip.file_id, teamId: utente?.id }),
       });
     } catch (err) {
       console.warn('[ClipFileUpload] delete from Drive failed:', err);
