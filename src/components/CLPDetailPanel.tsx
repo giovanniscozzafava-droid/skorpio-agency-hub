@@ -297,7 +297,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
   const handleCreateDrive = async () => {
     setCreatingDrive(true);
     addToast('📁 Creazione cartella Drive…', 'info');
-    const url = await createDriveFolder(form);
+    const url = await createDriveFolder(form, utente?.id);
     if (url) {
       set('link_drive', url);
       addToast('📁 Cartella Drive creata!', 'success');
