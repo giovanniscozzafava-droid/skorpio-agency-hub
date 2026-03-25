@@ -623,6 +623,12 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
     if (filtroStato && c.stato !== filtroStato) return false;
     if (filtroCliente && (c.cliente_nome || '') !== filtroCliente) return false;
     if (filtroOperatore && c.operatore !== filtroOperatore) return false;
+    // Filter: Pubblicati con file grezzi ancora presenti (per cleanup)
+    if (filtroPubblicatiConRaw) {
+      const clp = c.contenuto_id ? contenuti[c.contenuto_id] : null;
+      if (clp?.fase !== 'Pubblicato') return false;
+      if (!c.file_id || c.file_deleted_at) return false;
+    }
     if (search) {
       const s = search.toLowerCase();
       return (
@@ -634,6 +640,13 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
     }
     return true;
   });
+
+  // Drive alert: clips pubblicati con file grezzi presenti
+  const clipsPublicatiConRaw = clips.filter(c => {
+    const clp = c.contenuto_id ? contenuti[c.contenuto_id] : null;
+    return clp?.fase === 'Pubblicato' && c.file_id && !c.file_deleted_at;
+  });
+  const totalRawSizePublicati = clipsPublicatiConRaw.reduce((acc, c) => acc + (c.raw_files_size || c.file_size || 0), 0);
 
   const reportClienteAttivo = filtroCliente
     ? reportClienti.find(r => r.nome === filtroCliente)
