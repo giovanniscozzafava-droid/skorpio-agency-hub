@@ -94,7 +94,12 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
       const { url } = await res.json();
       if (url) {
         sessionStorage.setItem('gcal_team_id', utente.id);
-        window.open(url, '_blank', 'width=500,height=600');
+        const popup = (window.top || window).open(url, 'gcal_oauth', 'width=500,height=600,left=200,top=100');
+        if (!popup) {
+          // fallback: apri nella stessa finestra top
+          (window.top || window).location.href = url;
+        }
+
       }
     } catch {
       addToast('❌ Errore connessione Google Calendar', 'error');
