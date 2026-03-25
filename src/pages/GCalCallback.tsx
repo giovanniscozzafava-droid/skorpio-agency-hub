@@ -60,23 +60,20 @@ export default function GCalCallback() {
 
         sessionStorage.removeItem('gcal_team_id');
         setStatus('success');
-        setMessage('Google Calendar connesso! Reindirizzamento in corso…');
+        setMessage('Google Calendar connesso! Chiudi questa finestra.');
 
-        // Notifica la finestra padre (popup) o reindirizza se siamo nella finestra principale
-        const target = window.opener || (window.top !== window ? window.top : null);
-        if (target) {
-          try {
-            target.postMessage({ type: 'GCAL_CONNECTED', team_id }, window.location.origin);
-          } catch {
-            // cross-origin parent — ignora
+        // Prova a notificare la finestra padre via postMessage
+        try {
+          if (window.opener) {
+            window.opener.postMessage({ type: 'GCAL_CONNECTED', team_id }, window.location.origin);
           }
-          setTimeout(() => window.close(), 1500);
-        } else {
-          // Siamo nella finestra principale (popup bloccato) — reindirizza alla home
-          setTimeout(() => {
-            window.location.href = '/?gcal_connected=1';
-          }, 1500);
-        }
+        } catch { /* ignora errori cross-origin */ }
+
+        // Chiudi sempre il popup dopo 1.5s (il polling nella finestra principale rileverà la chiusura)
+        setTimeout(() => {
+          window.close();
+          setTimeout(() => { window.location.href = '/'; }, 500);
+        }, 1500);
       } catch (e: unknown) {
         setStatus('error');
         setMessage(e instanceof Error ? e.message : 'Errore sconosciuto');
