@@ -99,10 +99,23 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
   }, [addToast]);
 
   // ── Handlers Google Calendar ──────────────────────────────────────────────
+  // Polling generico: aspetta che il popup si chiuda, poi legge i dati aggiornati dal DB
+  const pollPopupClosed = useCallback((popup: Window, onClosed: () => void) => {
+    const interval = setInterval(() => {
+      try {
+        if (popup.closed) {
+          clearInterval(interval);
+          onClosed();
+        }
+      } catch { clearInterval(interval); onClosed(); }
+    }, 800);
+    // Timeout di sicurezza dopo 5 minuti
+    setTimeout(() => clearInterval(interval), 5 * 60 * 1000);
+  }, []);
+
   const connectGoogleCalendar = useCallback(async () => {
     if (!utente) return;
     setGcalLoading(true);
-    // Apri il popup SUBITO (prima dell'await) per evitare il blocco popup del browser
     const popup = window.open('', 'gcal_oauth', 'width=500,height=600,left=200,top=100');
     try {
       const res = await fetch(
@@ -114,13 +127,18 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
         }
       );
       const { url } = await res.json();
-      if (url) {
-        if (popup && !popup.closed) {
-          popup.location.href = url;
-        } else {
-          // Popup bloccato → redirect nella finestra corrente
-          window.location.href = url;
-        }
+      if (url && popup && !popup.closed) {
+        popup.location.href = url;
+        // Polling: quando il popup si chiude, rileggi dal DB
+        pollPopupClosed(popup, async () => {
+          const { data } = await supabase.from('team').select('google_calendar_connected').eq('id', utente.id).single();
+          if ((data as any)?.google_calendar_connected) {
+            setGcalConnected(true);
+            addToast('✅ Google Calendar connesso con successo!', 'success');
+          }
+        });
+      } else if (!popup || popup.closed) {
+        window.location.href = url;
       } else {
         popup?.close();
       }
@@ -130,7 +148,7 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
     } finally {
       setGcalLoading(false);
     }
-  }, [utente, addToast]);
+  }, [utente, addToast, pollPopupClosed]);
 
   const disconnectGoogleCalendar = useCallback(async () => {
     if (!utente) return;
@@ -157,7 +175,6 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
   const connectGoogleDrive = useCallback(async () => {
     if (!utente) return;
     setGdriveLoading(true);
-    // Apri il popup SUBITO (prima dell'await) per evitare il blocco popup del browser
     const popup = window.open('', 'gdrive_oauth', 'width=500,height=600,left=200,top=100');
     try {
       const res = await fetch(
@@ -170,13 +187,18 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
       );
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      if (data.url) {
-        if (popup && !popup.closed) {
-          popup.location.href = data.url;
-        } else {
-          // Popup bloccato → redirect nella finestra corrente
-          window.location.href = data.url;
-        }
+      if (data.url && popup && !popup.closed) {
+        popup.location.href = data.url;
+        // Polling: quando il popup si chiude, rileggi dal DB
+        pollPopupClosed(popup, async () => {
+          const { data: row } = await supabase.from('team').select('google_drive_connected').eq('id', utente.id).single();
+          if ((row as any)?.google_drive_connected) {
+            setGdriveConnected(true);
+            addToast('✅ Google Drive connesso! I file verranno caricati nel tuo My Drive.', 'success');
+          }
+        });
+      } else if (!popup || popup.closed) {
+        window.location.href = data.url;
       } else {
         popup?.close();
       }
@@ -186,7 +208,7 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
     } finally {
       setGdriveLoading(false);
     }
-  }, [utente, addToast]);
+  }, [utente, addToast, pollPopupClosed]);
 
   const disconnectGoogleDrive = useCallback(async () => {
     if (!utente) return;
