@@ -268,19 +268,27 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   };
 
   const filteredTasks = (stato: string) => {
+    const now = Date.now();
+    const in24h = now + 24 * 3600000;
     const filtered = tasks.filter(t => {
       if (t.stato !== stato) return false;
       if (personaView && t.assegnato_a !== personaView) return false;
+      // TUTTI gli utenti vedono i propri task; Admin vede tutti
       if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
+      // Filtro "In scadenza oggi" — solo task con deadline nelle prossime 24h
+      if (filtraOggi) {
+        if (!t.scadenza) return false;
+        const ms = getTargetDate(t.scadenza, t.ora).getTime();
+        if (ms > in24h || ms < now - 86400000) return false; // mostra anche scaduti di ieri
+      }
       return true;
     });
-    // Ordina: scadenza futura più vicina in cima → senza scadenza → scaduti in fondo
-    const now = Date.now();
+    // Ordina: scadenza futura più vicina → senza scadenza → scaduti in fondo
     const score = (t: Task) => {
-      if (!t.scadenza) return 2_000_000_000_000; // senza scadenza: in fondo
+      if (!t.scadenza) return 2_000_000_000_000;
       const ms = getTargetDate(t.scadenza, t.ora).getTime();
-      if (ms < now) return 3_000_000_000_000 + (now - ms); // scaduti: ultimi, ordinati dal più recente
-      return ms; // futuri: ordinati dal più imminente
+      if (ms < now) return 3_000_000_000_000 + (now - ms);
+      return ms;
     };
     return filtered.sort((a, b) => score(a) - score(b));
   };
