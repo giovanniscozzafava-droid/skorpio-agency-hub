@@ -105,9 +105,10 @@ serve(async (req) => {
 
     const accessToken = await getValidAccessToken(teamId);
 
-    // Struttura: SKORPIO_Clip / {clientName}
-    const rootId   = await findOrCreateFolder(accessToken, 'SKORPIO_Clip');
+    // Struttura: Fuyue Agency / {clientName} / {subfolder}
+    const rootId   = await findOrCreateRootFolder(accessToken, 'Fuyue Agency');
     const clientId = await findOrCreateFolder(accessToken, clientName, rootId);
+
 
     // Sessione upload resumable
     const initRes = await fetch(
