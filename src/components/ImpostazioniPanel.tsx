@@ -88,7 +88,7 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY },
-          body: JSON.stringify({ redirect_uri: GCAL_REDIRECT_URI }),
+          body: JSON.stringify({ redirect_uri: GCAL_REDIRECT_URI, team_id: utente.id }),
         }
       );
       const { url } = await res.json();
