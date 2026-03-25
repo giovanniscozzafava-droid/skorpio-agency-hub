@@ -11,6 +11,7 @@ import { RipreseTab } from '../components/RipreseTab';
 import { CalendarioTab } from '../components/CalendarioTab';
 import { CreativeEngineTab } from '../components/CreativeEngineTab';
 import { ChatPopup } from '../components/ChatPopup';
+import { DeadlineAlertModal } from '../components/DeadlineAlertModal';
 import type { TeamMember, Cliente, Task } from '../types';
 import { supabase } from '../integrations/supabase/client';
 
