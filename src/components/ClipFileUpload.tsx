@@ -80,7 +80,7 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
   const doUpload = useCallback(async (file: File) => {
     if (!utente) { addToast('❌ Utente non trovato', 'error'); return; }
     if (!driveConnected) {
-      addToast('⚠️ Connetti prima Google Drive nelle Impostazioni → Integrazioni', 'warning');
+      addToast('⚠️ Connetti prima Google Drive nelle Impostazioni → Integrazioni', 'warn');
       return;
     }
 
