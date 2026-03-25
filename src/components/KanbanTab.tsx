@@ -8,57 +8,59 @@ import { TaskDetailPanel } from './TaskDetailPanel';
 import { NuovoTaskModal } from './NuovoTaskModal';
 import { parseLocalDate } from '../lib/dateUtils';
 
-// ─── Orologio live al secondo per task con scadenza ──────────────────────────
+// ─── Countdown universale per task con scadenza ─────────────────────────────
 function getTargetDate(scadenza: string, ora: string | null): Date {
-  // Usa T... locale per evitare shift UTC→IT
   return new Date(`${scadenza}T${ora ? ora.slice(0, 5) : '23:59'}:00`);
 }
 
-function formatCountdown(diff: number): string {
-  if (diff <= 0) return 'SCADUTO';
+/** Formato human-readable del countdown */
+function formatCountdownHuman(diff: number): { text: string; icon: string; level: 'ok' | 'warn' | 'urgent' | 'scaduto' } {
+  if (diff <= 0) {
+    const elapsed = Math.abs(diff);
+    const d = Math.floor(elapsed / 86400000);
+    const h = Math.floor((elapsed % 86400000) / 3600000);
+    if (d > 0) return { text: `SCADUTO da ${d}g`, icon: '🔴', level: 'scaduto' };
+    return { text: `SCADUTO da ${h}h`, icon: '🔴', level: 'scaduto' };
+  }
   const d = Math.floor(diff / 86400000);
   const h = Math.floor((diff % 86400000) / 3600000);
   const m = Math.floor((diff % 3600000) / 60000);
-  const s = Math.floor((diff % 60000) / 1000);
-  if (d > 0) return `${d}g ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  if (d > 7) return { text: `📅 ${d} giorni`, icon: '📅', level: 'ok' };
+  if (d >= 1) return { text: `⏰ ${d}g ${h}h`, icon: '⏰', level: 'warn' };
+  if (h >= 1) return { text: `🔴 ${h}h ${m}min`, icon: '🔴', level: 'urgent' };
+  return { text: `🔴 ${m}min`, icon: '🔴', level: 'urgent' };
 }
 
 function LiveClock({ scadenza, ora }: { scadenza: string; ora: string | null }) {
   const [diff, setDiff] = useState(() => getTargetDate(scadenza, ora).getTime() - Date.now());
 
   useEffect(() => {
+    // aggiorna ogni minuto (sufficiente per il formato human)
     const id = setInterval(() => {
       setDiff(getTargetDate(scadenza, ora).getTime() - Date.now());
-    }, 1000);
+    }, 60000);
     return () => clearInterval(id);
   }, [scadenza, ora]);
 
-  const isScaduto = diff <= 0;
-  const isUrgent  = !isScaduto && diff < 24 * 3600000;
-  const isWarning = !isScaduto && diff < 72 * 3600000;
+  const { text, level } = formatCountdownHuman(diff);
 
-  const bg     = isScaduto ? 'hsl(0 80% 55% / 0.13)'   : isUrgent ? 'hsl(0 80% 55% / 0.10)'   : isWarning ? 'hsl(38 92% 50% / 0.10)'  : 'hsl(214 80% 55% / 0.10)';
-  const color  = isScaduto ? 'hsl(0 70% 42%)'           : isUrgent ? 'hsl(0 70% 42%)'           : isWarning ? 'hsl(32 95% 38%)'         : 'hsl(214 70% 44%)';
-  const border = isScaduto ? 'hsl(0 80% 55% / 0.40)'   : isUrgent ? 'hsl(0 80% 55% / 0.30)'   : isWarning ? 'hsl(38 92% 50% / 0.30)'  : 'hsl(214 80% 55% / 0.25)';
-  const icon   = isScaduto ? '🔴' : isUrgent ? '🔴' : isWarning ? '🟡' : '🟢';
+  const styles = {
+    ok:      { bg: 'hsl(214 80% 55% / 0.10)', color: 'hsl(214 70% 44%)', border: 'hsl(214 80% 55% / 0.25)' },
+    warn:    { bg: 'hsl(38 92% 50% / 0.12)',  color: 'hsl(32 95% 35%)',  border: 'hsl(38 92% 50% / 0.35)' },
+    urgent:  { bg: 'hsl(0 80% 55% / 0.12)',   color: 'hsl(0 70% 42%)',   border: 'hsl(0 80% 55% / 0.40)' },
+    scaduto: { bg: 'hsl(0 80% 55% / 0.14)',   color: 'hsl(0 70% 38%)',   border: 'hsl(0 80% 55% / 0.50)' },
+  }[level];
 
   return (
     <div
-      className="mt-2 flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-semibold"
-      style={{ background: bg, border: `1px solid ${border}`, color }}
+      className={`mt-2 flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-semibold${level === 'urgent' ? ' animate-pulse' : ''}`}
+      style={{ background: styles.bg, border: `1px solid ${styles.border}`, color: styles.color }}
     >
-      <span className="flex items-center gap-1.5">
-        <span>{icon}</span>
-        <span className="uppercase tracking-wide" style={{ fontSize: '0.65rem' }}>
-          {isScaduto ? 'SCADUTO' : '⏱'}
-        </span>
+      <span className="uppercase tracking-wide" style={{ fontSize: '0.65rem' }}>
+        {level === 'scaduto' ? 'SCADUTO' : level === 'urgent' ? 'URGENTE' : level === 'warn' ? 'IN SCADENZA' : 'SCADE TRA'}
       </span>
-      <span
-        className="font-mono tabular-nums"
-        style={{ fontSize: '0.72rem', letterSpacing: '0.04em', fontVariantNumeric: 'tabular-nums' }}
-      >
-        {formatCountdown(diff)}
+      <span className="font-mono tabular-nums" style={{ fontSize: '0.72rem' }}>
+        {text.replace(/^[🔴⏰📅]\s*/, '')}
       </span>
     </div>
   );
