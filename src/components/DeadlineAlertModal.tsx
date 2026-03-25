@@ -8,7 +8,7 @@ interface Props {
   onGoToTask?: (taskId: string) => void;
 }
 
-const STORAGE_KEY = 'deadline_alert_dismissed';
+const STORAGE_KEY = 'deadline_alert_dismissed_v2';
 const SNOOZE_MINUTES = 30;
 const HOURS_BEFORE = 12;
 
@@ -41,9 +41,14 @@ function getUrgentTasks(tasks: Task[], utente: TeamMember) {
     if (t.stato === 'Completato' || t.stato === 'Archiviato') return false;
     if (t.assegnato_a !== utente.nome) return false;
     if (!t.scadenza) return false;
-    const scadenzaDate = t.ora
-      ? new Date(`${t.scadenza}T${t.ora}`)
-      : new Date(`${t.scadenza}T23:59:59`);
+
+    // Normalizza l'ora: prende solo HH:mm (tronca secondi/microsecondi)
+    const oraClean = t.ora ? t.ora.substring(0, 5) : null;
+    // Costruisce la data interpretandola come UTC (aggiunge 'Z')
+    const scadenzaDate = oraClean
+      ? new Date(`${t.scadenza}T${oraClean}:00Z`)
+      : new Date(`${t.scadenza}T23:59:59Z`);
+
     if (!(scadenzaDate > now && scadenzaDate <= cutoff)) return false;
     const lastDismissed = dismissed[t.id];
     if (!lastDismissed) return true;
@@ -58,9 +63,10 @@ function getUrgentTasks(tasks: Task[], utente: TeamMember) {
 
 function getMinutesRemaining(task: Task): number {
   const now = new Date();
-  const scadenzaDate = task.ora
-    ? new Date(`${task.scadenza}T${task.ora}`)
-    : new Date(`${task.scadenza}T23:59:59`);
+  const oraClean = task.ora ? task.ora.substring(0, 5) : null;
+  const scadenzaDate = oraClean
+    ? new Date(`${task.scadenza}T${oraClean}:00Z`)
+    : new Date(`${task.scadenza}T23:59:59Z`);
   return Math.floor((scadenzaDate.getTime() - now.getTime()) / 60000);
 }
 
