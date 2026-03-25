@@ -3,6 +3,9 @@ import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import type { LogRipresa, Cliente, TeamMember, Contenuto } from '../types';
 import { ArubaUpload } from './ArubaUpload';
+import { ClipFileUpload } from './ClipFileUpload';
+import { BulkUploadModal, AutoCleanupDialog } from './DriveStorageIndicator';
+import { getStorageService } from '../services/storage';
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
@@ -23,6 +26,13 @@ const FASE_COLORS: Record<string, string> = {
 };
 
 const FORMATI = ['Verticale 9:16', 'Orizzontale 16:9', 'Quadrato 1:1', 'Foto', 'Raw / LOG', 'Slow Motion', 'Drone', 'Altro'];
+
+/** Returns true if a clip state/fase transition should trigger auto-cleanup */
+function shouldTriggerCleanup(field: 'stato' | 'fase', newValue: string): boolean {
+  if (field === 'stato' && newValue === 'Usata') return true;
+  if (field === 'fase' && newValue === 'Pubblicato') return true;
+  return false;
+}
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -46,7 +56,6 @@ function FaseBadge({ fase }: { fase: string }) {
   );
 }
 
-// Inline select for stato / formato
 function InlineSelect({
   value, options, onChange, colorMap,
 }: {
@@ -81,14 +90,13 @@ interface NuovaClipModalProps {
 function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalProps) {
   const { addToast } = useApp();
 
-  // CLP picker state
-  const [clpMode, setClpMode] = useState<'nuovo' | string>('nuovo'); // 'nuovo' or contenuto.id
+  const [clpMode, setClpMode] = useState<'nuovo' | string>('nuovo');
   const [clpSenzaClip, setClpSenzaClip] = useState<Contenuto[]>([]);
   const [clpConClip, setClpConClip] = useState<Contenuto[]>([]);
   const [clpClipCount, setClpClipCount] = useState<Record<string, string[]>>({});
 
   const [form, setForm] = useState({
-    codici: '',           // comma-separated Sony codes
+    codici: '',
     titolo: '',
     clienteId: '',
     clienteNome: '',
@@ -98,7 +106,6 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
   });
   const [loading, setLoading] = useState(false);
 
-  // load CLP data on mount
   useEffect(() => {
     async function load() {
       const { data: clps } = await supabase
@@ -128,7 +135,6 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
     load();
   }, []);
 
-  // auto-fill cliente when CLP is selected
   function handleClpChange(val: string) {
     setClpMode(val);
     if (val === 'nuovo') {
@@ -149,7 +155,6 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
 
   function set(k: string, v: unknown) { setForm(p => ({ ...p, [k]: v })); }
 
-  // infobox content
   const infoBox = (() => {
     if (clpMode === 'nuovo') return {
       bg: 'hsl(var(--clr-blue)/0.1)',
@@ -189,7 +194,6 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
     let clienteId = form.clienteId;
     let clienteNome = form.clienteNome;
 
-    // If "Genera nuovo CLP" — create contenuto first
     if (clpMode === 'nuovo') {
       const { data: idData } = await supabase.rpc('generate_display_id', {
         prefix: 'CLP',
@@ -228,7 +232,6 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
       }
     }
 
-    // Insert one row per Sony code
     const rows = rawCodes.map(code => ({
       id_clip: code,
       contenuto_id: contenutoId,
@@ -253,7 +256,6 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
       return;
     }
 
-    // Aggiorna il CLP a "Girato" solo se la fase attuale è precedente (Idea o Script)
     if (contenutoId) {
       const { data: clpData } = await supabase
         .from('contenuti')
@@ -288,8 +290,6 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
         </div>
 
         <form onSubmit={submit} className="px-6 py-5 space-y-4 overflow-y-auto flex-1">
-
-          {/* Codici Sony */}
           <div>
             <label className={labelCls}>Codice(i) Sony * <span className="text-muted-foreground font-normal">(separati da virgola)</span></label>
             <input
@@ -310,7 +310,6 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
             )}
           </div>
 
-          {/* CLP selector */}
           <div>
             <label className={labelCls}>Contenuto CLP</label>
             <select className={inputCls} value={clpMode} onChange={e => handleClpChange(e.target.value)}>
@@ -334,7 +333,6 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
                 </optgroup>
               )}
             </select>
-            {/* Info box */}
             {infoBox && (
               <div className="mt-1.5 rounded-lg px-3 py-2 text-xs font-medium border"
                 style={{ background: infoBox.bg, borderColor: infoBox.border, color: infoBox.color }}>
@@ -343,7 +341,6 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
             )}
           </div>
 
-          {/* Cliente */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Cliente *</label>
@@ -369,7 +366,6 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
             </div>
           </div>
 
-          {/* Titolo */}
           <div>
             <label className={labelCls}>Titolo / Descrizione</label>
             <input
@@ -381,7 +377,6 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
             />
           </div>
 
-          {/* Formato + Operatore */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Formato</label>
@@ -415,6 +410,64 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
   );
 }
 
+// ─── Clip Detail Panel ────────────────────────────────────────────────────────
+
+interface ClipDetailPanelProps {
+  clip: LogRipresa;
+  clp: Contenuto | null;
+  onClose: () => void;
+  onUpdated: (patch: Partial<LogRipresa>) => void;
+}
+
+function ClipDetailPanel({ clip, clp, onClose, onUpdated }: ClipDetailPanelProps) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-card rounded-2xl shadow-2xl w-full max-w-lg border border-border max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
+          <div>
+            <h2 className="font-bold text-base text-foreground font-mono">{clip.id_clip}</h2>
+            {clp && (
+              <p className="text-xs text-muted-foreground mt-0.5">{clp.id_display} — {clp.titolo}</p>
+            )}
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-xl">✕</button>
+        </div>
+
+        <div className="px-6 py-5 overflow-y-auto flex-1 space-y-5">
+          {/* Clip info */}
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <p className="text-xs text-muted-foreground">Stato</p>
+              <div className="mt-1"><StatoBadge stato={clip.stato} /></div>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Fase CLP</p>
+              <div className="mt-1">{clp ? <FaseBadge fase={clp.fase} /> : <span className="text-muted-foreground">—</span>}</div>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Cliente</p>
+              <p className="mt-1 font-medium">{clip.cliente_nome || '—'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Operatore</p>
+              <p className="mt-1 font-medium">{clip.operatore || '—'}</p>
+            </div>
+          </div>
+
+          {/* File section */}
+          <div>
+            <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-3">
+              ☁️ File Google Drive
+            </h3>
+            <ClipFileUpload clip={clip} onUpdated={onUpdated} variant="panel" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Tab ─────────────────────────────────────────────────────────────────
 
 interface RipreseTabProps {
@@ -428,12 +481,21 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
   const [contenuti, setContenuti] = useState<Record<string, Contenuto>>({});
   const [loading, setLoading] = useState(true);
   const [filtroStato, setFiltroStato] = useState<string>('');
-  const [filtroCliente, setFiltroCliente] = useState(''); // store cliente_nome
+  const [filtroCliente, setFiltroCliente] = useState('');
   const [filtroOperatore, setFiltroOperatore] = useState('');
   const [search, setSearch] = useState('');
   const [showNuova, setShowNuova] = useState(false);
+  const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showReport, setShowReport] = useState(false);
+  const [detailClip, setDetailClip] = useState<LogRipresa | null>(null);
+
+  // Auto-cleanup dialog state
+  const [cleanupPending, setCleanupPending] = useState<{
+    clipId: string;
+    field: 'stato' | 'fase';
+    newValue: string;
+  } | null>(null);
 
   const loadClips = useCallback(async () => {
     const { data } = await supabase
@@ -454,13 +516,11 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
 
   useEffect(() => { loadClips(); }, [loadClips]);
 
-  // Stats per stato globale
   const statCounts = STATI.reduce((acc, s) => {
     acc[s] = clips.filter(c => c.stato === s).length;
     return acc;
   }, {} as Record<string, number>);
 
-  // Mini-report per cliente: raggruppa clips per cliente_nome
   const reportClienti = React.useMemo(() => {
     const map: Record<string, { nome: string; clienteId: string; buona: number; grezza: number; daGirare: number; scartata: number; usata: number; totale: number }> = {};
     clips.forEach(c => {
@@ -476,7 +536,6 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
     return Object.values(map).sort((a, b) => b.totale - a.totale);
   }, [clips]);
 
-  // Filtered — filtroCliente è il nome del cliente
   const filtered = clips.filter(c => {
     if (filtroStato && c.stato !== filtroStato) return false;
     if (filtroCliente && (c.cliente_nome || '') !== filtroCliente) return false;
@@ -497,11 +556,50 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
     ? reportClienti.find(r => r.nome === filtroCliente)
     : null;
 
-  // helpers per la tabella
+  function updateClipLocally(id: string, patch: Partial<LogRipresa>) {
+    setClips(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
+    if (detailClip?.id === id) setDetailClip(prev => prev ? { ...prev, ...patch } : prev);
+  }
+
   async function updateClip(id: string, patch: Partial<LogRipresa>) {
     const { error } = await supabase.from('log_riprese').update(patch).eq('id', id);
     if (error) { addToast('❌ Errore aggiornamento', 'error'); return; }
-    setClips(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
+    updateClipLocally(id, patch);
+  }
+
+  /** Handle stato/fase change — intercept if needs cleanup dialog */
+  async function handleStatoChange(clip: LogRipresa, newStato: string) {
+    if (clip.file_id && !clip.file_deleted_at && shouldTriggerCleanup('stato', newStato)) {
+      setCleanupPending({ clipId: clip.id, field: 'stato', newValue: newStato });
+      return;
+    }
+    await updateClip(clip.id, { stato: newStato as LogRipresa['stato'] });
+  }
+
+  async function handleCleanupConfirm(deleteFile: boolean) {
+    if (!cleanupPending) return;
+    const clip = clips.find(c => c.id === cleanupPending.clipId);
+    if (!clip) { setCleanupPending(null); return; }
+
+    const patch: Partial<LogRipresa> = { [cleanupPending.field]: cleanupPending.newValue as LogRipresa['stato'] };
+
+    if (deleteFile && clip.file_id) {
+      const storage = getStorageService();
+      const deleted = await storage.deleteFile(clip.file_id);
+      Object.assign(patch, {
+        file_id: null,
+        file_url: null,
+        file_deleted_at: new Date().toISOString(),
+      });
+      if (deleted) {
+        addToast('🗑️ File rimosso da Google Drive. Copia locale conservata.', 'success');
+      } else {
+        addToast('⚠️ Errore rimozione Drive — stato aggiornato comunque', 'warn');
+      }
+    }
+
+    await updateClip(clip.id, patch);
+    setCleanupPending(null);
   }
 
   async function deleteClip(id: string) {
@@ -518,7 +616,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
   return (
     <div className="flex flex-col h-full">
 
-      {/* Toolbar — riga 1: filtri */}
+      {/* Toolbar */}
       <div className="flex-shrink-0 border-b border-border bg-card">
         <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
           <select
@@ -580,6 +678,13 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
               📊 Report
             </button>
             <button
+              onClick={() => setShowBulkUpload(true)}
+              className="px-3 py-1.5 rounded-md border border-border hover:bg-muted text-foreground text-xs font-medium transition-colors"
+              title="Upload clip multiple da Google Drive"
+            >
+              ☁️ Upload Clip
+            </button>
+            <button
               onClick={() => setShowNuova(true)}
               className="px-4 py-1.5 rounded-md bg-[hsl(var(--clr-blue))] text-white text-xs font-semibold hover:opacity-90 transition-opacity"
             >
@@ -589,7 +694,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
         </div>
       </div>
 
-      {/* Mini-report per cliente (collapsible) */}
+      {/* Report panel */}
       {showReport && (
         <div className="flex-shrink-0 border-b border-border bg-card/40 px-4 py-3">
           <div className="flex items-center justify-between mb-2">
@@ -613,10 +718,10 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
                 {reportClienti.map(r => {
                   const qualita = r.totale > 0 ? Math.round((r.buona / r.totale) * 100) : 0;
                   const isActive = filtroCliente === r.nome;
-                   return (
-                     <tr
-                       key={r.nome}
-                       onClick={() => setFiltroCliente(isActive ? '' : r.nome)}
+                  return (
+                    <tr
+                      key={r.nome}
+                      onClick={() => setFiltroCliente(isActive ? '' : r.nome)}
                       className={`cursor-pointer border-t border-border/40 transition-colors ${isActive ? 'bg-[hsl(var(--clr-blue)/0.12)]' : 'hover:bg-muted/40'}`}
                     >
                       <td className="py-1.5 pr-4 font-medium text-foreground">
@@ -651,7 +756,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
         </div>
       )}
 
-      {/* Inline banner se filtro cliente attivo */}
+      {/* Cliente filter banner */}
       {filtroCliente && reportClienteAttivo && (
         <div className="flex-shrink-0 flex items-center gap-4 px-4 py-2 border-b border-border bg-[hsl(var(--clr-blue)/0.06)]">
           <span className="text-sm font-semibold text-[hsl(var(--clr-blue))]">🎬 {reportClienteAttivo.nome}</span>
@@ -709,7 +814,6 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
       </div>
 
       {/* Table */}
-
       <div className="flex-1 overflow-auto">
         {loading ? (
           <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
@@ -732,6 +836,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
                 <th className={thCls}>Fase CLP</th>
                 <th className={thCls}>Formato</th>
                 <th className={thCls}>Operatore</th>
+                <th className={`${thCls} w-12 text-center`}>FILE</th>
                 <th className={`${thCls} w-8 text-center`}>☁️</th>
                 <th className={`${thCls} w-8 text-center`}>🗑️</th>
               </tr>
@@ -742,7 +847,8 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
                 const isDeleting = deletingId === clip.id;
                 return (
                   <tr key={clip.id}
-                    className="hover:bg-muted/40 transition-colors group"
+                    className="hover:bg-muted/40 transition-colors group cursor-pointer"
+                    onClick={() => setDetailClip(clip)}
                   >
                     {/* Clip ID */}
                     <td className={`${tdCls} font-mono font-semibold text-[hsl(var(--clr-blue))]`}>
@@ -750,7 +856,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
                     </td>
 
                     {/* CLP */}
-                    <td className={tdCls}>
+                    <td className={tdCls} onClick={e => e.stopPropagation()}>
                       {clip.id_contenuto_display ? (
                         <span className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                           {clip.id_contenuto_display}
@@ -771,11 +877,11 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
                     </td>
 
                     {/* Stato inline select */}
-                    <td className={tdCls}>
+                    <td className={tdCls} onClick={e => e.stopPropagation()}>
                       <InlineSelect
                         value={clip.stato}
                         options={STATI}
-                        onChange={v => updateClip(clip.id, { stato: v as LogRipresa['stato'] })}
+                        onChange={v => handleStatoChange(clip, v)}
                         colorMap={Object.fromEntries(
                           Object.entries(STATO_CFG).map(([k, v]) => [k, { text: v.text, border: v.border }])
                         )}
@@ -788,7 +894,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
                     </td>
 
                     {/* Formato inline select */}
-                    <td className={tdCls}>
+                    <td className={tdCls} onClick={e => e.stopPropagation()}>
                       <InlineSelect
                         value={clip.formato || ''}
                         options={['', ...FORMATI]}
@@ -801,42 +907,51 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
                       <span className="text-xs text-muted-foreground">{clip.operatore || '—'}</span>
                     </td>
 
-                     {/* Aruba Upload */}
-                     <td className={`${tdCls} text-center`}>
-                       <div className="opacity-0 group-hover:opacity-100 transition-all">
-                         <ArubaUpload
-                           variant="icon"
-                           percorso={`${clip.cliente_nome || 'Generali'}/Clip/${clip.id_contenuto_display || clip.id_clip}`}
-                           contenutoId={clip.contenuto_id || ''}
-                           onUploaded={(_url, nomeFile) => {
-                             addToast(`✅ "${nomeFile}" caricato per clip ${clip.id_clip}`, 'success');
-                           }}
-                         />
-                       </div>
-                     </td>
+                    {/* File column — Google Drive */}
+                    <td className={`${tdCls} text-center relative`} onClick={e => e.stopPropagation()}>
+                      <ClipFileUpload
+                        clip={clip}
+                        onUpdated={patch => updateClipLocally(clip.id, patch)}
+                        variant="row"
+                      />
+                    </td>
 
-                     {/* Delete */}
-                     <td className={`${tdCls} text-center`}>
-                       {isDeleting ? (
-                         <div className="flex items-center gap-1">
-                           <button onClick={() => deleteClip(clip.id)}
-                             className="text-[10px] px-1.5 py-0.5 rounded bg-[hsl(var(--clr-red))] text-white font-semibold hover:opacity-80">
-                             Sì
-                           </button>
-                           <button onClick={() => setDeletingId(null)}
-                             className="text-[10px] px-1.5 py-0.5 rounded border border-border hover:bg-muted">
-                             No
-                           </button>
-                         </div>
-                       ) : (
-                         <button
-                           onClick={() => setDeletingId(clip.id)}
-                           className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-[hsl(var(--clr-red))] transition-all text-sm"
-                         >
-                           🗑️
-                         </button>
-                       )}
-                     </td>
+                    {/* Aruba Upload */}
+                    <td className={`${tdCls} text-center`} onClick={e => e.stopPropagation()}>
+                      <div className="opacity-0 group-hover:opacity-100 transition-all">
+                        <ArubaUpload
+                          variant="icon"
+                          percorso={`${clip.cliente_nome || 'Generali'}/Clip/${clip.id_contenuto_display || clip.id_clip}`}
+                          contenutoId={clip.contenuto_id || ''}
+                          onUploaded={(_url, nomeFile) => {
+                            addToast(`✅ "${nomeFile}" caricato per clip ${clip.id_clip}`, 'success');
+                          }}
+                        />
+                      </div>
+                    </td>
+
+                    {/* Delete */}
+                    <td className={`${tdCls} text-center`} onClick={e => e.stopPropagation()}>
+                      {isDeleting ? (
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => deleteClip(clip.id)}
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-[hsl(var(--clr-red))] text-white font-semibold hover:opacity-80">
+                            Sì
+                          </button>
+                          <button onClick={() => setDeletingId(null)}
+                            className="text-[10px] px-1.5 py-0.5 rounded border border-border hover:bg-muted">
+                            No
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setDeletingId(clip.id)}
+                          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-[hsl(var(--clr-red))] transition-all text-sm"
+                        >
+                          🗑️
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
@@ -845,7 +960,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
         )}
       </div>
 
-      {/* Modal */}
+      {/* Modals */}
       {showNuova && (
         <NuovaClipModal
           clienti={clienti}
@@ -854,6 +969,40 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
           onCreated={loadClips}
         />
       )}
+
+      {showBulkUpload && (
+        <BulkUploadModal
+          clips={clips}
+          onClose={() => setShowBulkUpload(false)}
+          onUploaded={(clipId, patch) => updateClipLocally(clipId, patch)}
+        />
+      )}
+
+      {detailClip && (
+        <ClipDetailPanel
+          clip={detailClip}
+          clp={detailClip.contenuto_id ? contenuti[detailClip.contenuto_id] : null}
+          onClose={() => setDetailClip(null)}
+          onUpdated={patch => {
+            updateClipLocally(detailClip.id, patch);
+            setDetailClip(prev => prev ? { ...prev, ...patch } : prev);
+          }}
+        />
+      )}
+
+      {cleanupPending && (() => {
+        const clip = clips.find(c => c.id === cleanupPending.clipId);
+        if (!clip) return null;
+        return (
+          <AutoCleanupDialog
+            clip={clip}
+            newValue={cleanupPending.newValue}
+            field={cleanupPending.field}
+            onConfirm={handleCleanupConfirm}
+            onCancel={() => setCleanupPending(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
