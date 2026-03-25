@@ -70,6 +70,13 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   const [savingFase, setSavingFase] = useState(false);
   const [taskCompletato, setTaskCompletato] = useState(task.stato === 'Completato');
 
+  // ── Cleanup task state ─────────────────────────────────────────────────────
+  const [cleanupInfo, setCleanupInfo] = useState<{ count: number; totalSize: number; clipFolderId: string } | null>(null);
+  const [loadingCleanup, setLoadingCleanup] = useState(false);
+  const [showCleanupConfirm, setShowCleanupConfirm] = useState(false);
+  const [deletingCleanup, setDeletingCleanup] = useState(false);
+  const isCleanupTask = task.tipo === 'Cleanup';
+
   // ── Programmazione date picker ─────────────────────────────────────────────
   const [dataPub, setDataPub] = useState<Date | undefined>(
     task.scadenza ? parseLocalDate(task.scadenza) : undefined
