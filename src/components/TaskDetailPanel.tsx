@@ -190,7 +190,8 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
       task.tipo,
       task.id_contenuto,
       nuovaFase,
-      team
+      team,
+      utente?.id
     );
 
     setClpFase(nuovaFase);
