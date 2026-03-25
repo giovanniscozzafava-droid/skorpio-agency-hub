@@ -6,6 +6,7 @@ import { ImpostazioniPanel } from './ImpostazioniPanel';
 import fuyueLogo from '@/assets/fuyue-logo-white.svg';
 import { NotificheDropdown } from './NotificheDropdown';
 import { useNotifiche } from '@/hooks/useNotifiche';
+import { DriveStorageIndicator } from './DriveStorageIndicator';
 
 interface TopBarProps {
   team: TeamMember[];
@@ -65,6 +66,9 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
               ⚠️ {taskCounts.scaduti} scaduti
             </span>
           )}
+
+          {/* Google Drive storage indicator */}
+          <DriveStorageIndicator />
         </div>
 
         {/* Admin: avatar team per filtrare kanban */}

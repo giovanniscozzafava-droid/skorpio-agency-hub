@@ -101,6 +101,14 @@ export type LogRipresa = {
   formato: string;
   operatore: string;
   riga: number | null;
+  // Google Drive storage fields
+  file_id: string | null;
+  file_url: string | null;
+  file_name: string | null;
+  file_size: number | null;
+  file_mime_type: string | null;
+  file_uploaded_at: string | null;
+  file_deleted_at: string | null;
   created_at: string;
   updated_at: string;
 };

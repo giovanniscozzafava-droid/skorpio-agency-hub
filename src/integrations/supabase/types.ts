@@ -438,6 +438,13 @@ export type Database = {
           cliente_nome: string | null
           contenuto_id: string | null
           created_at: string | null
+          file_deleted_at: string | null
+          file_id: string | null
+          file_mime_type: string | null
+          file_name: string | null
+          file_size: number | null
+          file_uploaded_at: string | null
+          file_url: string | null
           formato: string | null
           id: string
           id_clip: string
@@ -453,6 +460,13 @@ export type Database = {
           cliente_nome?: string | null
           contenuto_id?: string | null
           created_at?: string | null
+          file_deleted_at?: string | null
+          file_id?: string | null
+          file_mime_type?: string | null
+          file_name?: string | null
+          file_size?: number | null
+          file_uploaded_at?: string | null
+          file_url?: string | null
           formato?: string | null
           id?: string
           id_clip: string
@@ -468,6 +482,13 @@ export type Database = {
           cliente_nome?: string | null
           contenuto_id?: string | null
           created_at?: string | null
+          file_deleted_at?: string | null
+          file_id?: string | null
+          file_mime_type?: string | null
+          file_name?: string | null
+          file_size?: number | null
+          file_uploaded_at?: string | null
+          file_url?: string | null
           formato?: string | null
           id?: string
           id_clip?: string
