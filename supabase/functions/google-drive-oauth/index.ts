@@ -1,12 +1,13 @@
 // ─── google-drive-oauth ───────────────────────────────────────────────────────
 // OAuth2 flow per Google Drive (drive.file scope).
-// Riutilizza le stesse credenziali OAuth di Google Calendar.
+// team_id viene passato come parametro OAuth "state" per evitare dipendenze da
+// sessionStorage cross-frame (necessario quando il popup viene aperto da un iframe).
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 const GOOGLE_CLIENT_ID     = Deno.env.get('GOOGLE_CALENDAR_CLIENT_ID')!;
@@ -22,9 +23,9 @@ serve(async (req) => {
   const action   = url.searchParams.get('action');
 
   try {
-    // ── 1. Genera URL autorizzazione ─────────────────────────────────────────
+    // ── 1. Genera URL autorizzazione (include team_id come state) ────────────
     if (action === 'get_url') {
-      const { redirect_uri } = await req.json();
+      const { redirect_uri, team_id } = await req.json();
 
       const params = new URLSearchParams({
         client_id:     GOOGLE_CLIENT_ID,
@@ -33,6 +34,9 @@ serve(async (req) => {
         scope:         'https://www.googleapis.com/auth/drive.file',
         access_type:   'offline',
         prompt:        'consent',
+        // Passa team_id come state OAuth: sopravvive all'intero flusso OAuth
+        // anche quando il popup è aperto da un iframe (sessionStorage non è condiviso)
+        state:         team_id || '',
       });
 
       return new Response(
@@ -43,7 +47,16 @@ serve(async (req) => {
 
     // ── 2. Scambia code per tokens ──────────────────────────────────────────
     if (action === 'exchange') {
-      const { code, redirect_uri, team_id } = await req.json();
+      const body = await req.json();
+      const { code, redirect_uri } = body;
+      // team_id: può arrivare dal body (vecchio flusso) o dallo state OAuth (nuovo flusso)
+      const team_id = body.team_id || body.state;
+
+      if (!team_id) {
+        return new Response(JSON.stringify({ error: 'team_id mancante' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
 
       const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',

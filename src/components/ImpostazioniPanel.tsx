@@ -88,14 +88,17 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY },
-          body: JSON.stringify({ redirect_uri: GCAL_REDIRECT_URI }),
+          body: JSON.stringify({ redirect_uri: GCAL_REDIRECT_URI, team_id: utente.id }),
         }
       );
       const { url } = await res.json();
       if (url) {
-        sessionStorage.setItem('gcal_team_id', utente.id);
-        window.open(url, '_blank', 'width=500,height=600');
+        const popup = (window.top || window).open(url, 'gcal_oauth', 'width=500,height=600,left=200,top=100');
+        if (!popup) {
+          (window.top || window).location.href = url;
+        }
       }
+
     } catch {
       addToast('❌ Errore connessione Google Calendar', 'error');
     } finally {
@@ -134,15 +137,18 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY },
-          body: JSON.stringify({ redirect_uri: GDRIVE_REDIRECT_URI }),
+          body: JSON.stringify({ redirect_uri: GDRIVE_REDIRECT_URI, team_id: utente.id }),
         }
       );
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       if (data.url) {
-        sessionStorage.setItem('gdrive_team_id', utente.id);
-        window.open(data.url, '_blank', 'width=500,height=600');
+        const popup = (window.top || window).open(data.url, 'gdrive_oauth', 'width=500,height=600,left=200,top=100');
+        if (!popup) {
+          (window.top || window).location.href = data.url;
+        }
       }
+
     } catch (e: unknown) {
       addToast(`❌ Errore connessione Google Drive: ${e instanceof Error ? e.message : ''}`, 'error');
     } finally {

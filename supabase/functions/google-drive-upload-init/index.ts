@@ -89,6 +89,27 @@ async function findOrCreateFolder(accessToken: string, name: string, parentId?: 
   return created.id;
 }
 
+// ── Trova o crea cartella root in My Drive ────────────────────────────────────
+async function findOrCreateRootFolder(accessToken: string, name: string): Promise<string> {
+  const q = `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false`;
+  const searchRes = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)&spaces=drive`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  const searchData = await searchRes.json();
+  if (searchData.files?.length > 0) return searchData.files[0].id;
+
+  const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder' }),
+  });
+  const created = await createRes.json();
+  if (!created.id) throw new Error(`Impossibile creare cartella root "${name}": ${JSON.stringify(created)}`);
+  return created.id;
+}
+
+
 // ── Handler principale ────────────────────────────────────────────────────────
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
@@ -105,9 +126,10 @@ serve(async (req) => {
 
     const accessToken = await getValidAccessToken(teamId);
 
-    // Struttura: SKORPIO_Clip / {clientName}
-    const rootId   = await findOrCreateFolder(accessToken, 'SKORPIO_Clip');
+    // Struttura: Fuyue Agency / {clientName} / {subfolder}
+    const rootId   = await findOrCreateRootFolder(accessToken, 'Fuyue Agency');
     const clientId = await findOrCreateFolder(accessToken, clientName, rootId);
+
 
     // Sessione upload resumable
     const initRes = await fetch(
