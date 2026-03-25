@@ -84,6 +84,8 @@ export type Contenuto = {
   note: string;
   note_revisione: string;
   link_drive: string;
+  drive_clip_folder_id?: string | null;
+  drive_export_folder_id?: string | null;
   generato_da_ai: boolean;
   created_at: string;
   updated_at: string;
