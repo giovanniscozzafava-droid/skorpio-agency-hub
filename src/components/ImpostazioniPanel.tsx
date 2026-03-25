@@ -652,6 +652,58 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
                         <li>• 💾 7 TB disponibili con Google Workspace</li>
                       </ul>
                     </div>
+
+                    {/* ── Sync cartelle Drive ── */}
+                    <div className="rounded-lg p-3 space-y-2" style={{ background: '#F0F9FF', border: '1px solid #BAE6FD' }}>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold" style={{ color: '#0369A1' }}>📁 Sincronizza cartelle Drive</p>
+                        <button
+                          onClick={runDriveSync}
+                          disabled={syncRunning}
+                          className="px-3 py-1 rounded-lg text-[11px] font-bold text-white disabled:opacity-50 transition-all"
+                          style={{ background: syncRunning ? '#94A3B8' : '#0284C7' }}
+                        >
+                          {syncRunning ? '⏳ In esecuzione…' : '▶ Avvia'}
+                        </button>
+                      </div>
+                      <p className="text-[10px]" style={{ color: '#0369A1' }}>
+                        Crea le cartelle su Drive per tutti i clienti attivi e tutti i CLP in produzione.
+                      </p>
+
+                      {/* Log area */}
+                      {syncLog.length > 0 && (
+                        <div
+                          ref={syncLogRef}
+                          className="rounded overflow-y-auto font-mono text-[10px] space-y-0.5 p-2"
+                          style={{ maxHeight: 200, background: '#0F172A', color: '#94A3B8' }}
+                        >
+                          {syncLog.map((entry, i) => (
+                            <div key={i} className={entry.icon === '' ? 'text-sky-400 font-bold mt-1' : ''}>
+                              {entry.icon && <span>{entry.icon} </span>}
+                              <span style={{ color: entry.icon === '❌' ? '#F87171' : entry.icon === '' ? undefined : '#E2E8F0' }}>
+                                {entry.label}
+                              </span>
+                              {entry.detail && (
+                                <span style={{ color: entry.icon === '❌' ? '#FCA5A5' : '#64748B' }}>
+                                  {' — '}{entry.detail}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                          {syncRunning && (
+                            <div className="animate-pulse text-sky-400">● elaborazione…</div>
+                          )}
+                        </div>
+                      )}
+
+                      {syncSummary && (
+                        <p className="text-[10px] font-semibold rounded px-2 py-1"
+                          style={{ background: '#DCFCE7', color: '#15803D', border: '1px solid #86EFAC' }}>
+                          {syncSummary}
+                        </p>
+                      )}
+                    </div>
+
                     <button
                       onClick={disconnectGoogleDrive}
                       disabled={gdriveLoading}
