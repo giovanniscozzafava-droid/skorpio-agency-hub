@@ -61,23 +61,21 @@ export default function GDriveCallback() {
 
         sessionStorage.removeItem('gdrive_team_id');
         setStatus('success');
-        setMessage('Google Drive connesso! Reindirizzamento in corso…');
+        setMessage('Google Drive connesso! Chiudi questa finestra.');
 
-        // Notifica la finestra padre (popup) o reindirizza se siamo nella finestra principale
-        const target = window.opener || (window.top !== window ? window.top : null);
-        if (target) {
-          try {
-            target.postMessage({ type: 'GDRIVE_CONNECTED', teamId }, window.location.origin);
-          } catch {
-            // cross-origin parent — ignora
+        // Prova a notificare la finestra padre via postMessage
+        try {
+          if (window.opener) {
+            window.opener.postMessage({ type: 'GDRIVE_CONNECTED', teamId }, window.location.origin);
           }
-          setTimeout(() => window.close(), 1500);
-        } else {
-          // Siamo nella finestra principale (popup bloccato) — reindirizza alla home
-          setTimeout(() => {
-            window.location.href = '/?gdrive_connected=1';
-          }, 1500);
-        }
+        } catch { /* ignora errori cross-origin */ }
+
+        // Chiudi sempre il popup dopo 1.5s (il polling nella finestra principale rileverà la chiusura)
+        setTimeout(() => {
+          window.close();
+          // Se window.close() non funziona (es. finestra principale), vai alla home
+          setTimeout(() => { window.location.href = '/'; }, 500);
+        }, 1500);
       } catch (e: unknown) {
         setStatus('error');
         setMessage(e instanceof Error ? e.message : 'Errore sconosciuto');
