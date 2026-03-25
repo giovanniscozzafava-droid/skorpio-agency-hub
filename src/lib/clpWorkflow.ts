@@ -122,7 +122,8 @@ export async function avanzaFaseDaTask(
   taskTipo: string,
   contenutoId: string,
   nuovaFase: FaseCLP,
-  team: TeamMember[]
+  team: TeamMember[],
+  teamId?: string
 ): Promise<{ completatoTask: boolean; taskCreato: boolean; driveTriggered: boolean }> {
   const step = WORKFLOW_MAP[taskTipo];
   const isStepCompletion = step && step.faseNext === nuovaFase;
