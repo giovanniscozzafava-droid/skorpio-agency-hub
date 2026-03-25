@@ -6,6 +6,7 @@ import { ImpostazioniPanel } from './ImpostazioniPanel';
 import fuyueLogo from '@/assets/fuyue-logo-white.svg';
 import { NotificheDropdown } from './NotificheDropdown';
 import { useNotifiche } from '@/hooks/useNotifiche';
+import { DriveStorageIndicator } from './DriveStorageIndicator';
 
 interface TopBarProps {
   team: TeamMember[];
