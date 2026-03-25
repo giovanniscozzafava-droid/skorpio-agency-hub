@@ -333,7 +333,8 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
                 <video
                   src={clip.exported_file_url!}
                   controls
-                  className="w-full max-h-[70vh] bg-black"
+                  className="w-full max-h-[70vh]"
+                  style={{ background: 'hsl(0 0% 0%)' }}
                   autoPlay={false}
                 />
               ) : (
