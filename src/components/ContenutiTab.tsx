@@ -28,7 +28,7 @@ interface ContentTabProps {
 }
 
 export function ContenutiTab({ team, clienti }: ContentTabProps) {
-  const { addToast } = useApp();
+  const { addToast, utente } = useApp();
   const [contenuti, setContenuti] = useState<Contenuto[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtroFase, setFiltroFase] = useState<string>('');
@@ -117,6 +117,7 @@ export function ContenutiTab({ team, clienti }: ContentTabProps) {
                 cliente_nome: contenuto.cliente_nome,
                 tipo: contenuto.tipo,
                 id_display: contenuto.id_display,
+                team_id: utente?.id,
               }),
             }
           );

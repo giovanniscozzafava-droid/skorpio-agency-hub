@@ -26,7 +26,7 @@ const STATO_CLIP_CFG: Record<string, { bg: string; text: string; border: string 
 };
 
 
-async function createDriveFolder(contenuto: Contenuto): Promise<string | null> {
+async function createDriveFolder(contenuto: Contenuto, teamId?: string): Promise<string | null> {
   try {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -43,6 +43,7 @@ async function createDriveFolder(contenuto: Contenuto): Promise<string | null> {
         cliente_nome: contenuto.cliente_nome,
         tipo: contenuto.tipo,
         id_display: contenuto.id_display,
+        team_id: teamId,
       }),
     });
     const result = await res.json();
@@ -82,7 +83,7 @@ function Section({ title }: { title: string }) {
 }
 
 export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, onDelete, onFaseChange }: CLPDetailPanelProps) {
-  const { addToast } = useApp();
+  const { addToast, utente } = useApp();
   const [form, setForm] = useState<Contenuto>({ ...contenuto });
   const [saving, setSaving] = useState(false);
   const [creatingDrive, setCreatingDrive] = useState(false);
@@ -215,7 +216,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
       // 📁 Se la fase è Montato e non c'è ancora link Drive → crea cartella
       if (form.fase === 'Montato' && !updatedData.link_drive) {
         addToast('📁 Creazione cartella Drive…', 'info');
-        const url = await createDriveFolder(updatedData);
+        const url = await createDriveFolder(updatedData, utente?.id);
         if (url) {
           const { data: fresh } = await supabase.from('contenuti').select('*').eq('id', contenuto.id).single();
           if (fresh) onUpdate(fresh as Contenuto);
@@ -296,7 +297,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
   const handleCreateDrive = async () => {
     setCreatingDrive(true);
     addToast('📁 Creazione cartella Drive…', 'info');
-    const url = await createDriveFolder(form);
+    const url = await createDriveFolder(form, utente?.id);
     if (url) {
       set('link_drive', url);
       addToast('📁 Cartella Drive creata!', 'success');

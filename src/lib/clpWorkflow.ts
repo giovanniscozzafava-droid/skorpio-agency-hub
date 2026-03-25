@@ -122,7 +122,8 @@ export async function avanzaFaseDaTask(
   taskTipo: string,
   contenutoId: string,
   nuovaFase: FaseCLP,
-  team: TeamMember[]
+  team: TeamMember[],
+  teamId?: string
 ): Promise<{ completatoTask: boolean; taskCreato: boolean; driveTriggered: boolean }> {
   const step = WORKFLOW_MAP[taskTipo];
   const isStepCompletion = step && step.faseNext === nuovaFase;
@@ -178,6 +179,7 @@ export async function avanzaFaseDaTask(
           cliente_nome: contenuto.cliente_nome,
           tipo: contenuto.tipo,
           id_display: contenuto.id_display,
+          team_id: teamId,
         }),
       });
     } catch (e) {
@@ -195,7 +197,8 @@ export async function avanzaFaseDaTask(
 export async function completaTaskEAvanzaFase(
   taskTipo: string,
   contenutoId: string,
-  team: TeamMember[]
+  team: TeamMember[],
+  teamId?: string
 ): Promise<FaseCLP | null> {
   const step = WORKFLOW_MAP[taskTipo];
   if (!step) return null;
@@ -242,6 +245,7 @@ export async function completaTaskEAvanzaFase(
           cliente_nome: contenuto.cliente_nome,
           tipo: contenuto.tipo,
           id_display: contenuto.id_display,
+          team_id: teamId,
         }),
       });
     } catch (e) {
