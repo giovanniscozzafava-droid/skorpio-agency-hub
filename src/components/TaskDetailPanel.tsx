@@ -356,6 +356,11 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
             )}
           </div>
 
+          {/* ── Countdown grande nel dettaglio ──────────────────────────────── */}
+          {task.scadenza && task.stato !== 'Completato' && (
+            <CountdownDettaglio scadenza={task.scadenza} ora={task.ora} />
+          )}
+
           {/* Info rows */}
           <div className="space-y-2">
             {[
