@@ -310,6 +310,8 @@ export type Database = {
           data_pubblicazione: string | null
           data_ripresa: string | null
           data_scadenza: string | null
+          drive_clip_folder_id: string | null
+          drive_export_folder_id: string | null
           durata: string | null
           fase: string | null
           generato_da_ai: boolean | null
@@ -340,6 +342,8 @@ export type Database = {
           data_pubblicazione?: string | null
           data_ripresa?: string | null
           data_scadenza?: string | null
+          drive_clip_folder_id?: string | null
+          drive_export_folder_id?: string | null
           durata?: string | null
           fase?: string | null
           generato_da_ai?: boolean | null
@@ -370,6 +374,8 @@ export type Database = {
           data_pubblicazione?: string | null
           data_ripresa?: string | null
           data_scadenza?: string | null
+          drive_clip_folder_id?: string | null
+          drive_export_folder_id?: string | null
           durata?: string | null
           fase?: string | null
           generato_da_ai?: boolean | null
@@ -438,6 +444,12 @@ export type Database = {
           cliente_nome: string | null
           contenuto_id: string | null
           created_at: string | null
+          exported_file_id: string | null
+          exported_file_mime_type: string | null
+          exported_file_name: string | null
+          exported_file_size: number | null
+          exported_file_uploaded_at: string | null
+          exported_file_url: string | null
           file_deleted_at: string | null
           file_id: string | null
           file_mime_type: string | null
@@ -450,6 +462,8 @@ export type Database = {
           id_clip: string
           id_contenuto_display: string | null
           operatore: string | null
+          raw_files_count: number | null
+          raw_files_size: number | null
           riga: number | null
           stato: string | null
           titolo: string | null
@@ -460,6 +474,12 @@ export type Database = {
           cliente_nome?: string | null
           contenuto_id?: string | null
           created_at?: string | null
+          exported_file_id?: string | null
+          exported_file_mime_type?: string | null
+          exported_file_name?: string | null
+          exported_file_size?: number | null
+          exported_file_uploaded_at?: string | null
+          exported_file_url?: string | null
           file_deleted_at?: string | null
           file_id?: string | null
           file_mime_type?: string | null
@@ -472,6 +492,8 @@ export type Database = {
           id_clip: string
           id_contenuto_display?: string | null
           operatore?: string | null
+          raw_files_count?: number | null
+          raw_files_size?: number | null
           riga?: number | null
           stato?: string | null
           titolo?: string | null
@@ -482,6 +504,12 @@ export type Database = {
           cliente_nome?: string | null
           contenuto_id?: string | null
           created_at?: string | null
+          exported_file_id?: string | null
+          exported_file_mime_type?: string | null
+          exported_file_name?: string | null
+          exported_file_size?: number | null
+          exported_file_uploaded_at?: string | null
+          exported_file_url?: string | null
           file_deleted_at?: string | null
           file_id?: string | null
           file_mime_type?: string | null
@@ -494,6 +522,8 @@ export type Database = {
           id_clip?: string
           id_contenuto_display?: string | null
           operatore?: string | null
+          raw_files_count?: number | null
+          raw_files_size?: number | null
           riga?: number | null
           stato?: string | null
           titolo?: string | null
