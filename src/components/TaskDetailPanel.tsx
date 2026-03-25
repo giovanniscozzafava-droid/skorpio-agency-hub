@@ -542,8 +542,54 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
               )}
             </div>
           )}
-
-
+          {/* ─── CLEANUP TASK: bottone elimina file grezzi ──────────────── */}
+          {isCleanupTask && !taskCompletato && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                🗑️ AZIONI CLEANUP
+              </p>
+              <div className="rounded-xl p-3 space-y-2"
+                style={{ background: 'hsl(0 80% 55% / 0.06)', border: '1px solid hsl(0 80% 55% / 0.2)' }}>
+                {loadingCleanup ? (
+                  <p className="text-xs text-muted-foreground">Verifica file su Drive…</p>
+                ) : cleanupInfo ? (
+                  <>
+                    <p className="text-xs" style={{ color: 'hsl(0 70% 40%)' }}>
+                      📁 {cleanupInfo.count} file grezzi · {cleanupInfo.totalSize > 0 ? `${(cleanupInfo.totalSize / 1024 / 1024 / 1024).toFixed(2)} GB` : '—'} da liberare
+                    </p>
+                    {!showCleanupConfirm ? (
+                      <button
+                        onClick={() => setShowCleanupConfirm(true)}
+                        className="w-full py-2 rounded-lg text-xs font-semibold transition-all"
+                        style={{ background: 'hsl(0 80% 55%)', color: 'white' }}
+                      >
+                        🗑️ Cancella file da montare
+                      </button>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium" style={{ color: 'hsl(0 70% 40%)' }}>
+                          Stai per cancellare {cleanupInfo.count} file dalla cartella clip/. Il file esportato non verrà toccato. Confermi?
+                        </p>
+                        <div className="flex gap-2">
+                          <button onClick={handleDeleteRawFiles} disabled={deletingCleanup}
+                            className="flex-1 py-1.5 rounded-lg text-xs font-semibold"
+                            style={{ background: 'hsl(0 80% 55%)', color: 'white', opacity: deletingCleanup ? 0.6 : 1 }}>
+                            {deletingCleanup ? '⏳ Eliminando…' : '✅ Sì, elimina'}
+                          </button>
+                          <button onClick={() => setShowCleanupConfirm(false)}
+                            className="flex-1 py-1.5 rounded-lg text-xs font-medium border border-border hover:bg-muted">
+                            Annulla
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Nessun file trovato nella cartella clip/ — già pulita o Drive non connesso.</p>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* ─── CAMBIA STATO TASK ──────────────────────────────────────────── */}
           <div>
