@@ -1012,6 +1012,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
         <ClipDetailPanel
           clip={detailClip}
           clp={detailClip.contenuto_id ? contenuti[detailClip.contenuto_id] : null}
+          team={team}
           onClose={() => setDetailClip(null)}
           onUpdated={patch => {
             updateClipLocally(detailClip.id, patch);
