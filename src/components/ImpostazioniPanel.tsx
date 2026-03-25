@@ -44,7 +44,46 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
   const [riassegnaA, setRiassegnaA]     = useState('');
   const [deleting, setDeleting]         = useState(false);
 
-  const [section, setSection] = useState<'profilo' | 'team' | 'integrazioni'>('profilo');
+  const [section, setSection] = useState<'profilo' | 'team' | 'integrazioni' | 'audit'>('profilo');
+
+  // ── Audit Clienti ↔ CLP ──────────────────────────────────────────────────
+  const [auditRunning, setAuditRunning] = useState(false);
+  const [auditReport, setAuditReport] = useState<Array<{ cliente: string; clpCount: number; inClienti: boolean; clienteId: string | null }>>([]);
+  const [auditDone, setAuditDone] = useState(false);
+
+  const runAudit = async () => {
+    setAuditRunning(true);
+    setAuditDone(false);
+    const { data: clpData } = await supabase
+      .from('contenuti')
+      .select('cliente_nome, cliente_id');
+    const { data: clientiData } = await supabase
+      .from('clienti')
+      .select('id, nome, stato');
+
+    const grouped: Record<string, { count: number; clienteId: string | null }> = {};
+    for (const row of clpData || []) {
+      const nome = row.cliente_nome?.trim() || '';
+      if (!nome) continue;
+      if (!grouped[nome]) grouped[nome] = { count: 0, clienteId: row.cliente_id };
+      grouped[nome].count++;
+    }
+
+    const report = Object.entries(grouped).map(([cliente, { count, clienteId }]) => {
+      const found = (clientiData || []).find(c => c.nome.trim().toLowerCase() === cliente.toLowerCase());
+      return {
+        cliente,
+        clpCount: count,
+        inClienti: !!found,
+        clienteId,
+        statoCliente: found?.stato || null,
+      };
+    }).sort((a, b) => (a.inClienti === b.inClienti ? 0 : a.inClienti ? 1 : -1));
+
+    setAuditReport(report as any);
+    setAuditDone(true);
+    setAuditRunning(false);
+  };
 
   // ── Google Calendar ───────────────────────────────────────────────────────
   const [gcalLoading, setGcalLoading]     = useState(false);
@@ -406,6 +445,19 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
               }}
             >
               🐾 Team Fuyue
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              onClick={() => setSection('audit')}
+              className="flex-1 py-2.5 text-xs font-semibold transition-colors"
+              style={{
+                color: section === 'audit' ? '#3B82F6' : 'hsl(var(--skorpio-text-secondary))',
+                borderBottom: section === 'audit' ? '2px solid #3B82F6' : '2px solid transparent',
+                background: 'transparent',
+              }}
+            >
+              🔍 Audit
             </button>
           )}
         </div>
@@ -844,6 +896,64 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
                       Annulla
                     </button>
                   </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── SEZIONE AUDIT ── */}
+          {section === 'audit' && isAdmin && (
+            <div className="px-5 py-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider"
+                  style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                  🔍 Audit Clienti ↔ CLP
+                </h3>
+                <button
+                  onClick={runAudit}
+                  disabled={auditRunning}
+                  className="text-xs px-3 py-1.5 rounded-lg font-semibold text-white disabled:opacity-50"
+                  style={{ background: auditRunning ? '#94A3B8' : '#3B82F6' }}
+                >
+                  {auditRunning ? '⏳ Analisi…' : '▶ Esegui audit'}
+                </button>
+              </div>
+
+              <div className="rounded-xl p-3 text-xs"
+                style={{ background: 'hsl(214 80% 55% / 0.08)', border: '1px solid hsl(214 80% 55% / 0.20)', color: 'hsl(214 70% 44%)' }}>
+                Analizza tutti i CLP e verifica che ogni cliente_nome corrisponda a un record valido nella tabella Clienti. Mostra discrepanze e clienti mancanti.
+              </div>
+
+              {auditDone && (
+                <div className="space-y-2">
+                  {(auditReport as any[]).map((row, i) => (
+                    <div
+                      key={i}
+                      className="flex items-start gap-2.5 p-2.5 rounded-lg"
+                      style={{
+                        background: row.inClienti ? 'hsl(142 70% 45% / 0.07)' : 'hsl(0 80% 55% / 0.08)',
+                        border: `1px solid ${row.inClienti ? 'hsl(142 70% 45% / 0.20)' : 'hsl(0 80% 55 / 0.25)'}`,
+                      }}
+                    >
+                      <span className="text-base flex-shrink-0">{row.inClienti ? '✅' : '⚠️'}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-xs truncate"
+                          style={{ color: row.inClienti ? 'hsl(142 60% 35%)' : 'hsl(0 70% 38%)' }}>
+                          "{row.cliente}"
+                        </p>
+                        <p className="text-xs mt-0.5"
+                          style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                          {row.clpCount} CLP — {row.inClienti
+                            ? '✓ allineato'
+                            : '✗ NON presente in tabella Clienti'}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                  <p className="text-xs text-center pt-2"
+                    style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                    {(auditReport as any[]).filter((r: any) => r.inClienti).length}/{(auditReport as any[]).length} clienti allineati
+                  </p>
                 </div>
               )}
             </div>

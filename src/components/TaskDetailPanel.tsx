@@ -15,6 +15,60 @@ import { parseLocalDate } from '../lib/dateUtils';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
+// ── Countdown grande per il pannello dettaglio ────────────────────────────────
+function getCountdownMs(scadenza: string, ora: string | null): number {
+  return new Date(`${scadenza}T${ora ? ora.slice(0, 5) : '23:59'}:00`).getTime() - Date.now();
+}
+
+function CountdownDettaglio({ scadenza, ora }: { scadenza: string; ora: string | null }) {
+  const [diff, setDiff] = useState(() => getCountdownMs(scadenza, ora));
+
+  useEffect(() => {
+    const id = setInterval(() => setDiff(getCountdownMs(scadenza, ora)), 60000);
+    return () => clearInterval(id);
+  }, [scadenza, ora]);
+
+  const d = Math.floor(Math.abs(diff) / 86400000);
+  const h = Math.floor((Math.abs(diff) % 86400000) / 3600000);
+  const m = Math.floor((Math.abs(diff) % 3600000) / 60000);
+
+  const isScaduto = diff <= 0;
+  const isUrgent  = !isScaduto && diff < 24 * 3600000;
+  const isWarning = !isScaduto && diff < 7 * 86400000;
+
+  const level = isScaduto ? 'scaduto' : isUrgent ? 'urgent' : isWarning ? 'warn' : 'ok';
+  const colors = {
+    ok:      { bg: 'hsl(214 80% 55% / 0.08)', color: 'hsl(214 70% 44%)', border: 'hsl(214 80% 55% / 0.20)', label: 'SCADE TRA' },
+    warn:    { bg: 'hsl(38 92% 50% / 0.10)',  color: 'hsl(32 95% 35%)',  border: 'hsl(38 92% 50% / 0.30)', label: 'IN SCADENZA' },
+    urgent:  { bg: 'hsl(0 80% 55% / 0.10)',   color: 'hsl(0 70% 42%)',   border: 'hsl(0 80% 55% / 0.35)', label: '⚡ URGENTE' },
+    scaduto: { bg: 'hsl(0 80% 55% / 0.13)',   color: 'hsl(0 70% 38%)',   border: 'hsl(0 80% 55% / 0.45)', label: '⚠️ SCADUTO DA' },
+  }[level];
+
+  const timeText = isScaduto
+    ? d > 0 ? `${d}g ${h}h` : `${h}h ${m}min`
+    : d > 7 ? `${d} giorni`
+    : d >= 1 ? `${d}g ${h}h`
+    : h >= 1 ? `${h}h ${m}min`
+    : `${m} min`;
+
+  return (
+    <div
+      className={`flex items-center justify-between rounded-xl px-4 py-3${level === 'urgent' ? ' animate-pulse' : ''}`}
+      style={{ background: colors.bg, border: `1px solid ${colors.border}` }}
+    >
+      <div>
+        <p className="text-xs font-bold uppercase tracking-wider" style={{ color: colors.color, opacity: 0.8 }}>
+          {colors.label}
+        </p>
+        <p className="text-2xl font-black mt-0.5 font-mono tabular-nums" style={{ color: colors.color }}>
+          {timeText}
+        </p>
+      </div>
+      <span style={{ fontSize: 28 }}>{isScaduto ? '⏰' : isUrgent ? '🔴' : isWarning ? '🟡' : '📅'}</span>
+    </div>
+  );
+}
+
 async function invokeEdge(path: string, body: object) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/${path}`, {
     method: 'POST',
@@ -355,6 +409,11 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
                 style={{ background: '#FEE2E2', color: '#DC2626' }}>⚠ SCADUTO</span>
             )}
           </div>
+
+          {/* ── Countdown grande nel dettaglio ──────────────────────────────── */}
+          {task.scadenza && task.stato !== 'Completato' && (
+            <CountdownDettaglio scadenza={task.scadenza} ora={task.ora} />
+          )}
 
           {/* Info rows */}
           <div className="space-y-2">
