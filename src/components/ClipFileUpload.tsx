@@ -274,7 +274,7 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
           <button
             onClick={() => setShowVideoPlayer(true)}
             title={clip.exported_file_name || 'Anteprima video esportato'}
-            className="text-green-500 hover:opacity-70 text-sm transition-opacity"
+            className="text-[hsl(var(--clr-green))] hover:opacity-70 text-sm transition-opacity"
           >
             ▶️
           </button>
