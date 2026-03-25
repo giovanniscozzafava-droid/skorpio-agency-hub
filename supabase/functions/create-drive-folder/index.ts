@@ -139,11 +139,11 @@ Deno.serve(async (req) => {
 
     const accessToken = await getValidAccessToken(team_id);
 
-    // Struttura: SKORPIO_Clip / {clientName} / {subfolder} / {titolo}
+    // Struttura: Fuyue Agency / {clientName} / {subfolder} / {titolo}
     const clienteFolderName = cliente_nome || 'Senza cliente';
     const subfolderName     = getSubfolderForTipo(tipo);
 
-    const rootId       = await findOrCreateRootFolder(accessToken, 'SKORPIO_Clip');
+    const rootId       = await findOrCreateRootFolder(accessToken, 'Fuyue Agency');
     const clienteId    = await findOrCreateFolder(accessToken, clienteFolderName, rootId);
     const subFolderId  = await findOrCreateFolder(accessToken, subfolderName, clienteId);
     const contentFolderId = await createFolder(accessToken, titolo, subFolderId);
@@ -157,7 +157,7 @@ Deno.serve(async (req) => {
       .update({ link_drive: contentFolderUrl })
       .eq('id', contenuto_id);
 
-    const fullPath = `SKORPIO_Clip/${clienteFolderName}/${subfolderName}/${titolo}`;
+    const fullPath = `Fuyue Agency/${clienteFolderName}/${subfolderName}/${titolo}`;
     console.log(`✅ Cartella Drive creata: ${fullPath} → ${contentFolderUrl}`);
 
     return new Response(JSON.stringify({
