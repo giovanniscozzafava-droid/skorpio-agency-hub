@@ -194,6 +194,7 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
     assegnato_montaggio: '',
   });
   const [saving, setSaving] = useState(false);
+  const [driveWarning, _setDriveWarning] = useState(false); // placeholder — set inside handleSubmit
 
   const set = (k: string, v: string) => setForm(prev => ({ ...prev, [k]: v }));
 
