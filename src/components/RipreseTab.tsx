@@ -1053,6 +1053,8 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
                       />
                     </td>
 
+                    {/* ☁️ placeholder col — keeps table balanced */}
+                    <td className={`${tdCls} text-center`} />
 
                     {/* Delete */}
                     <td className={`${tdCls} text-center`} onClick={e => e.stopPropagation()}>
