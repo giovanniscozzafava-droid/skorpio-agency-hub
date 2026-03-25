@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import type { LogRipresa, Cliente, TeamMember, Contenuto } from '../types';
 import { ArubaUpload } from './ArubaUpload';
 import { ClipFileUpload } from './ClipFileUpload';
+import { ClipReviewModal } from './ClipReviewModal';
 import { BulkUploadModal, AutoCleanupDialog } from './DriveStorageIndicator';
 import { getStorageService } from '../services/storage';
 
