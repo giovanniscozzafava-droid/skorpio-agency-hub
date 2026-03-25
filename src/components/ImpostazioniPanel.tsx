@@ -44,7 +44,46 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
   const [riassegnaA, setRiassegnaA]     = useState('');
   const [deleting, setDeleting]         = useState(false);
 
-  const [section, setSection] = useState<'profilo' | 'team' | 'integrazioni'>('profilo');
+  const [section, setSection] = useState<'profilo' | 'team' | 'integrazioni' | 'audit'>('profilo');
+
+  // ── Audit Clienti ↔ CLP ──────────────────────────────────────────────────
+  const [auditRunning, setAuditRunning] = useState(false);
+  const [auditReport, setAuditReport] = useState<Array<{ cliente: string; clpCount: number; inClienti: boolean; clienteId: string | null }>>([]);
+  const [auditDone, setAuditDone] = useState(false);
+
+  const runAudit = async () => {
+    setAuditRunning(true);
+    setAuditDone(false);
+    const { data: clpData } = await supabase
+      .from('contenuti')
+      .select('cliente_nome, cliente_id');
+    const { data: clientiData } = await supabase
+      .from('clienti')
+      .select('id, nome, stato');
+
+    const grouped: Record<string, { count: number; clienteId: string | null }> = {};
+    for (const row of clpData || []) {
+      const nome = row.cliente_nome?.trim() || '';
+      if (!nome) continue;
+      if (!grouped[nome]) grouped[nome] = { count: 0, clienteId: row.cliente_id };
+      grouped[nome].count++;
+    }
+
+    const report = Object.entries(grouped).map(([cliente, { count, clienteId }]) => {
+      const found = (clientiData || []).find(c => c.nome.trim().toLowerCase() === cliente.toLowerCase());
+      return {
+        cliente,
+        clpCount: count,
+        inClienti: !!found,
+        clienteId,
+        statoCliente: found?.stato || null,
+      };
+    }).sort((a, b) => (a.inClienti === b.inClienti ? 0 : a.inClienti ? 1 : -1));
+
+    setAuditReport(report as any);
+    setAuditDone(true);
+    setAuditRunning(false);
+  };
 
   // ── Google Calendar ───────────────────────────────────────────────────────
   const [gcalLoading, setGcalLoading]     = useState(false);
