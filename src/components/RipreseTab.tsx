@@ -475,7 +475,7 @@ function ClipDetailPanel({ clip, clp, team, onClose, onUpdated }: ClipDetailPane
                 </button>
               )}
             </div>
-            <ClipFileUpload clip={clip} onUpdated={onUpdated} variant="panel" />
+            <ClipFileUpload clip={clip} clp={clp} onUpdated={onUpdated} variant="panel" />
           </div>
         </div>
       </div>
