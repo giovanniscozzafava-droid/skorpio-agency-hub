@@ -571,7 +571,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
   const [rowDragTarget, setRowDragTarget] = useState<string | null>(null);
   const [dropZonePicker, setDropZonePicker] = useState<{ files: File[]; clip: LogRipresa } | null>(null);
   // Per-clip file upload ref map (to trigger uploads programmatically after zone pick)
-  const pendingDropUpload = useRef<{ files: File[]; zone: 'clip' | 'file_esportato'; clipId: string } | null>(null);
+  
 
   // Auto-cleanup dialog state
   const [cleanupPending, setCleanupPending] = useState<{
