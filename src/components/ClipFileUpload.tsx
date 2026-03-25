@@ -95,52 +95,59 @@ export function ClipFileUpload({ clip, onUpdated, variant = 'row' }: ClipFileUpl
       const mimeType = file.type || 'video/mp4';
       const clientName = clip.cliente_nome || 'Generale';
 
-      // Step 1 — Ottieni URL di upload resumable dall'edge function
-      setProgress({ loaded: 0, total: file.size, percent: 5 });
-      const { uploadUrl } = await invokeEdge('google-drive-upload-init', {
-        method: 'POST',
-        body: JSON.stringify({ fileName, mimeType, fileSize: file.size, clientName, teamId: utente.id }),
-      });
+      // ── Step 1: Carica su Supabase Storage (buffer temporaneo, nessun CORS)
+      setProgress({ loaded: 0, total: file.size, percent: 3 });
+      const storagePath = `${utente.id}/${Date.now()}_${fileName}`;
 
-      // Step 2 — Upload chunked direttamente su Google Drive
-      let uploadedBytes = 0;
-      let fileId = '';
+      // Upload con progress tracking tramite XMLHttpRequest
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        const url = `${SUPABASE_URL}/storage/v1/object/temp-uploads/${storagePath}`;
 
-      while (uploadedBytes < file.size) {
-        const end = Math.min(uploadedBytes + CHUNK_SIZE - 1, file.size - 1);
-        const chunk = file.slice(uploadedBytes, end + 1);
-
-        const res = await fetch(uploadUrl, {
-          method: 'PUT',
-          headers: {
-            'Content-Range': `bytes ${uploadedBytes}-${end}/${file.size}`,
-            'Content-Type': mimeType,
-          },
-          body: chunk,
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const pct = Math.round(3 + (e.loaded / e.total) * 80);
+            setProgress({ loaded: e.loaded, total: e.total, percent: pct });
+          }
         });
 
-        if (res.status === 308) {
-          // Incompleto — continua
-          const range = res.headers.get('Range');
-          uploadedBytes = range ? parseInt(range.split('-')[1]) + 1 : uploadedBytes + chunk.size;
-        } else if (res.status === 200 || res.status === 201) {
-          const data = await res.json();
-          fileId = data.id;
-          uploadedBytes = file.size;
-        } else {
-          const body = await res.text();
-          throw new Error(`Chunk upload fallito (${res.status}): ${body}`);
-        }
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            reject(new Error(`Storage upload fallito (${xhr.status}): ${xhr.responseText}`));
+          }
+        });
 
-        const pct = Math.round(5 + (uploadedBytes / file.size) * 90);
-        setProgress({ loaded: uploadedBytes, total: file.size, percent: pct });
-      }
+        xhr.addEventListener('error', () => reject(new Error('Errore di rete durante l\'upload su Storage')));
+        xhr.addEventListener('abort', () => reject(new Error('Upload annullato')));
 
-      if (!fileId) throw new Error('Upload completato ma nessun file ID restituito');
+        xhr.open('POST', url);
+        xhr.setRequestHeader('apikey', SUPABASE_KEY);
+        xhr.setRequestHeader('Authorization', `Bearer ${SUPABASE_KEY}`);
+        xhr.setRequestHeader('Content-Type', mimeType);
+        xhr.setRequestHeader('x-upsert', 'true');
+        xhr.send(file);
+      });
 
-      const fileUrl = `https://drive.google.com/file/d/${fileId}/view`;
+      // ── Step 2: Edge function trasferisce da Storage → Google Drive (server-side)
+      setProgress({ loaded: file.size, total: file.size, percent: 85 });
+      addToast('☁️ Trasferimento su Google Drive in corso…', 'info');
 
-      // Step 3 — Salva metadati su Supabase
+      const { fileId, fileUrl } = await invokeEdge('google-drive-transfer', {
+        method: 'POST',
+        body: JSON.stringify({
+          storagePath,
+          fileName,
+          mimeType,
+          fileSize: file.size,
+          clientName,
+          teamId: utente.id,
+        }),
+      });
+
+      // ── Step 3: Salva metadati su Supabase
+      setProgress({ loaded: file.size, total: file.size, percent: 98 });
       const patch: Partial<LogRipresa> = {
         file_id: fileId,
         file_url: fileUrl,
