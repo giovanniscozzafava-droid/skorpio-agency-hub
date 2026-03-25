@@ -447,6 +447,19 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
               🐾 Team Fuyue
             </button>
           )}
+          {isAdmin && (
+            <button
+              onClick={() => setSection('audit')}
+              className="flex-1 py-2.5 text-xs font-semibold transition-colors"
+              style={{
+                color: section === 'audit' ? '#3B82F6' : 'hsl(var(--skorpio-text-secondary))',
+                borderBottom: section === 'audit' ? '2px solid #3B82F6' : '2px solid transparent',
+                background: 'transparent',
+              }}
+            >
+              🔍 Audit
+            </button>
+          )}
         </div>
 
         {/* Contenuto scrollabile */}
