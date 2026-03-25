@@ -93,9 +93,9 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
       );
       const { url } = await res.json();
       if (url) {
-        const popup = (window.top || window).open(url, 'gcal_oauth', 'width=500,height=600,left=200,top=100');
+        const popup = window.open(url, 'gcal_oauth', 'width=500,height=600,left=200,top=100');
         if (!popup) {
-          (window.top || window).location.href = url;
+          window.location.href = url;
         }
       }
 
