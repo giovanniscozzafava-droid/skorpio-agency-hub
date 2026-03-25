@@ -550,6 +550,18 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
     addToast('🗑️ File grezzo rimosso.', 'success');
   };
 
+  // Listen for row-drop-upload events dispatched from the table
+  React.useEffect(() => {
+    if (variant !== 'row') return;
+    function handler(e: Event) {
+      const { files, zone, clipId } = (e as CustomEvent).detail;
+      if (clipId !== clip.id) return;
+      doMultiUpload(files, zone);
+    }
+    window.addEventListener('row-drop-upload', handler);
+    return () => window.removeEventListener('row-drop-upload', handler);
+  }, [variant, clip.id, doMultiUpload]);
+
   // ─── ROW variant ──────────────────────────────────────────────────────────
   if (variant === 'row') {
     if (uploadingZone && progress) {
