@@ -21,20 +21,27 @@ export function NuovoTaskModal({ team, clienti, utente, onClose, onCreated, data
     cliente_id: '',
     cliente_nome: '',
     priorita: '🟡 Media' as Task['priorita'],
-    assegnato_a: utente?.nome || '',
     scadenza: dataPrecompilata || '',
     ora: '',
     scadenza_giorni: '3',
   });
+  // Multi-select: array di nomi
+  const [assegnatiA, setAssegnatiA] = useState<string[]>(utente ? [utente.nome] : []);
   const [saving, setSaving] = useState(false);
 
   const hasData = TIPI_CON_DATA.includes(form.tipo);
 
   const set = (k: string, v: string) => setForm(prev => ({ ...prev, [k]: v }));
 
+  const toggleMembro = (nome: string) => {
+    setAssegnatiA(prev =>
+      prev.includes(nome) ? prev.filter(n => n !== nome) : [...prev, nome]
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.descrizione.trim() || !form.assegnato_a) return;
+    if (!form.descrizione.trim() || assegnatiA.length === 0) return;
     setSaving(true);
 
     let scadenza: string | null = null;
@@ -48,31 +55,34 @@ export function NuovoTaskModal({ team, clienti, utente, onClose, onCreated, data
 
     const clienteSel = clienti.find(c => c.id === form.cliente_id);
 
-    const payload: any = {
-      id_display: '', // verrà auto-generato via trigger se vogliamo, per ora generiamo nel client
-      tipo: form.tipo,
-      descrizione: form.descrizione.trim(),
-      cliente_id: form.cliente_id || null,
-      cliente_nome: clienteSel?.nome || '',
-      priorita: form.priorita,
-      stato: 'Da fare',
-      assegnato_a: form.assegnato_a,
-      assegnato_da: utente?.nome || '',
-      scadenza,
-      ora: hasData && form.ora ? form.ora : null,
-      note: '',
-    };
+    // Crea un task per ogni persona selezionata
+    let lastTask: Task | null = null;
+    for (const persona of assegnatiA) {
+      const { data: seqData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
+      const payload: any = {
+        id_display: seqData || `TSK${Date.now()}`,
+        tipo: form.tipo,
+        descrizione: form.descrizione.trim(),
+        cliente_id: form.cliente_id || null,
+        cliente_nome: clienteSel?.nome || '',
+        priorita: form.priorita,
+        stato: 'Da fare',
+        assegnato_a: persona,
+        assegnato_da: utente?.nome || '',
+        scadenza,
+        ora: hasData && form.ora ? form.ora : null,
+        note: '',
+      };
 
-    // Genera id_display
-    const { data: seqData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
-    payload.id_display = seqData || `TSK${Date.now()}`;
-
-    const { data, error } = await supabase.from('task').insert(payload).select().single();
-    setSaving(false);
-    if (!error && data) {
-      onCreated(data as Task);
-      onClose();
+      const { data, error } = await supabase.from('task').insert(payload).select().single();
+      if (!error && data) {
+        lastTask = data as Task;
+        onCreated(data as Task);
+      }
     }
+
+    setSaving(false);
+    if (lastTask) onClose();
   };
 
   return (
@@ -133,20 +143,43 @@ export function NuovoTaskModal({ team, clienti, utente, onClose, onCreated, data
             </select>
           </div>
 
-          {/* Assegna a */}
+          {/* Assegna a — multi-select */}
           <div>
-            <label className="sk-label">Assegna a *</label>
-            <select
-              className="sk-select w-full"
-              value={form.assegnato_a}
-              onChange={e => set('assegnato_a', e.target.value)}
-              required
-            >
-              <option value="">— Seleziona —</option>
-              {team.map(m => (
-                <option key={m.id} value={m.nome}>{m.nome} ({m.label})</option>
-              ))}
-            </select>
+            <label className="sk-label">
+              Assegna a *
+              {assegnatiA.length > 1 && (
+                <span className="ml-2 text-xs font-normal px-2 py-0.5 rounded-full"
+                  style={{ background: 'hsl(214 80% 55% / 0.12)', color: 'hsl(214 70% 44%)' }}>
+                  {assegnatiA.length} persone → {assegnatiA.length} task creati
+                </span>
+              )}
+            </label>
+            <div className="flex flex-wrap gap-2 mt-1.5">
+              {team.map(m => {
+                const sel = assegnatiA.includes(m.nome);
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => toggleMembro(m.nome)}
+                    className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-all font-medium"
+                    style={{
+                      background: sel ? m.colore + '22' : 'transparent',
+                      borderColor: sel ? m.colore : 'hsl(var(--border))',
+                      color: sel ? m.colore : 'hsl(var(--muted-foreground))',
+                      boxShadow: sel ? `0 0 0 2px ${m.colore}30` : 'none',
+                    }}
+                  >
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: m.colore }} />
+                    {m.nome}
+                    {sel && <span className="text-xs">✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+            {assegnatiA.length === 0 && (
+              <p className="text-xs mt-1" style={{ color: '#EF4444' }}>Seleziona almeno una persona</p>
+            )}
           </div>
 
           {/* Data/Scadenza logica condizionale */}
@@ -187,8 +220,8 @@ export function NuovoTaskModal({ team, clienti, utente, onClose, onCreated, data
 
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="sk-btn-ghost">Annulla</button>
-            <button type="submit" disabled={saving} className="sk-btn-primary">
-              {saving ? 'Salvataggio…' : '✅ Crea Task'}
+            <button type="submit" disabled={saving || assegnatiA.length === 0} className="sk-btn-primary">
+              {saving ? 'Salvataggio…' : assegnatiA.length > 1 ? `✅ Crea ${assegnatiA.length} Task` : '✅ Crea Task'}
             </button>
           </div>
         </form>

@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import { NuovoTaskModal } from './NuovoTaskModal';
 import { creaTaskWorkflow, completaTaskPerContenuto, findMembro } from '../lib/clpWorkflow';
 import type { CalendarioEvent, Contenuto, MarketingEvent, TeamMember, Cliente, Task } from '../types';
+import { parseLocalDate, toDateStr, isSameDay, addDays } from '../lib/dateUtils';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const GIORNI = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
@@ -31,10 +32,6 @@ const FASE_COLORS: Record<string, string> = {
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-function toDateStr(d: Date) {
-  return d.toISOString().split('T')[0];
-}
-
 function startOfWeekMon(d: Date) {
   const day = d.getDay(); // 0=Sun
   const diff = (day === 0 ? -6 : 1 - day);
@@ -42,18 +39,6 @@ function startOfWeekMon(d: Date) {
   r.setDate(d.getDate() + diff);
   r.setHours(0, 0, 0, 0);
   return r;
-}
-
-function addDays(d: Date, n: number) {
-  const r = new Date(d);
-  r.setDate(r.getDate() + n);
-  return r;
-}
-
-function isSameDay(a: Date, b: Date) {
-  return a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate();
 }
 
 function formatTime(t: string | null) {
@@ -80,14 +65,29 @@ function Legenda() {
 }
 
 // ─── Event Badge (compact) ────────────────────────────────────────────────────
-function EventBadge({ ev, onClick }: { ev: CalendarioEvent; onClick: () => void }) {
+function EventBadge({ ev, onClick, onDragStart, onDragEnd, isDragging }: {
+  ev: CalendarioEvent;
+  onClick: () => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  isDragging: boolean;
+}) {
   const s = TIPO_STYLE[ev.tipo] || TIPO_STYLE.appuntamento;
   return (
     <div
+      draggable
+      onDragStart={e => { e.stopPropagation(); onDragStart(); }}
+      onDragEnd={onDragEnd}
       onClick={e => { e.stopPropagation(); onClick(); }}
-      title={ev.descrizione}
-      style={{ background: s.bg, borderLeft: `3px solid ${s.border}`, cursor: 'pointer' }}
-      className="truncate px-1 py-0.5 rounded text-[10px] leading-tight mb-0.5 hover:opacity-80 transition-opacity"
+      title={`${ev.descrizione} — trascina per spostare`}
+      style={{
+        background: s.bg,
+        borderLeft: `3px solid ${s.border}`,
+        cursor: 'grab',
+        opacity: isDragging ? 0.4 : 1,
+        transition: 'opacity 0.15s',
+      }}
+      className="truncate px-1 py-0.5 rounded text-[10px] leading-tight mb-0.5 hover:opacity-80"
     >
       {s.icon} {ev.descrizione.slice(0, 20)}
     </div>
@@ -128,7 +128,6 @@ function DayMenu({ x, y, utente, onNewTask, onPickCLP, onSlot, onClose }: DayMen
         onClose();
       }
     };
-    // Use mousedown so click events on buttons inside are not swallowed
     setTimeout(() => document.addEventListener('mousedown', handler), 0);
     return () => document.removeEventListener('mousedown', handler);
   }, [onClose]);
@@ -308,58 +307,233 @@ function SlotModal({ selectedDate, team, onSave, onClose }: SlotModalProps) {
   );
 }
 
-// ─── Event Detail Panel ───────────────────────────────────────────────────────
-function EventDetail({ ev, onClose, onDelete }: { ev: CalendarioEvent; onClose: () => void; onDelete: () => void }) {
+// ─── Event Detail Panel (editabile) ──────────────────────────────────────────
+interface EventDetailProps {
+  ev: CalendarioEvent;
+  team: TeamMember[];
+  clienti: Cliente[];
+  onClose: () => void;
+  onDelete: () => void;
+  onUpdate: (updated: CalendarioEvent) => void;
+}
+
+function EventDetail({ ev, team, clienti, onClose, onDelete, onUpdate }: EventDetailProps) {
   const s = TIPO_STYLE[ev.tipo] || TIPO_STYLE.appuntamento;
+  const { addToast } = useApp();
+
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({
+    descrizione: ev.descrizione,
+    data: ev.data,
+    ora: ev.ora ? ev.ora.slice(0, 5) : '',
+    ora_fine: ev.ora_fine ? ev.ora_fine.slice(0, 5) : '',
+    persona: ev.persona || '',
+    cliente_id: ev.cliente_id || '',
+    stato: ev.stato || '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  const setF = (k: string, v: string) => setForm(prev => ({ ...prev, [k]: v }));
+
+  const handleSave = async () => {
+    setSaving(true);
+    const payload = {
+      descrizione: form.descrizione,
+      data: form.data,
+      ora: form.ora || null,
+      ora_fine: form.ora_fine || null,
+      persona: form.persona || null,
+      cliente_id: form.cliente_id || null,
+      cliente_nome: clienti.find(c => c.id === form.cliente_id)?.nome || ev.cliente_nome,
+      stato: form.stato || null,
+    };
+
+    const { data, error } = await supabase
+      .from('calendario')
+      .update(payload)
+      .eq('id', ev.id)
+      .select()
+      .single();
+
+    setSaving(false);
+    if (!error && data) {
+      // Se è un appuntamento/task, aggiorna anche il task associato sul Kanban
+      if (ev.tipo === 'appuntamento') {
+        // Cerca il task corrispondente per descrizione (task sincronizzato dal trigger)
+        await supabase
+          .from('task')
+          .update({ scadenza: form.data, ora: form.ora || null })
+          .like('descrizione', `%${ev.descrizione.replace(/\[TASK:.*\]/, '').trim()}%`)
+          .eq('scadenza', ev.data);
+      }
+      onUpdate(data as CalendarioEvent);
+      setEditing(false);
+      addToast('✅ Evento aggiornato', 'success');
+    }
+  };
+
   return (
     <div
-      className="fixed inset-y-0 right-0 w-80 bg-white border-l shadow-2xl z-50 flex flex-col animate-slide-up"
-      style={{ top: 100 }}
+      className="fixed inset-y-0 right-0 w-96 bg-white border-l shadow-2xl z-50 flex flex-col"
+      style={{ top: 0, animation: 'slideInRight 0.2s ease-out' }}
     >
-      <div className="flex items-center justify-between p-4 border-b">
+      {/* Header */}
+      <div
+        className="flex items-center justify-between p-4 border-b"
+        style={{ background: s.bg, borderBottomColor: s.border + '40' }}
+      >
         <span className="font-semibold text-sm">{s.icon} {s.label}</span>
-        <button onClick={onClose} className="sk-btn-ghost text-sm px-2">✕</button>
-      </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        <div>
-          <div className="text-xs text-muted-foreground mb-1">Descrizione</div>
-          <div className="font-medium">{ev.descrizione}</div>
+        <div className="flex items-center gap-2">
+          {!editing && (
+            <button
+              onClick={() => setEditing(true)}
+              className="text-xs px-2.5 py-1 rounded-md transition-colors font-medium"
+              style={{ background: s.border + '20', color: s.border, border: `1px solid ${s.border}40` }}
+            >
+              ✏️ Modifica
+            </button>
+          )}
+          <button onClick={onClose} className="sk-btn-ghost text-sm px-2">✕</button>
         </div>
-        <div>
-          <div className="text-xs text-muted-foreground mb-1">Data</div>
-          <div className="text-sm">{new Date(ev.data + 'T00:00:00').toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
-        </div>
-        {(ev.ora || ev.ora_fine) && (
-          <div>
-            <div className="text-xs text-muted-foreground mb-1">Orario</div>
-            <div className="text-sm">{formatTime(ev.ora)}{ev.ora_fine ? ` – ${formatTime(ev.ora_fine)}` : ''}</div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {editing ? (
+          /* ── EDIT MODE ─────────────────────────────────────────────────── */
+          <div className="space-y-3">
+            <div>
+              <label className="sk-label">Descrizione</label>
+              <textarea
+                className="sk-textarea w-full text-sm"
+                rows={2}
+                value={form.descrizione}
+                onChange={e => setF('descrizione', e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="sk-label">Data</label>
+              <input
+                type="date"
+                className="sk-input w-full text-sm"
+                value={form.data}
+                onChange={e => setF('data', e.target.value)}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="sk-label">Ora inizio</label>
+                <input type="time" className="sk-input w-full text-sm" value={form.ora} onChange={e => setF('ora', e.target.value)} />
+              </div>
+              <div>
+                <label className="sk-label">Ora fine</label>
+                <input type="time" className="sk-input w-full text-sm" value={form.ora_fine} onChange={e => setF('ora_fine', e.target.value)} />
+              </div>
+            </div>
+
+            <div>
+              <label className="sk-label">Persona</label>
+              <select className="sk-select w-full text-sm" value={form.persona} onChange={e => setF('persona', e.target.value)}>
+                <option value="">— Nessuno —</option>
+                {team.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="sk-label">Cliente</label>
+              <select className="sk-select w-full text-sm" value={form.cliente_id} onChange={e => setF('cliente_id', e.target.value)}>
+                <option value="">— Nessuno —</option>
+                {clienti.filter(c => c.stato === 'Attivo').map(c => (
+                  <option key={c.id} value={c.id}>{c.nome}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="sk-label">Stato</label>
+              <select className="sk-select w-full text-sm" value={form.stato} onChange={e => setF('stato', e.target.value)}>
+                <option value="">—</option>
+                <option value="Pianificato">Pianificato</option>
+                <option value="Confermato">Confermato</option>
+                <option value="Completato">Completato</option>
+                <option value="Annullato">Annullato</option>
+              </select>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setEditing(false)}
+                className="flex-1 sk-btn-ghost text-sm"
+              >
+                Annulla
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex-1 sk-btn-primary text-sm"
+              >
+                {saving ? 'Salvo…' : '✅ Salva'}
+              </button>
+            </div>
           </div>
-        )}
-        {ev.cliente_nome && (
-          <div>
-            <div className="text-xs text-muted-foreground mb-1">Cliente</div>
-            <div className="text-sm">{ev.cliente_nome}</div>
-          </div>
-        )}
-        {ev.id_contenuto_display && (
-          <div>
-            <div className="text-xs text-muted-foreground mb-1">Contenuto</div>
-            <div className="text-sm font-mono text-primary">{ev.id_contenuto_display}</div>
-          </div>
-        )}
-        {ev.canale && (
-          <div>
-            <div className="text-xs text-muted-foreground mb-1">Canale</div>
-            <div className="text-sm">{ev.canale}</div>
-          </div>
-        )}
-        {ev.persona && (
-          <div>
-            <div className="text-xs text-muted-foreground mb-1">Persona</div>
-            <div className="text-sm">{ev.persona}</div>
-          </div>
+        ) : (
+          /* ── VIEW MODE ─────────────────────────────────────────────────── */
+          <>
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Descrizione</div>
+              <div className="font-medium leading-snug">{ev.descrizione}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Data</div>
+              <div className="text-sm">{parseLocalDate(ev.data).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
+            </div>
+            {(ev.ora || ev.ora_fine) && (
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Orario</div>
+                <div className="text-sm">{formatTime(ev.ora)}{ev.ora_fine ? ` – ${formatTime(ev.ora_fine)}` : ''}</div>
+              </div>
+            )}
+            {ev.cliente_nome && (
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Cliente</div>
+                <div className="text-sm">{ev.cliente_nome}</div>
+              </div>
+            )}
+            {ev.id_contenuto_display && (
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Contenuto</div>
+                <div className="text-sm font-mono text-primary">{ev.id_contenuto_display}</div>
+              </div>
+            )}
+            {ev.canale && (
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Canale</div>
+                <div className="text-sm">{ev.canale}</div>
+              </div>
+            )}
+            {ev.persona && (
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Persona</div>
+                <div className="text-sm">{ev.persona}</div>
+              </div>
+            )}
+            {ev.stato && (
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Stato</div>
+                <div className="text-sm">{ev.stato}</div>
+              </div>
+            )}
+
+            {/* Hint drag */}
+            <div className="rounded-lg px-3 py-2 text-xs"
+              style={{ background: 'hsl(214 80% 55% / 0.07)', color: 'hsl(214 70% 44%)', border: '1px solid hsl(214 80% 55% / 0.20)' }}>
+              💡 Puoi anche trascinare l'evento nel calendario per cambiare data
+            </div>
+          </>
         )}
       </div>
+
       <div className="p-4 border-t">
         <button
           onClick={onDelete}
@@ -382,15 +556,18 @@ interface MonthViewProps {
   utente: TeamMember;
   onDayClick: (date: Date, x: number, y: number) => void;
   onEventClick: (ev: CalendarioEvent) => void;
+  onEventDrop: (evId: string, newDate: string) => void;
+  dragEvId: string | null;
+  setDragEvId: (id: string | null) => void;
 }
 
-function MonthView({ year, month, eventi, marketing, oggi, onDayClick, onEventClick }: MonthViewProps) {
-  // Build grid
+function MonthView({ year, month, eventi, marketing, oggi, onDayClick, onEventClick, onEventDrop, dragEvId, setDragEvId }: MonthViewProps) {
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
 
-  // Monday-based start
-  let startDay = firstDay.getDay(); // 0=Sun
+  let startDay = firstDay.getDay();
   startDay = startDay === 0 ? 6 : startDay - 1;
 
   const cells: (Date | null)[] = [];
@@ -410,30 +587,42 @@ function MonthView({ year, month, eventi, marketing, oggi, onDayClick, onEventCl
 
   return (
     <div className="flex-1 overflow-auto min-h-0">
-      {/* Header */}
       <div className="grid grid-cols-7 border-b sticky top-0 bg-white z-10">
         {GIORNI.map(g => (
           <div key={g} className="text-center text-xs font-semibold text-muted-foreground py-2 border-r last:border-r-0">{g}</div>
         ))}
       </div>
 
-      {/* Grid */}
       <div className="grid grid-cols-7">
         {cells.map((d, i) => {
           if (!d) return <div key={`empty-${i}`} className="border-b border-r bg-muted/20 min-h-[90px]" />;
 
+          const ds = toDateStr(d);
           const isToday = isSameDay(d, oggi);
+          const isDragOver = dropTarget === ds;
           const dayEv = evByDay(d);
           const dayMkt = mktByDay(d);
           const MAX_SHOW = 3;
 
           return (
             <div
-              key={toDateStr(d)}
-              className="border-b border-r p-1 min-h-[90px] cursor-pointer hover:bg-accent/30 transition-colors relative"
+              key={ds}
+              className="border-b border-r p-1 min-h-[90px] cursor-pointer transition-colors relative"
+              style={{
+                background: isDragOver ? 'hsl(214 80% 55% / 0.10)' : undefined,
+                outline: isDragOver ? '2px solid hsl(214 80% 55% / 0.50)' : undefined,
+                outlineOffset: '-2px',
+              }}
               onClick={e => {
                 const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                 onDayClick(d, Math.min(rect.left, window.innerWidth - 220), rect.bottom);
+              }}
+              onDragOver={e => { e.preventDefault(); setDropTarget(ds); }}
+              onDragLeave={() => setDropTarget(null)}
+              onDrop={e => {
+                e.preventDefault();
+                setDropTarget(null);
+                if (dragEvId) onEventDrop(dragEvId, ds);
               }}
             >
               <div className={`text-xs font-semibold mb-1 w-6 h-6 flex items-center justify-center rounded-full
@@ -443,7 +632,14 @@ function MonthView({ year, month, eventi, marketing, oggi, onDayClick, onEventCl
 
               {dayMkt.slice(0, 2).map(m => <MarketingBadge key={m.id} ev={m} />)}
               {dayEv.slice(0, MAX_SHOW - Math.min(dayMkt.length, 2)).map(ev => (
-                <EventBadge key={ev.id} ev={ev} onClick={() => onEventClick(ev)} />
+                <EventBadge
+                  key={ev.id}
+                  ev={ev}
+                  onClick={() => onEventClick(ev)}
+                  onDragStart={() => setDragEvId(ev.id)}
+                  onDragEnd={() => setDragEvId(null)}
+                  isDragging={dragEvId === ev.id}
+                />
               ))}
 
               {(dayEv.length + dayMkt.length) > MAX_SHOW && (
@@ -468,9 +664,13 @@ interface WeekViewProps {
   utente: TeamMember;
   onDayClick: (date: Date, x: number, y: number) => void;
   onEventClick: (ev: CalendarioEvent) => void;
+  onEventDrop: (evId: string, newDate: string) => void;
+  dragEvId: string | null;
+  setDragEvId: (id: string | null) => void;
 }
 
-function WeekView({ weekStart, eventi, marketing, oggi, onDayClick, onEventClick }: WeekViewProps) {
+function WeekView({ weekStart, eventi, marketing, oggi, onDayClick, onEventClick, onEventDrop, dragEvId, setDragEvId }: WeekViewProps) {
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
   const evByDay = (d: Date) => eventi.filter(e => e.data === toDateStr(d));
@@ -487,17 +687,31 @@ function WeekView({ weekStart, eventi, marketing, oggi, onDayClick, onEventClick
     <div className="flex-1 overflow-auto min-h-0">
       <div className="grid grid-cols-7 min-w-[600px]">
         {days.map(d => {
+          const ds = toDateStr(d);
           const isToday = isSameDay(d, oggi);
+          const isDragOver = dropTarget === ds;
           const dayEv = evByDay(d);
           const dayMkt = mktByDay(d);
 
           return (
             <div
-              key={toDateStr(d)}
-              className="border-r last:border-r-0 min-h-[400px] cursor-pointer hover:bg-accent/10 transition-colors"
+              key={ds}
+              className="border-r last:border-r-0 min-h-[400px] cursor-pointer transition-colors"
+              style={{
+                background: isDragOver ? 'hsl(214 80% 55% / 0.08)' : isToday ? 'hsl(214 80% 55% / 0.03)' : undefined,
+                outline: isDragOver ? '2px solid hsl(214 80% 55% / 0.50)' : undefined,
+                outlineOffset: '-2px',
+              }}
               onClick={e => {
                 const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                 onDayClick(d, Math.min(rect.left, window.innerWidth - 220), rect.bottom - 200);
+              }}
+              onDragOver={e => { e.preventDefault(); setDropTarget(ds); }}
+              onDragLeave={() => setDropTarget(null)}
+              onDrop={e => {
+                e.preventDefault();
+                setDropTarget(null);
+                if (dragEvId) onEventDrop(dragEvId, ds);
               }}
             >
               {/* Day header */}
@@ -529,12 +743,22 @@ function WeekView({ weekStart, eventi, marketing, oggi, onDayClick, onEventClick
 
                 {dayEv.map(ev => {
                   const s = TIPO_STYLE[ev.tipo] || TIPO_STYLE.appuntamento;
+                  const isDragging = dragEvId === ev.id;
                   return (
                     <div
                       key={ev.id}
+                      draggable
+                      onDragStart={e => { e.stopPropagation(); setDragEvId(ev.id); }}
+                      onDragEnd={() => setDragEvId(null)}
                       onClick={e => { e.stopPropagation(); onEventClick(ev); }}
-                      style={{ background: s.bg, borderLeft: `3px solid ${s.border}` }}
-                      className="rounded px-2 py-1.5 text-xs cursor-pointer hover:opacity-80 transition-opacity"
+                      style={{
+                        background: s.bg,
+                        borderLeft: `3px solid ${s.border}`,
+                        cursor: 'grab',
+                        opacity: isDragging ? 0.4 : 1,
+                        transition: 'opacity 0.15s',
+                      }}
+                      className="rounded px-2 py-1.5 text-xs hover:opacity-80 transition-opacity"
                     >
                       <div className="flex items-center gap-1 mb-0.5">
                         {ev.ora && (
@@ -583,6 +807,9 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
   const [contenuti, setContenuti] = useState<Contenuto[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Drag state for events
+  const [dragEvId, setDragEvId] = useState<string | null>(null);
+
   // Modal states
   const [dayMenu, setDayMenu] = useState<{ date: Date; x: number; y: number } | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
@@ -609,7 +836,6 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
 
     const isAdmin = utente.ruolo === 'Admin';
 
-    // Carica tutti gli eventi grezzi
     const [evResAll, mktRes, contRes] = await Promise.all([
       supabase.from('calendario').select('*').gte('data', rangeStart).lte('data', rangeEnd).order('ora', { nullsFirst: true }),
       supabase.from('marketing_calendar').select('*').gte('data', rangeStart).lte('data', rangeEnd),
@@ -618,9 +844,6 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
 
     const tuttiEventi = (evResAll.data as CalendarioEvent[]) || [];
 
-    // Filtra per ruolo:
-    // - Admin: vede tutto
-    // - Team: vede le proprie pubblicazioni/appuntamenti/task (persona === utente.nome) + TUTTE le pubblicazioni
     const eventiFiltrati = isAdmin
       ? tuttiEventi
       : tuttiEventi.filter(ev =>
@@ -666,7 +889,38 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
     setDayMenu({ date, x, y });
   };
 
-  // ── Create CLP event (position content on calendar) ───────────────────────
+  // ── Drag-drop evento: sposta data ──────────────────────────────────────────
+  const handleEventDrop = async (evId: string, newDateStr: string) => {
+    const ev = eventi.find(e => e.id === evId);
+    if (!ev || ev.data === newDateStr) return;
+
+    // Optimistic update
+    setEventi(prev => prev.map(e => e.id === evId ? { ...e, data: newDateStr } : e));
+    if (selectedEvent?.id === evId) setSelectedEvent(prev => prev ? { ...prev, data: newDateStr } : null);
+
+    const { error } = await supabase
+      .from('calendario')
+      .update({ data: newDateStr })
+      .eq('id', evId);
+
+    if (error) {
+      addToast('Errore nello spostamento dell\'evento', 'error');
+      loadData();
+    } else {
+      // Se è un appuntamento task, aggiorna anche il task nel Kanban
+      if (ev.tipo === 'appuntamento') {
+        await supabase
+          .from('task')
+          .update({ scadenza: newDateStr })
+          .like('descrizione', `%${ev.descrizione.replace(/ \[TASK:.*\]/, '').trim()}%`)
+          .eq('scadenza', ev.data);
+      }
+      const d = parseLocalDate(newDateStr);
+      addToast(`📅 Evento spostato al ${d.toLocaleDateString('it-IT', { day: 'numeric', month: 'long' })}`, 'success');
+    }
+  };
+
+  // ── Create CLP event ────────────────────────────────────────────────────────
   const handleSaveCLP = async (contenuto: Contenuto, ora: string) => {
     const dataStr = toDateStr(selectedDate);
     const oraStr = ora || null;
@@ -689,13 +943,11 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
     if (!error && data) {
       setEventi(prev => [...prev, data as CalendarioEvent]);
 
-      // Aggiorna data_pubblicazione sul CLP
       await supabase.from('contenuti').update({
         data_pubblicazione: dataStr,
         ora_pubblicazione: oraStr,
       }).eq('id', contenuto.id);
 
-      // ── WORKFLOW: se il CLP è in "Girato" e non esiste ancora un task Premontaggio per Luca → crealo ──
       if (contenuto.fase === 'Girato') {
         const nomeLuca = findMembro(team, 'Luca');
         const contenutoAggiornato = { ...contenuto, data_pubblicazione: dataStr, ora_pubblicazione: oraStr };
@@ -709,9 +961,8 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
           oraStr
         );
         if (newTask) {
-          addToast(`📋 Task premontaggio creato per ${nomeLuca} con scadenza ${selectedDate.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}`, 'success');
+          addToast(`📋 Task premontaggio creato per ${nomeLuca}`, 'success');
         } else {
-          // Task già esiste → aggiorna solo la scadenza
           const { data: existingTask } = await supabase
             .from('task')
             .select('id')
@@ -722,7 +973,7 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
             .single();
           if (existingTask) {
             await supabase.from('task').update({ scadenza: dataStr, ora: oraStr, priorita: '🔴 Alta' }).eq('id', existingTask.id);
-            addToast(`⏰ Scadenza task Luca aggiornata al ${selectedDate.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}`, 'success');
+            addToast(`⏰ Scadenza task Luca aggiornata`, 'success');
           }
         }
       }
@@ -753,7 +1004,6 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
 
   // ── Create task from calendar ─────────────────────────────────────────────
   const handleTaskCreated = async (task: Task) => {
-    // Also add to calendario as appuntamento if it has date+time
     if (task.scadenza) {
       const payload = {
         tipo: 'appuntamento' as const,
@@ -778,6 +1028,12 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
     setEventi(prev => prev.filter(e => e.id !== selectedEvent.id));
     setSelectedEvent(null);
     addToast('🗑️ Evento eliminato', 'info');
+  };
+
+  // ── Update event ──────────────────────────────────────────────────────────
+  const handleUpdateEvent = (updated: CalendarioEvent) => {
+    setEventi(prev => prev.map(e => e.id === updated.id ? updated : e));
+    setSelectedEvent(updated);
   };
 
   if (!utente) return null;
@@ -829,6 +1085,9 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
               utente={utente}
               onDayClick={handleDayClick}
               onEventClick={setSelectedEvent}
+              onEventDrop={handleEventDrop}
+              dragEvId={dragEvId}
+              setDragEvId={setDragEvId}
             />
           ) : (
             <WeekView
@@ -839,6 +1098,9 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
               utente={utente}
               onDayClick={handleDayClick}
               onEventClick={setSelectedEvent}
+              onEventDrop={handleEventDrop}
+              dragEvId={dragEvId}
+              setDragEvId={setDragEvId}
             />
           )}
         </>
@@ -892,8 +1154,11 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
       {selectedEvent && (
         <EventDetail
           ev={selectedEvent}
+          team={team}
+          clienti={clienti}
           onClose={() => setSelectedEvent(null)}
           onDelete={handleDeleteEvent}
+          onUpdate={handleUpdateEvent}
         />
       )}
     </div>

@@ -6,9 +6,11 @@ import type { Task, TeamMember, Cliente } from '../types';
 import { Avatar } from './Avatar';
 import { TaskDetailPanel } from './TaskDetailPanel';
 import { NuovoTaskModal } from './NuovoTaskModal';
+import { parseLocalDate } from '../lib/dateUtils';
 
 // ─── Orologio live al secondo per task con scadenza ──────────────────────────
 function getTargetDate(scadenza: string, ora: string | null): Date {
+  // Usa T... locale per evitare shift UTC→IT
   return new Date(`${scadenza}T${ora ? ora.slice(0, 5) : '23:59'}:00`);
 }
 
@@ -87,7 +89,8 @@ const TIPO_TO_FASE: Record<string, { label: string; bg: string; color: string; b
 function scadenzaInfo(task: Task): { label: string; colore: string; bg: string } | null {
   if (!task.scadenza) return null;
   const oggi = new Date(); oggi.setHours(0,0,0,0);
-  const scad = new Date(task.scadenza); scad.setHours(0,0,0,0);
+  // FIX timezone: parseLocalDate evita lo shift UTC→IT
+  const scad = parseLocalDate(task.scadenza); scad.setHours(0,0,0,0);
   const diff = Math.floor((scad.getTime() - oggi.getTime()) / 86400000);
   if (diff < 0) return { label: '⚠ SCADUTO', colore: '#EF4444', bg: '#FEF2F2' };
   if (diff === 0) return { label: '⏰ OGGI', colore: '#D97706', bg: '#FEF3C7' };

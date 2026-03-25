@@ -10,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { CalendarIcon } from 'lucide-react';
+import { parseLocalDate } from '../lib/dateUtils';
 
 const STATI: Task['stato'][] = ['Da fare', 'In lavorazione', 'In revisione', 'Completato', 'Non accettato'];
 
@@ -57,7 +58,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
 
   // ── Programmazione date picker ─────────────────────────────────────────────
   const [dataPub, setDataPub] = useState<Date | undefined>(
-    task.scadenza ? new Date(task.scadenza) : undefined
+    task.scadenza ? parseLocalDate(task.scadenza) : undefined
   );
   const [oraPub, setOraPub] = useState<string>(task.ora ? task.ora.slice(0, 5) : '');
   const [savingProg, setSavingProg] = useState(false);
@@ -83,11 +84,11 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   }, [task.stato]);
 
   useEffect(() => {
-    setDataPub(task.scadenza ? new Date(task.scadenza) : undefined);
+    setDataPub(task.scadenza ? parseLocalDate(task.scadenza) : undefined);
     setOraPub(task.ora ? task.ora.slice(0, 5) : '');
   }, [task.scadenza, task.ora]);
 
-  const scad = task.scadenza ? new Date(task.scadenza) : null;
+  const scad = task.scadenza ? parseLocalDate(task.scadenza) : null;
   const oggi = new Date(); oggi.setHours(0, 0, 0, 0);
   const isScaduto = scad && scad < oggi && task.stato !== 'Completato';
 
@@ -297,7 +298,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
               ['Cliente', task.cliente_nome || '—'],
               ['Contenuto', task.id_contenuto || '—'],
               ['Assegnato da', task.assegnato_da || '—'],
-              ['Scadenza', task.scadenza ? new Date(task.scadenza).toLocaleDateString('it-IT') : '—'],
+              ['Scadenza', task.scadenza ? parseLocalDate(task.scadenza).toLocaleDateString('it-IT') : '—'],
               ['Ora', task.ora ? task.ora.slice(0, 5) : '—'],
             ].map(([label, value]) => (
               <div key={label} className="flex gap-2">
