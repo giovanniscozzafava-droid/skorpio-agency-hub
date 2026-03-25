@@ -269,6 +269,9 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
       // Completa task pubblicazione di Elisa (solo se Pubblicato, non Programmato)
       if (nuovaFase === 'Pubblicato') {
         await completaTaskPerContenuto(contenuto.id, 'Pubblicazione');
+        // Crea task cleanup per Elisa
+        await creaTaskCleanup(data as Contenuto, team);
+        addToast('🗑️ Task cleanup creato per Elisa', 'info');
       }
 
       // Se programmato, aggiungi evento in calendario
