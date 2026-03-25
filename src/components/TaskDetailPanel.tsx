@@ -12,6 +12,20 @@ import { it } from 'date-fns/locale';
 import { CalendarIcon } from 'lucide-react';
 import { parseLocalDate } from '../lib/dateUtils';
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+async function invokeEdge(path: string, body: object) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/${path}`, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || `Edge error ${res.status}`);
+  return data;
+}
+
 const STATI: Task['stato'][] = ['Da fare', 'In lavorazione', 'In revisione', 'Completato', 'Non accettato'];
 
 const STATO_COLORS: Record<string, { bg: string; text: string }> = {
