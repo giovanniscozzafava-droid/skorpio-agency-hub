@@ -497,6 +497,53 @@ function ClipDetailPanel({ clip, clp, team, onClose, onUpdated }: ClipDetailPane
   );
 }
 
+// ─── RowDropZonePicker: dialog when dragging onto a table row ─────────────────
+
+interface RowDropZonePickerProps {
+  files: File[];
+  clip: LogRipresa;
+  onPick: (zone: 'clip' | 'file_esportato') => void;
+  onCancel: () => void;
+}
+
+function RowDropZonePicker({ files, clip, onPick, onCancel }: RowDropZonePickerProps) {
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
+      <div className="relative bg-card rounded-2xl shadow-2xl w-full max-w-sm border border-border p-6 space-y-4 animate-in zoom-in-95 duration-150">
+        <div className="text-center">
+          <div className="text-3xl mb-2">📂</div>
+          <h3 className="font-bold text-base text-foreground">Dove vuoi caricare?</h3>
+          <p className="text-xs text-muted-foreground mt-1">
+            {files.length} file per <span className="font-mono font-semibold">{clip.id_clip}</span>
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => onPick('clip')}
+            className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-border hover:border-[hsl(var(--clr-amber)/0.6)] hover:bg-[hsl(var(--clr-amber)/0.06)] transition-all"
+          >
+            <span className="text-2xl">📁</span>
+            <span className="text-xs font-semibold text-foreground">Clip da montare</span>
+            <span className="text-[10px] text-muted-foreground">→ clip/</span>
+          </button>
+          <button
+            onClick={() => onPick('file_esportato')}
+            className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-border hover:border-[hsl(var(--clr-green)/0.6)] hover:bg-[hsl(var(--clr-green)/0.06)] transition-all"
+          >
+            <span className="text-2xl">▶️</span>
+            <span className="text-xs font-semibold text-foreground">File esportato</span>
+            <span className="text-[10px] text-muted-foreground">→ file_esportato/</span>
+          </button>
+        </div>
+        <button onClick={onCancel} className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors py-1">
+          Annulla
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Tab ─────────────────────────────────────────────────────────────────
 
 interface RipreseTabProps {
@@ -505,7 +552,7 @@ interface RipreseTabProps {
 }
 
 export function RipreseTab({ clienti, team }: RipreseTabProps) {
-  const { addToast } = useApp();
+  const { addToast, utente } = useApp();
   const [clips, setClips] = useState<LogRipresa[]>([]);
   const [contenuti, setContenuti] = useState<Record<string, Contenuto>>({});
   const [loading, setLoading] = useState(true);
@@ -518,6 +565,13 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showReport, setShowReport] = useState(false);
   const [detailClip, setDetailClip] = useState<LogRipresa | null>(null);
+  const [filtroPubblicatiConRaw, setFiltroPubblicatiConRaw] = useState(false);
+
+  // Drag-and-drop on row
+  const [rowDragTarget, setRowDragTarget] = useState<string | null>(null);
+  const [dropZonePicker, setDropZonePicker] = useState<{ files: File[]; clip: LogRipresa } | null>(null);
+  // Per-clip file upload ref map (to trigger uploads programmatically after zone pick)
+  const pendingDropUpload = useRef<{ files: File[]; zone: 'clip' | 'file_esportato'; clipId: string } | null>(null);
 
   // Auto-cleanup dialog state
   const [cleanupPending, setCleanupPending] = useState<{
