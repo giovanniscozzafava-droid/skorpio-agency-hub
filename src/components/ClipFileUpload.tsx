@@ -12,11 +12,12 @@ interface UploadProgress {
   loaded: number;
   total: number;
   percent: number;
+  fileName?: string;
 }
 
 export interface ClipFileUploadProps {
   clip: LogRipresa;
-  clp?: Contenuto | null;   // needed for folder IDs + metadata
+  clp?: Contenuto | null;
   onUpdated: (patch: Partial<LogRipresa>) => void;
   variant?: 'row' | 'panel';
 }
@@ -70,6 +71,19 @@ async function invokeEdge(path: string, options: RequestInit = {}) {
   return data;
 }
 
+// ─── Compute auto-renamed filename for clip/ zone ─────────────────────────────
+// {CLP_ID}_{N:02d}_{originalName}.ext
+function buildRenamedFileName(
+  file: File,
+  clipIdDisplay: string, // e.g. CLP012
+  existingCount: number  // how many raw files already exist
+): string {
+  const ext = file.name.split('.').pop() || 'mp4';
+  const baseName = file.name.replace(/\.[^/.]+$/, ''); // without ext
+  const n = String(existingCount + 1).padStart(2, '0');
+  return `${clipIdDisplay}_${n}_${baseName}.${ext}`;
+}
+
 // ─── Core upload logic ────────────────────────────────────────────────────────
 
 async function uploadFileToZone(
@@ -81,11 +95,18 @@ async function uploadFileToZone(
   onProgress: (p: UploadProgress) => void
 ): Promise<{ fileId: string; fileUrl: string; fileName: string }> {
   const ext = file.name.split('.').pop() || 'mp4';
-  const slug = slugify(clip.titolo || clip.id_clip);
-  const zonePrefix = zone === 'file_esportato' ? 'export_' : '';
-  const fileName = `${clip.id_clip}_${slug}_${zonePrefix}${Date.now()}.${ext}`;
   const mimeType = file.type || 'video/mp4';
   const clientName = clip.cliente_nome || 'Generale';
+
+  let fileName: string;
+  if (zone === 'clip') {
+    const idDisplay = clp?.id_display || clip.id_contenuto_display || clip.id_clip;
+    fileName = buildRenamedFileName(file, idDisplay, clip.raw_files_count || 0);
+  } else {
+    const slug = slugify(clip.titolo || clip.id_clip);
+    fileName = `${clip.id_clip}_${slug}_export_${Date.now()}.${ext}`;
+  }
+
   const storagePath = `${userId}/${zone}/${Date.now()}_${fileName}`;
 
   // Step 1: Upload to Supabase Storage buffer
@@ -99,7 +120,7 @@ async function uploadFileToZone(
     xhr.upload.addEventListener('progress', (e) => {
       if (e.lengthComputable) {
         const pct = Math.round(3 + (e.loaded / e.total) * 78);
-        onProgress({ loaded: e.loaded, total: file.size, percent: pct });
+        onProgress({ loaded: e.loaded, total: file.size, percent: pct, fileName: file.name });
       }
     });
 
@@ -112,7 +133,6 @@ async function uploadFileToZone(
           responseText: xhr.responseText,
           zone,
           fileSize: file.size,
-          authTokenIsAnon: authToken === SUPABASE_KEY,
         });
         reject(new Error(`Storage upload fallito (${xhr.status}): ${xhr.responseText}`));
       }
@@ -129,9 +149,9 @@ async function uploadFileToZone(
     xhr.send(file);
   });
 
-  onProgress({ loaded: file.size, total: file.size, percent: 85 });
+  onProgress({ loaded: file.size, total: file.size, percent: 85, fileName: file.name });
 
-  // Step 2: Transfer to Google Drive via edge function
+  // Step 2: Transfer to Google Drive
   const result = await invokeEdge('google-drive-transfer', {
     method: 'POST',
     body: JSON.stringify({
@@ -151,7 +171,239 @@ async function uploadFileToZone(
   return { fileId: result.fileId, fileUrl: result.fileUrl, fileName };
 }
 
-// ─── Row variant ──────────────────────────────────────────────────────────────
+// ─── FileStatusDot: visual indicator ─────────────────────────────────────────
+
+export function FileStatusDot({ clip, clp }: { clip: LogRipresa; clp: Contenuto | null | undefined }) {
+  const hasExport = !!(clip.exported_file_id && clip.exported_file_url);
+  const hasRaw = !!(clip.file_id && !clip.file_deleted_at) || (clip.raw_files_count || 0) > 0;
+  const fase = clp?.fase || '';
+  const latePhases = ['Montato', 'Revisione', 'Programmato', 'Pubblicato'];
+
+  if (hasExport) {
+    return (
+      <span
+        title="File esportato presente — pronto"
+        className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+        style={{ background: 'hsl(var(--clr-green))' }}
+      />
+    );
+  }
+  if (latePhases.includes(fase) && !hasExport) {
+    return (
+      <span
+        title={`⚠️ Fase ${fase} ma nessun file esportato`}
+        className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+        style={{ background: 'hsl(var(--clr-red))' }}
+      />
+    );
+  }
+  if (hasRaw) {
+    return (
+      <span
+        title="File grezzi presenti — in attesa montaggio"
+        className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+        style={{ background: 'hsl(var(--clr-amber))' }}
+      />
+    );
+  }
+  return (
+    <span
+      title="Nessun file"
+      className="inline-block w-2 h-2 rounded-full flex-shrink-0 bg-muted-foreground/30"
+    />
+  );
+}
+
+// ─── FileInfoPopover: popover con lista file ──────────────────────────────────
+
+interface FileInfoPopoverProps {
+  clip: LogRipresa;
+  clp: Contenuto | null | undefined;
+  onDeleteRaw: () => void;
+  onOpenUpload: () => void;
+  onUpdated: (patch: Partial<LogRipresa>) => void;
+}
+
+function FileInfoPopover({ clip, clp, onDeleteRaw, onOpenUpload, onUpdated }: FileInfoPopoverProps) {
+  const { utente, addToast } = useApp();
+  const [show, setShow] = useState(false);
+  const [deletingExport, setDeletingExport] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const hasExport = !!(clip.exported_file_id && clip.exported_file_url);
+  const hasRaw = !!(clip.file_id && !clip.file_deleted_at) || (clip.raw_files_count || 0) > 0;
+  const rawCount = clip.raw_files_count || (clip.file_id && !clip.file_deleted_at ? 1 : 0);
+  const rawSize = clip.raw_files_size || clip.file_size || 0;
+
+  React.useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setShow(false);
+    }
+    if (show) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [show]);
+
+  const handleDeleteExport = async () => {
+    if (!clip.exported_file_id) return;
+    setDeletingExport(true);
+    try {
+      await invokeEdge('google-drive-delete', {
+        method: 'POST',
+        body: JSON.stringify({ fileId: clip.exported_file_id, teamId: utente?.id }),
+      });
+    } catch (err) {
+      console.warn('[FileInfoPopover] delete export failed:', err);
+    }
+    const patch: Partial<LogRipresa> = {
+      exported_file_id: null, exported_file_url: null,
+      exported_file_name: null, exported_file_size: null,
+      exported_file_uploaded_at: null, exported_file_mime_type: null,
+    };
+    await supabase.from('log_riprese').update(patch).eq('id', clip.id);
+    onUpdated(patch);
+    addToast('🗑️ File esportato rimosso.', 'success');
+    setDeletingExport(false);
+    setShow(false);
+  };
+
+  if (!hasRaw && !hasExport) {
+    // Empty state — show upload trigger
+    return (
+      <button
+        onClick={(e) => { e.stopPropagation(); onOpenUpload(); }}
+        title="Carica file"
+        className="opacity-40 group-hover:opacity-100 text-muted-foreground hover:text-primary text-sm transition-all"
+      >
+        ☁️↑
+      </button>
+    );
+  }
+
+  // Build display label
+  const parts: string[] = [];
+  if (rawCount > 0) parts.push(`📁 ${rawCount} clip${rawSize > 0 ? ` (${formatBytes(rawSize)})` : ''}`);
+  if (hasExport) parts.push(`▶️ Esportato${clip.exported_file_size ? ` (${formatBytes(clip.exported_file_size)})` : ''}`);
+  const label = parts.join(' | ');
+
+  return (
+    <div ref={ref} className="relative" onClick={e => e.stopPropagation()}>
+      <button
+        onClick={() => setShow(v => !v)}
+        className="text-xs text-foreground hover:text-primary transition-colors whitespace-nowrap leading-tight text-left"
+        title="Vedi dettagli file"
+      >
+        {label}
+      </button>
+
+      {show && (
+        <div
+          className="absolute right-0 top-full mt-1 w-72 bg-card border border-border rounded-xl shadow-2xl z-[200] overflow-hidden"
+          style={{ minWidth: 260 }}
+        >
+          {/* Raw files */}
+          {(hasRaw || clip.file_deleted_at) && (
+            <div className="border-b border-border/60">
+              <div className="px-3 py-2 flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                  📁 Clip da montare
+                </span>
+                {rawCount > 0 && (
+                  <span className="text-[10px] text-muted-foreground">{rawCount} file · {formatBytes(rawSize)}</span>
+                )}
+              </div>
+
+              {clip.file_id && !clip.file_deleted_at ? (
+                <div className="px-3 pb-2 space-y-1">
+                  <div className="flex items-center gap-2 rounded-lg bg-muted/30 px-2 py-1.5">
+                    <span className="text-sm">🎬</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-medium truncate text-foreground">{clip.file_name || 'file.mp4'}</p>
+                      <div className="flex gap-2 text-[10px] text-muted-foreground">
+                        {clip.file_size && <span>{formatBytes(clip.file_size)}</span>}
+                        {clip.file_uploaded_at && <span>· {formatDate(clip.file_uploaded_at)}</span>}
+                      </div>
+                    </div>
+                    <div className="flex gap-1 flex-shrink-0">
+                      {clip.file_url && (
+                        <a href={clip.file_url} target="_blank" rel="noopener noreferrer"
+                          className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary hover:opacity-80">
+                          ↗
+                        </a>
+                      )}
+                      <button
+                        onClick={onDeleteRaw}
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-destructive/10 text-destructive hover:opacity-80"
+                        title="Elimina file grezzo"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+                  {(clip.raw_files_count || 0) > 1 && (
+                    <p className="text-[10px] text-muted-foreground px-1">
+                      + altri {(clip.raw_files_count || 1) - 1} file nella cartella clip/
+                    </p>
+                  )}
+                </div>
+              ) : clip.file_deleted_at ? (
+                <p className="px-3 pb-2 text-[10px] text-muted-foreground/60">
+                  ☁️ File rimossi il {formatDate(clip.file_deleted_at)}
+                </p>
+              ) : (
+                <p className="px-3 pb-2 text-[10px] text-muted-foreground">Nessun file grezzo</p>
+              )}
+
+              {/* Always show add more button */}
+              <button
+                onClick={() => { onOpenUpload(); setShow(false); }}
+                className="w-full px-3 pb-2 text-[10px] text-primary hover:underline text-left flex items-center gap-1"
+              >
+                ＋ Aggiungi altri file grezzi
+              </button>
+            </div>
+          )}
+
+          {/* Exported file */}
+          <div className="px-3 py-2">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">▶️ File esportato</span>
+            {hasExport ? (
+              <div className="mt-1.5 flex items-center gap-2 rounded-lg bg-[hsl(var(--clr-green)/0.08)] border border-[hsl(var(--clr-green)/0.2)] px-2 py-1.5">
+                <span className="text-sm">🎬</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-medium truncate text-foreground">{clip.exported_file_name || 'export.mp4'}</p>
+                  <div className="flex gap-2 text-[10px] text-muted-foreground">
+                    {clip.exported_file_size && <span>{formatBytes(clip.exported_file_size)}</span>}
+                    {clip.exported_file_uploaded_at && <span>· {formatDate(clip.exported_file_uploaded_at)}</span>}
+                  </div>
+                </div>
+                <div className="flex gap-1 flex-shrink-0">
+                  {clip.exported_file_url && (
+                    <a href={clip.exported_file_url} target="_blank" rel="noopener noreferrer"
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary hover:opacity-80">
+                      ↗
+                    </a>
+                  )}
+                  <button
+                    onClick={handleDeleteExport}
+                    disabled={deletingExport}
+                    className="text-[10px] px-1.5 py-0.5 rounded bg-destructive/10 text-destructive hover:opacity-80 disabled:opacity-40"
+                    title="Rimuovi file esportato"
+                  >
+                    🗑️
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-1 text-[10px] text-muted-foreground">Nessun file esportato</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main component ────────────────────────────────────────────────────────────
 
 export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFileUploadProps) {
   const { addToast, utente } = useApp();
@@ -159,15 +411,25 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
   const expInputRef  = useRef<HTMLInputElement>(null);
 
   const [uploadingZone, setUploadingZone] = useState<'clip' | 'file_esportato' | null>(null);
+  const [uploadQueue, setUploadQueue] = useState<{ name: string; done: boolean }[]>([]);
   const [progress, setProgress] = useState<UploadProgress | null>(null);
   const [draggingZone, setDraggingZone] = useState<'clip' | 'file_esportato' | null>(null);
   const [showDeleteExport, setShowDeleteExport] = useState(false);
   const [showVideoPlayer, setShowVideoPlayer] = useState(false);
 
+  // We keep a local mutable ref for raw_files_count to handle sequential uploads
+  const localRawCount = useRef(clip.raw_files_count || 0);
+  const localRawSize  = useRef(clip.raw_files_size  || 0);
+
   const hasExport  = !!(clip.exported_file_id && clip.exported_file_url);
-  const hasRawFile = !!(clip.file_id && !clip.file_deleted_at);
-  const rawDeleted = !!(clip.file_deleted_at);
+  const hasRawFile = !!(clip.file_id && !clip.file_deleted_at) || (clip.raw_files_count || 0) > 0;
   const driveConnected = !!(utente as any)?.google_drive_connected;
+
+  // Update local refs when clip changes externally
+  React.useEffect(() => {
+    localRawCount.current = clip.raw_files_count || 0;
+    localRawSize.current  = clip.raw_files_size  || 0;
+  }, [clip.raw_files_count, clip.raw_files_size]);
 
   const doUpload = useCallback(async (file: File, zone: 'clip' | 'file_esportato') => {
     if (!utente) { addToast('❌ Utente non trovato', 'error'); return; }
@@ -177,7 +439,7 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
     }
 
     setUploadingZone(zone);
-    setProgress({ loaded: 0, total: file.size, percent: 2 });
+    setProgress({ loaded: 0, total: file.size, percent: 2, fileName: file.name });
 
     try {
       const { fileId, fileUrl, fileName } = await uploadFileToZone(
@@ -185,11 +447,13 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
         (p) => setProgress(p)
       );
 
-      setProgress({ loaded: file.size, total: file.size, percent: 99 });
+      setProgress({ loaded: file.size, total: file.size, percent: 99, fileName: file.name });
 
       let patch: Partial<LogRipresa> = {};
 
       if (zone === 'clip') {
+        localRawCount.current += 1;
+        localRawSize.current  += file.size;
         patch = {
           file_id: fileId,
           file_url: fileUrl,
@@ -198,8 +462,8 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
           file_mime_type: file.type || 'video/mp4',
           file_uploaded_at: new Date().toISOString(),
           file_deleted_at: null,
-          raw_files_count: (clip.raw_files_count || 0) + 1,
-          raw_files_size: (clip.raw_files_size || 0) + file.size,
+          raw_files_count: localRawCount.current,
+          raw_files_size: localRawSize.current,
         };
       } else {
         patch = {
@@ -215,10 +479,10 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
       const { error } = await supabase.from('log_riprese').update(patch).eq('id', clip.id);
       if (error) throw error;
 
-      setProgress({ loaded: file.size, total: file.size, percent: 100 });
+      setProgress({ loaded: file.size, total: file.size, percent: 100, fileName: file.name });
       onUpdated(patch);
 
-      const label = zone === 'clip' ? '📁 File grezzo caricato' : '✅ Video esportato caricato';
+      const label = zone === 'clip' ? `📁 Grezzo caricato (${localRawCount.current} tot.)` : '✅ Video esportato caricato';
       addToast(`${label}: ${fileName}`, 'success');
     } catch (err: unknown) {
       console.error('[ClipFileUpload] upload failed:', err);
@@ -229,6 +493,16 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
       setProgress(null);
     }
   }, [clip, clp, onUpdated, addToast, utente, driveConnected]);
+
+  // Sequential multi-file upload
+  const doMultiUpload = useCallback(async (files: File[], zone: 'clip' | 'file_esportato') => {
+    setUploadQueue(files.map(f => ({ name: f.name, done: false })));
+    for (let i = 0; i < files.length; i++) {
+      await doUpload(files[i], zone);
+      setUploadQueue(q => q.map((item, idx) => idx === i ? { ...item, done: true } : item));
+    }
+    setUploadQueue([]);
+  }, [doUpload]);
 
   const handleDeleteExport = async () => {
     if (!clip.exported_file_id) return;
@@ -241,11 +515,9 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
       console.warn('[ClipFileUpload] delete export from Drive failed:', err);
     }
     const patch: Partial<LogRipresa> = {
-      exported_file_id: null,
-      exported_file_url: null,
-      exported_file_name: null,
-      exported_file_size: null,
-      exported_file_uploaded_at: null,
+      exported_file_id: null, exported_file_url: null,
+      exported_file_name: null, exported_file_size: null,
+      exported_file_mime_type: null, exported_file_uploaded_at: null,
     };
     await supabase.from('log_riprese').update(patch).eq('id', clip.id);
     onUpdated(patch);
@@ -254,12 +526,48 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
     setShowVideoPlayer(false);
   };
 
+  const handleDeleteRawSingle = async () => {
+    if (!clip.file_id) return;
+    if (!confirm(`Rimuovere il file grezzo "${clip.file_name}" da Google Drive?`)) return;
+    try {
+      await invokeEdge('google-drive-delete', {
+        method: 'POST',
+        body: JSON.stringify({ fileId: clip.file_id, teamId: utente?.id }),
+      });
+    } catch (err) {
+      console.warn('[ClipFileUpload] delete raw failed:', err);
+    }
+    const newCount = Math.max(0, (clip.raw_files_count || 1) - 1);
+    const newSize  = Math.max(0, (clip.raw_files_size  || clip.file_size || 0) - (clip.file_size || 0));
+    const patch: Partial<LogRipresa> = {
+      file_id: null, file_url: null, file_name: null,
+      file_size: null, file_mime_type: null,
+      raw_files_count: newCount,
+      raw_files_size: newCount > 0 ? newSize : 0,
+    };
+    await supabase.from('log_riprese').update(patch).eq('id', clip.id);
+    onUpdated(patch);
+    addToast('🗑️ File grezzo rimosso.', 'success');
+  };
+
+  // Listen for row-drop-upload events dispatched from the table
+  React.useEffect(() => {
+    if (variant !== 'row') return;
+    function handler(e: Event) {
+      const { files, zone, clipId } = (e as CustomEvent).detail;
+      if (clipId !== clip.id) return;
+      doMultiUpload(files, zone);
+    }
+    window.addEventListener('row-drop-upload', handler);
+    return () => window.removeEventListener('row-drop-upload', handler);
+  }, [variant, clip.id, doMultiUpload]);
+
   // ─── ROW variant ──────────────────────────────────────────────────────────
   if (variant === 'row') {
     if (uploadingZone && progress) {
       return (
-        <div className="flex items-center gap-1 min-w-[60px]">
-          <div className="w-12 h-1 rounded-full bg-muted overflow-hidden">
+        <div className="flex items-center gap-1 min-w-[80px]">
+          <div className="w-12 h-1 rounded-full bg-muted overflow-hidden flex-shrink-0">
             <div className="h-full bg-primary transition-all" style={{ width: `${progress.percent}%` }} />
           </div>
           <span className="text-[10px] text-muted-foreground">{progress.percent}%</span>
@@ -268,55 +576,67 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
     }
 
     return (
-      <div className="flex items-center gap-1 relative">
-        {/* Exported file indicator — play button */}
+      <div className="flex items-center gap-1.5 relative">
+        {/* Status dot */}
+        <FileStatusDot clip={clip} clp={clp} />
+
+        {/* File info popover / upload trigger */}
+        <FileInfoPopover
+          clip={clip}
+          clp={clp}
+          onDeleteRaw={handleDeleteRawSingle}
+          onOpenUpload={() => rawInputRef.current?.click()}
+          onUpdated={onUpdated}
+        />
+
+        {/* Play button for exported video */}
         {hasExport && (
           <button
             onClick={() => setShowVideoPlayer(true)}
-            title={clip.exported_file_name || 'Anteprima video esportato'}
-            className="text-[hsl(var(--clr-green))] hover:opacity-70 text-sm transition-opacity"
+            title="Anteprima video esportato"
+            className="text-[hsl(var(--clr-green))] hover:opacity-70 text-sm transition-opacity flex-shrink-0"
           >
             ▶️
           </button>
         )}
 
-        {/* Raw files indicator */}
-        {hasRawFile && (
-          <span
-            title={`${clip.raw_files_count || 1} file grezzo • ${formatBytes(clip.raw_files_size || clip.file_size)}`}
-            className="text-muted-foreground text-xs cursor-default"
-          >
-            📁{clip.raw_files_count ? ` ${clip.raw_files_count}` : ''}
-          </span>
-        )}
-
-        {rawDeleted && !hasRawFile && !hasExport && (
-          <span title="File grezzi rimossi" className="text-muted-foreground/40 text-xs">☁️</span>
-        )}
-
-        {/* Upload trigger (if nothing at all) */}
-        {!hasExport && !hasRawFile && !rawDeleted && (
-          <>
-            <input
-              ref={rawInputRef}
-              type="file"
-              accept="video/*,.mp4,.mov,.avi,.mxf,.r3d"
-              className="hidden"
-              onChange={e => { const f = e.target.files?.[0]; if (f) doUpload(f, 'clip'); e.target.value = ''; }}
-            />
-            <button
-              onClick={() => rawInputRef.current?.click()}
-              title="Carica file grezzo su Google Drive"
-              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary text-sm transition-all"
-            >
-              ☁️↑
-            </button>
-          </>
-        )}
+        {/* Hidden inputs */}
+        <input
+          ref={rawInputRef}
+          type="file"
+          accept="video/*,.mp4,.mov,.avi,.mxf,.r3d"
+          multiple
+          className="hidden"
+          onChange={e => {
+            const files = Array.from(e.target.files || []);
+            if (files.length > 0) doMultiUpload(files, 'clip');
+            e.target.value = '';
+          }}
+        />
+        <input
+          ref={expInputRef}
+          type="file"
+          accept="video/*,.mp4,.mov,.avi,.mxf"
+          className="hidden"
+          onChange={e => {
+            const f = e.target.files?.[0];
+            if (f) {
+              if (hasExport) {
+                if (confirm(`Sostituire il file esportato esistente con "${f.name}"?`)) {
+                  doUpload(f, 'file_esportato');
+                }
+              } else {
+                doUpload(f, 'file_esportato');
+              }
+            }
+            e.target.value = '';
+          }}
+        />
 
         {/* Inline video player modal */}
         {showVideoPlayer && hasExport && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={() => setShowVideoPlayer(false)}>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+            onClick={() => setShowVideoPlayer(false)}>
             <div className="absolute inset-0 bg-black/80" />
             <div className="relative bg-card rounded-2xl shadow-2xl max-w-3xl w-full overflow-hidden border border-border z-10"
               onClick={e => e.stopPropagation()}>
@@ -361,25 +681,47 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">📁 Clip da montare</span>
           <span className="text-[10px] text-muted-foreground">→ cartella clip/</span>
+          {(clip.raw_files_count || 0) > 0 && (
+            <span className="text-[10px] font-semibold text-[hsl(var(--clr-amber))] ml-auto">
+              {clip.raw_files_count} file · {formatBytes(clip.raw_files_size)}
+            </span>
+          )}
         </div>
 
         {uploadingZone === 'clip' && progress && (
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>{progress.percent < 84 ? 'Caricamento…' : 'Trasferimento su Google Drive…'}</span>
-              <span>{progress.percent}%</span>
+              <span className="truncate max-w-[200px]">
+                {progress.percent < 84
+                  ? `Caricamento ${progress.fileName || ''}…`
+                  : 'Trasferimento su Google Drive…'}
+              </span>
+              <span className="flex-shrink-0">{progress.percent}%</span>
             </div>
             <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
               <div className="h-full rounded-full bg-primary transition-all duration-300"
                 style={{ width: `${progress.percent}%` }} />
             </div>
             <p className="text-xs text-muted-foreground">{formatBytes(progress.loaded)} / {formatBytes(progress.total)}</p>
+            {uploadQueue.length > 1 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {uploadQueue.map((q, i) => (
+                  <span key={i} className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                    q.done
+                      ? 'bg-[hsl(var(--clr-green)/0.1)] text-[hsl(var(--clr-green))] border-[hsl(var(--clr-green)/0.3)]'
+                      : 'bg-muted text-muted-foreground border-border'
+                  }`}>
+                    {q.done ? '✓' : '○'} {q.name.slice(0, 20)}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        {!rawDeleted && uploadingZone !== 'clip' && (
+        {/* Upload zone — ALWAYS visible (additive) */}
+        {uploadingZone !== 'clip' && (
           <>
-            {/* Drop zone */}
             <div
               onDragEnter={() => setDraggingZone('clip')}
               onDragLeave={() => setDraggingZone(null)}
@@ -387,17 +729,27 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
               onDrop={e => {
                 e.preventDefault();
                 setDraggingZone(null);
-                const files = Array.from(e.dataTransfer.files);
-                files.forEach(f => doUpload(f, 'clip'));
+                const files = Array.from(e.dataTransfer.files).filter(f =>
+                  f.type.startsWith('video/') || /\.(mp4|mov|avi|mxf|r3d)$/i.test(f.name)
+                );
+                if (files.length > 0) doMultiUpload(files, 'clip');
               }}
               onClick={() => rawInputRef.current?.click()}
               className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
-                draggingZone === 'clip' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-muted/40'
+                draggingZone === 'clip'
+                  ? 'border-primary bg-primary/5'
+                  : hasRawFile
+                    ? 'border-border/50 hover:border-primary/50 hover:bg-muted/30 py-2.5'
+                    : 'border-border hover:border-primary/50 hover:bg-muted/40'
               }`}
             >
-              <div className="text-2xl mb-1">📁</div>
-              <p className="text-xs font-medium text-foreground">Upload file grezzi (multiplo)</p>
-              <p className="text-[10px] text-muted-foreground mt-0.5">MP4, MOV, AVI, MXF, R3D · drag & drop</p>
+              <div className={hasRawFile ? 'text-lg mb-0.5' : 'text-2xl mb-1'}>
+                {draggingZone === 'clip' ? '📂' : '📁'}
+              </div>
+              <p className="text-xs font-medium text-foreground">
+                {hasRawFile ? 'Aggiungi altri file grezzi' : 'Upload file grezzi (multiplo)'}
+              </p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">MP4, MOV, AVI, MXF, R3D · drag & drop · rinominati automaticamente</p>
               <input
                 ref={rawInputRef}
                 type="file"
@@ -406,44 +758,51 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
                 className="hidden"
                 onChange={e => {
                   const files = Array.from(e.target.files || []);
-                  files.forEach(f => doUpload(f, 'clip'));
+                  if (files.length > 0) doMultiUpload(files, 'clip');
                   e.target.value = '';
                 }}
               />
             </div>
 
             {/* Current raw file info */}
-            {hasRawFile && (
+            {clip.file_id && !clip.file_deleted_at && (
               <div className="rounded-lg border border-border bg-muted/20 p-3 flex items-center gap-3">
                 <span className="text-lg">📁</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-foreground truncate">{clip.file_name}</p>
                   <div className="flex gap-2 text-[10px] text-muted-foreground mt-0.5">
                     {clip.file_size && <span>{formatBytes(clip.file_size)}</span>}
-                    {clip.raw_files_count && clip.raw_files_count > 1 && (
-                      <span>· {clip.raw_files_count} file · {formatBytes(clip.raw_files_size)} totale</span>
+                    {(clip.raw_files_count || 0) > 1 && (
+                      <span>· {clip.raw_files_count} file totali · {formatBytes(clip.raw_files_size)}</span>
                     )}
                     {clip.file_uploaded_at && <span>· Caricato {formatDate(clip.file_uploaded_at)}</span>}
                   </div>
                 </div>
-                <a
-                  href={clip.file_url!}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-primary hover:opacity-80 flex-shrink-0"
-                >
-                  ↗ Drive
-                </a>
+                <div className="flex gap-1 flex-shrink-0">
+                  {clip.file_url && (
+                    <a href={clip.file_url} target="_blank" rel="noopener noreferrer"
+                      className="text-xs text-primary hover:opacity-80 flex-shrink-0">
+                      ↗ Drive
+                    </a>
+                  )}
+                  <button
+                    onClick={handleDeleteRawSingle}
+                    className="text-xs text-destructive/70 hover:text-destructive flex-shrink-0"
+                    title="Rimuovi file grezzo"
+                  >
+                    🗑️
+                  </button>
+                </div>
               </div>
             )}
           </>
         )}
 
-        {rawDeleted && (
-          <div className="rounded-lg border border-border bg-muted/10 p-3 text-center">
-            <p className="text-xs text-muted-foreground">
+        {/* Deleted state — still show upload zone (handled above) */}
+        {clip.file_deleted_at && !clip.file_id && (
+          <div className="rounded-lg border border-border bg-muted/10 p-2.5 text-center">
+            <p className="text-xs text-muted-foreground/60">
               ☁️ File grezzi rimossi {clip.file_deleted_at ? `il ${formatDate(clip.file_deleted_at)}` : ''}
-              {clip.file_name ? ` — era ${clip.file_name}` : ''}
               {clip.raw_files_size ? ` · ${formatBytes(clip.raw_files_size)} liberati` : ''}
             </p>
           </div>
@@ -460,7 +819,7 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
         {uploadingZone === 'file_esportato' && progress && (
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>{progress.percent < 84 ? 'Caricamento…' : 'Trasferimento su Google Drive…'}</span>
+              <span>{progress.percent < 84 ? `Caricamento ${progress.fileName || ''}…` : 'Trasferimento su Google Drive…'}</span>
               <span>{progress.percent}%</span>
             </div>
             <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
@@ -476,7 +835,6 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
             {hasExport ? (
               <div className="rounded-xl border p-3 space-y-3"
                 style={{ borderColor: 'hsl(var(--clr-green) / 0.3)', background: 'hsl(var(--clr-green) / 0.05)' }}>
-                {/* Video player inline */}
                 {isVideoMime(clip.exported_file_mime_type) ? (
                   <video
                     src={clip.exported_file_url!}
@@ -507,10 +865,7 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
                       ↗ Drive
                     </a>
                     <button
-                      onClick={() => {
-                        // Replace export — upload new file
-                        expInputRef.current?.click();
-                      }}
+                      onClick={() => expInputRef.current?.click()}
                       className="px-2 py-1 rounded bg-muted text-muted-foreground text-[10px] font-medium hover:bg-muted/80"
                     >
                       🔄 Sostituisci
@@ -527,6 +882,7 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
                 {showDeleteExport && (
                   <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
                     <p className="text-xs font-medium text-foreground">Rimuovere il file esportato da Google Drive?</p>
+                    <p className="text-[10px] text-muted-foreground">Le cartelle Drive restano intatte — solo il file viene rimosso.</p>
                     <div className="flex gap-2">
                       <button onClick={handleDeleteExport}
                         className="flex-1 py-1 rounded bg-destructive text-destructive-foreground text-xs font-semibold hover:opacity-80">
@@ -553,12 +909,14 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
                 }}
                 onClick={() => expInputRef.current?.click()}
                 className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
-                  draggingZone === 'file_esportato' ? 'border-green-500 bg-green-500/5' : 'border-border hover:border-green-500/50 hover:bg-muted/40'
+                  draggingZone === 'file_esportato'
+                    ? 'border-[hsl(var(--clr-green))] bg-[hsl(var(--clr-green)/0.05)]'
+                    : 'border-border hover:border-[hsl(var(--clr-green)/0.5)] hover:bg-muted/40'
                 }`}
               >
                 <div className="text-2xl mb-1">▶️</div>
                 <p className="text-xs font-medium text-foreground">Carica video finale (1 file)</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">MP4, MOV · player inline · max 15 GB</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">MP4, MOV · player inline · max 5 GB</p>
               </div>
             )}
 

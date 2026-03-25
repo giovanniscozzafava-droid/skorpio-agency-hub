@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import type { LogRipresa, Cliente, TeamMember, Contenuto } from '../types';
-import { ClipFileUpload } from './ClipFileUpload';
+import { ClipFileUpload, FileStatusDot, formatBytes } from './ClipFileUpload';
 import { ClipReviewModal } from './ClipReviewModal';
 import { BulkUploadModal, AutoCleanupDialog } from './DriveStorageIndicator';
 import { getStorageService } from '../services/storage';
@@ -497,6 +497,53 @@ function ClipDetailPanel({ clip, clp, team, onClose, onUpdated }: ClipDetailPane
   );
 }
 
+// ─── RowDropZonePicker: dialog when dragging onto a table row ─────────────────
+
+interface RowDropZonePickerProps {
+  files: File[];
+  clip: LogRipresa;
+  onPick: (zone: 'clip' | 'file_esportato') => void;
+  onCancel: () => void;
+}
+
+function RowDropZonePicker({ files, clip, onPick, onCancel }: RowDropZonePickerProps) {
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
+      <div className="relative bg-card rounded-2xl shadow-2xl w-full max-w-sm border border-border p-6 space-y-4 animate-in zoom-in-95 duration-150">
+        <div className="text-center">
+          <div className="text-3xl mb-2">📂</div>
+          <h3 className="font-bold text-base text-foreground">Dove vuoi caricare?</h3>
+          <p className="text-xs text-muted-foreground mt-1">
+            {files.length} file per <span className="font-mono font-semibold">{clip.id_clip}</span>
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => onPick('clip')}
+            className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-border hover:border-[hsl(var(--clr-amber)/0.6)] hover:bg-[hsl(var(--clr-amber)/0.06)] transition-all"
+          >
+            <span className="text-2xl">📁</span>
+            <span className="text-xs font-semibold text-foreground">Clip da montare</span>
+            <span className="text-[10px] text-muted-foreground">→ clip/</span>
+          </button>
+          <button
+            onClick={() => onPick('file_esportato')}
+            className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-border hover:border-[hsl(var(--clr-green)/0.6)] hover:bg-[hsl(var(--clr-green)/0.06)] transition-all"
+          >
+            <span className="text-2xl">▶️</span>
+            <span className="text-xs font-semibold text-foreground">File esportato</span>
+            <span className="text-[10px] text-muted-foreground">→ file_esportato/</span>
+          </button>
+        </div>
+        <button onClick={onCancel} className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors py-1">
+          Annulla
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Tab ─────────────────────────────────────────────────────────────────
 
 interface RipreseTabProps {
@@ -505,7 +552,7 @@ interface RipreseTabProps {
 }
 
 export function RipreseTab({ clienti, team }: RipreseTabProps) {
-  const { addToast } = useApp();
+  const { addToast, utente } = useApp();
   const [clips, setClips] = useState<LogRipresa[]>([]);
   const [contenuti, setContenuti] = useState<Record<string, Contenuto>>({});
   const [loading, setLoading] = useState(true);
@@ -518,6 +565,13 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showReport, setShowReport] = useState(false);
   const [detailClip, setDetailClip] = useState<LogRipresa | null>(null);
+  const [filtroPubblicatiConRaw, setFiltroPubblicatiConRaw] = useState(false);
+
+  // Drag-and-drop on row
+  const [rowDragTarget, setRowDragTarget] = useState<string | null>(null);
+  const [dropZonePicker, setDropZonePicker] = useState<{ files: File[]; clip: LogRipresa } | null>(null);
+  // Per-clip file upload ref map (to trigger uploads programmatically after zone pick)
+  
 
   // Auto-cleanup dialog state
   const [cleanupPending, setCleanupPending] = useState<{
@@ -569,6 +623,12 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
     if (filtroStato && c.stato !== filtroStato) return false;
     if (filtroCliente && (c.cliente_nome || '') !== filtroCliente) return false;
     if (filtroOperatore && c.operatore !== filtroOperatore) return false;
+    // Filter: Pubblicati con file grezzi ancora presenti (per cleanup)
+    if (filtroPubblicatiConRaw) {
+      const clp = c.contenuto_id ? contenuti[c.contenuto_id] : null;
+      if (clp?.fase !== 'Pubblicato') return false;
+      if (!c.file_id || c.file_deleted_at) return false;
+    }
     if (search) {
       const s = search.toLowerCase();
       return (
@@ -580,6 +640,13 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
     }
     return true;
   });
+
+  // Drive alert: clips pubblicati con file grezzi presenti
+  const clipsPublicatiConRaw = clips.filter(c => {
+    const clp = c.contenuto_id ? contenuti[c.contenuto_id] : null;
+    return clp?.fase === 'Pubblicato' && c.file_id && !c.file_deleted_at;
+  });
+  const totalRawSizePublicati = clipsPublicatiConRaw.reduce((acc, c) => acc + (c.raw_files_size || c.file_size || 0), 0);
 
   const reportClienteAttivo = filtroCliente
     ? reportClienti.find(r => r.nome === filtroCliente)
@@ -644,6 +711,33 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
 
   return (
     <div className="flex flex-col h-full">
+
+      {/* ── Drive Alert Banner (>85% or pubblicati con raw) ── */}
+      {clipsPublicatiConRaw.length > 0 && (
+        <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2 border-b border-[hsl(var(--clr-amber)/0.4)] bg-[hsl(var(--clr-amber)/0.08)]">
+          <span className="text-sm">⚠️</span>
+          <p className="text-xs text-[hsl(var(--clr-amber))] flex-1">
+            <span className="font-semibold">{clipsPublicatiConRaw.length} clip Pubblicate</span> hanno ancora file grezzi su Drive
+            {totalRawSizePublicati > 0 && <span className="text-muted-foreground"> · {formatBytes(totalRawSizePublicati)} liberabili</span>}
+          </p>
+          <button
+            onClick={() => {
+              setFiltroPubblicatiConRaw(true);
+            }}
+            className="flex-shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-[hsl(var(--clr-amber))] text-white hover:opacity-90 transition-opacity"
+          >
+            Mostra clip da pulire
+          </button>
+          {filtroPubblicatiConRaw && (
+            <button
+              onClick={() => setFiltroPubblicatiConRaw(false)}
+              className="flex-shrink-0 text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              ✕ Reset
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Toolbar */}
       <div className="flex-shrink-0 border-b border-border bg-card">
@@ -874,10 +968,23 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
               {filtered.map(clip => {
                 const clp = clip.contenuto_id ? contenuti[clip.contenuto_id] : null;
                 const isDeleting = deletingId === clip.id;
+                const isDragTarget = rowDragTarget === clip.id;
                 return (
                   <tr key={clip.id}
-                    className="hover:bg-muted/40 transition-colors group cursor-pointer"
+                    className={`hover:bg-muted/40 transition-colors group cursor-pointer ${isDragTarget ? 'bg-primary/5 outline outline-2 outline-primary/40' : ''}`}
                     onClick={() => setDetailClip(clip)}
+                    onDragOver={e => { e.preventDefault(); setRowDragTarget(clip.id); }}
+                    onDragLeave={() => setRowDragTarget(null)}
+                    onDrop={e => {
+                      e.preventDefault();
+                      setRowDragTarget(null);
+                      const files = Array.from(e.dataTransfer.files).filter(f =>
+                        f.type.startsWith('video/') || /\.(mp4|mov|avi|mxf|r3d)$/i.test(f.name)
+                      );
+                      if (files.length === 0) return;
+                      e.stopPropagation();
+                      setDropZonePicker({ files, clip });
+                    }}
                   >
                     {/* Clip ID */}
                     <td className={`${tdCls} font-mono font-semibold text-[hsl(var(--clr-blue))]`}>
@@ -1021,6 +1128,23 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
           />
         );
       })()}
+
+      {/* Drop zone picker — appears when dragging files onto a row */}
+      {dropZonePicker && (
+        <RowDropZonePicker
+          files={dropZonePicker.files}
+          clip={dropZonePicker.clip}
+          onPick={(zone) => {
+            const { files, clip } = dropZonePicker;
+            setDropZonePicker(null);
+            // Store for inline upload trigger — we propagate via a CustomEvent
+            const evt = new CustomEvent('row-drop-upload', { detail: { files, zone, clipId: clip.id } });
+            window.dispatchEvent(evt);
+          }}
+          onCancel={() => setDropZonePicker(null)}
+        />
+      )}
     </div>
   );
 }
+
