@@ -117,6 +117,7 @@ export function ContenutiTab({ team, clienti }: ContentTabProps) {
                 cliente_nome: contenuto.cliente_nome,
                 tipo: contenuto.tipo,
                 id_display: contenuto.id_display,
+                team_id: utente?.id,
               }),
             }
           );
