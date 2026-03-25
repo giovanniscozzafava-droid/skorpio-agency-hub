@@ -1,6 +1,7 @@
 // ─── google-drive-upload-init ────────────────────────────────────────────────
-// Usa OAuth2 dell'utente (access_token / refresh_token) per creare una sessione
-// di upload resumable su Google Drive, sotto SKORPIO_Clip/{clientName}/
+// Usa OAuth2 dell'utente per creare una sessione upload resumable su Google Drive.
+// Struttura cartelle: Fuyue Agency / {clientName} / 📹 Contenuti /
+// (identica a create-drive-folder, così i file finiscono nella stessa directory)
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
