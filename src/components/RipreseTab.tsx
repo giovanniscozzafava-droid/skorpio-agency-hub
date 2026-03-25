@@ -946,19 +946,6 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
                       />
                     </td>
 
-                    {/* Aruba Upload */}
-                    <td className={`${tdCls} text-center`} onClick={e => e.stopPropagation()}>
-                      <div className="opacity-0 group-hover:opacity-100 transition-all">
-                        <ArubaUpload
-                          variant="icon"
-                          percorso={`${clip.cliente_nome || 'Generali'}/Clip/${clip.id_contenuto_display || clip.id_clip}`}
-                          contenutoId={clip.contenuto_id || ''}
-                          onUploaded={(_url, nomeFile) => {
-                            addToast(`✅ "${nomeFile}" caricato per clip ${clip.id_clip}`, 'success');
-                          }}
-                        />
-                      </div>
-                    </td>
 
                     {/* Delete */}
                     <td className={`${tdCls} text-center`} onClick={e => e.stopPropagation()}>
