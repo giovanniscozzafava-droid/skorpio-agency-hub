@@ -416,11 +416,16 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
 interface ClipDetailPanelProps {
   clip: LogRipresa;
   clp: Contenuto | null;
+  team: TeamMember[];
   onClose: () => void;
   onUpdated: (patch: Partial<LogRipresa>) => void;
 }
 
-function ClipDetailPanel({ clip, clp, onClose, onUpdated }: ClipDetailPanelProps) {
+function ClipDetailPanel({ clip, clp, team, onClose, onUpdated }: ClipDetailPanelProps) {
+  const [showReview, setShowReview] = useState(false);
+
+  const hasFile = !!(clip.file_id && !clip.file_deleted_at);
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
@@ -458,13 +463,37 @@ function ClipDetailPanel({ clip, clp, onClose, onUpdated }: ClipDetailPanelProps
 
           {/* File section */}
           <div>
-            <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-3">
-              ☁️ File Google Drive
-            </h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wide">
+                ☁️ File Google Drive
+              </h3>
+              {hasFile && (
+                <button
+                  onClick={() => setShowReview(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[hsl(var(--clr-blue)/0.12)] text-[hsl(var(--clr-blue))] text-xs font-semibold hover:opacity-80 transition-opacity border border-[hsl(var(--clr-blue)/0.3)]"
+                >
+                  🔍 Revisiona
+                </button>
+              )}
+            </div>
             <ClipFileUpload clip={clip} onUpdated={onUpdated} variant="panel" />
           </div>
         </div>
       </div>
+
+      {/* Review modal — rendered above the detail panel */}
+      {showReview && (
+        <ClipReviewModal
+          clip={clip}
+          clp={clp}
+          team={team}
+          onClose={() => setShowReview(false)}
+          onApproved={() => {
+            onUpdated({ stato: 'Buona' });
+            setShowReview(false);
+          }}
+        />
+      )}
     </div>
   );
 }
