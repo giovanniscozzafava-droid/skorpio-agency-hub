@@ -474,13 +474,15 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
         {uploadingZone !== 'file_esportato' && (
           <>
             {hasExport ? (
-              <div className="rounded-xl border border-green-500/30 bg-green-500/5 p-3 space-y-3">
+              <div className="rounded-xl border p-3 space-y-3"
+                style={{ borderColor: 'hsl(var(--clr-green) / 0.3)', background: 'hsl(var(--clr-green) / 0.05)' }}>
                 {/* Video player inline */}
                 {isVideoMime(clip.exported_file_mime_type) ? (
                   <video
                     src={clip.exported_file_url!}
                     controls
-                    className="w-full rounded-lg max-h-[250px] bg-black"
+                    className="w-full rounded-lg max-h-[250px]"
+                    style={{ background: 'hsl(0 0% 0%)' }}
                     preload="metadata"
                   />
                 ) : (
