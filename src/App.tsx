@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Index from './pages/Index';
 import { ResetPassword } from './pages/ResetPassword';
 import GCalCallback from './pages/GCalCallback';
+import GDriveCallback from './pages/GDriveCallback';
 import NotFound from './pages/NotFound';
 
 const App = () => (
@@ -10,6 +11,7 @@ const App = () => (
       <Route path="/" element={<Index />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/gcal-callback" element={<GCalCallback />} />
+      <Route path="/gdrive-callback" element={<GDriveCallback />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   </BrowserRouter>

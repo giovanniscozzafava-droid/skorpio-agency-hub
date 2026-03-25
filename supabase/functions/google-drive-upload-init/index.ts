@@ -1,99 +1,77 @@
 // ─── google-drive-upload-init ────────────────────────────────────────────────
-// Usa Google Service Account per creare una sessione di upload resumable su Drive.
+// Usa OAuth2 dell'utente (access_token / refresh_token) per creare una sessione
+// di upload resumable su Google Drive, sotto SKORPIO_Clip/{clientName}/
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// ── Service Account JWT ───────────────────────────────────────────────────────
+const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const GOOGLE_CLIENT_ID     = Deno.env.get('GOOGLE_CALENDAR_CLIENT_ID')!;
+const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CALENDAR_CLIENT_SECRET')!;
 
-function base64url(data: Uint8Array): string {
-  const base64 = btoa(String.fromCharCode(...data));
-  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
+// ── Ottieni un access_token valido, rinnovando se scaduto ─────────────────────
+async function getValidAccessToken(teamId: string): Promise<string> {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-function base64urlStr(str: string): string {
-  const bytes = new TextEncoder().encode(str);
-  return base64url(bytes);
-}
+  const { data: member, error } = await supabase
+    .from('team')
+    .select('google_drive_access_token, google_drive_refresh_token, google_drive_token_expiry, google_drive_connected')
+    .eq('id', teamId)
+    .single();
 
-async function getServiceAccountToken(): Promise<string> {
-  const saJson = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON');
-  if (!saJson) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON non configurato');
+  if (error || !member) throw new Error('Membro team non trovato');
+  if (!member.google_drive_connected) throw new Error('Google Drive non connesso per questo utente');
+  if (!member.google_drive_refresh_token) throw new Error('Refresh token mancante — riconnetti Google Drive');
 
-  const sa = JSON.parse(saJson);
-  const scope = 'https://www.googleapis.com/auth/drive';
-  const now = Math.floor(Date.now() / 1000);
+  const nowMs = Date.now();
+  const expiryMs = member.google_drive_token_expiry ?? 0;
 
-  const header = base64urlStr(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
-  const payload = base64urlStr(JSON.stringify({
-    iss: sa.client_email,
-    scope,
-    aud: 'https://oauth2.googleapis.com/token',
-    exp: now + 3600,
-    iat: now,
-  }));
+  // Rinnova se scade entro 3 minuti
+  if (member.google_drive_access_token && expiryMs - nowMs > 3 * 60 * 1000) {
+    return member.google_drive_access_token;
+  }
 
-  const signingInput = `${header}.${payload}`;
-
-  // Import private key
-  const pemBody = sa.private_key
-    .replace(/-----BEGIN PRIVATE KEY-----/, '')
-    .replace(/-----END PRIVATE KEY-----/, '')
-    .replace(/\s/g, '');
-  const keyData = Uint8Array.from(atob(pemBody), c => c.charCodeAt(0));
-
-  const cryptoKey = await crypto.subtle.importKey(
-    'pkcs8',
-    keyData,
-    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-
-  const signature = await crypto.subtle.sign(
-    'RSASSA-PKCS1-v1_5',
-    cryptoKey,
-    new TextEncoder().encode(signingInput)
-  );
-
-  const jwt = `${signingInput}.${base64url(new Uint8Array(signature))}`;
-
-  // Exchange JWT for access token
-  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+  // Refresh
+  const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-      assertion: jwt,
+      client_id:     GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      refresh_token: member.google_drive_refresh_token,
+      grant_type:    'refresh_token',
     }),
   });
 
-  const tokenData = await tokenRes.json();
-  if (!tokenData.access_token) {
-    throw new Error(`Errore token SA: ${JSON.stringify(tokenData)}`);
-  }
-  return tokenData.access_token;
+  const data = await res.json();
+  if (data.error) throw new Error(`Refresh fallito: ${data.error_description || data.error}`);
+
+  const newExpiry = nowMs + data.expires_in * 1000;
+  await supabase.from('team').update({
+    google_drive_access_token: data.access_token,
+    google_drive_token_expiry: newExpiry,
+  }).eq('id', teamId);
+
+  return data.access_token;
 }
 
-// ── Drive helpers ─────────────────────────────────────────────────────────────
-
+// ── Trova o crea cartella Drive ───────────────────────────────────────────────
 async function findOrCreateFolder(accessToken: string, name: string, parentId?: string): Promise<string> {
   const q = parentId
     ? `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`
     : `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
 
   const searchRes = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&spaces=drive`,
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)&spaces=drive`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   const searchData = await searchRes.json();
-
-  if (searchData.files && searchData.files.length > 0) {
-    return searchData.files[0].id;
-  }
+  if (searchData.files?.length > 0) return searchData.files[0].id;
 
   const body: Record<string, unknown> = {
     name,
@@ -103,10 +81,7 @@ async function findOrCreateFolder(accessToken: string, name: string, parentId?: 
 
   const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
   const created = await createRes.json();
@@ -114,47 +89,40 @@ async function findOrCreateFolder(accessToken: string, name: string, parentId?: 
   return created.id;
 }
 
-// ── Main handler ──────────────────────────────────────────────────────────────
-
+// ── Handler principale ────────────────────────────────────────────────────────
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    const { fileName, mimeType, fileSize, clientName } = await req.json();
+    const { fileName, mimeType, fileSize, clientName, teamId } = await req.json();
 
-    if (!fileName || !mimeType || !fileSize || !clientName) {
-      return new Response(JSON.stringify({ error: 'Parametri mancanti: fileName, mimeType, fileSize, clientName' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    if (!fileName || !mimeType || !fileSize || !clientName || !teamId) {
+      return new Response(
+        JSON.stringify({ error: 'Parametri mancanti: fileName, mimeType, fileSize, clientName, teamId' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    const accessToken = await getServiceAccountToken();
+    const accessToken = await getValidAccessToken(teamId);
 
-    // Cartella root configurata (opzionale)
-    const rootFolderEnv = Deno.env.get('GOOGLE_DRIVE_PARENT_FOLDER_ID') || undefined;
+    // Struttura: SKORPIO_Clip / {clientName}
+    const rootId   = await findOrCreateFolder(accessToken, 'SKORPIO_Clip');
+    const clientId = await findOrCreateFolder(accessToken, clientName, rootId);
 
-    // SKORPIO_Clip root
-    const rootFolderId = await findOrCreateFolder(accessToken, 'SKORPIO_Clip', rootFolderEnv);
-
-    // Sottocartella cliente
-    const clientFolderId = await findOrCreateFolder(accessToken, clientName, rootFolderId);
-
-    // Sessione resumable
+    // Sessione upload resumable
     const initRes = await fetch(
-      `https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,size,mimeType,webViewLink`,
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,size,mimeType,webViewLink',
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          'X-Upload-Content-Type': mimeType,
+          Authorization:            `Bearer ${accessToken}`,
+          'Content-Type':           'application/json',
+          'X-Upload-Content-Type':  mimeType,
           'X-Upload-Content-Length': String(fileSize),
         },
         body: JSON.stringify({
-          name: fileName,
-          parents: [clientFolderId],
+          name:     fileName,
+          parents:  [clientId],
           mimeType,
         }),
       }
@@ -163,19 +131,27 @@ serve(async (req) => {
     const uploadUrl = initRes.headers.get('Location');
     if (!uploadUrl) {
       const body = await initRes.text();
-      return new Response(JSON.stringify({ error: `Impossibile creare sessione upload: ${body}` }), {
-        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return new Response(
+        JSON.stringify({ error: `Impossibile creare sessione upload: ${body}` }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    return new Response(JSON.stringify({ uploadUrl, folderId: clientFolderId, rootFolderId }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    // Salva folder ID per evitare ricreazioni future
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    await supabase.from('team').update({ google_drive_folder_id: rootId }).eq('id', teamId);
+
+    return new Response(
+      JSON.stringify({ uploadUrl, folderId: clientId, rootFolderId: rootId }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
 
   } catch (err: unknown) {
-    console.error('[google-drive-upload-init]', err);
-    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Errore sconosciuto' }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    const msg = err instanceof Error ? err.message : 'Errore sconosciuto';
+    console.error('[google-drive-upload-init]', msg);
+    return new Response(
+      JSON.stringify({ error: msg }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
 });

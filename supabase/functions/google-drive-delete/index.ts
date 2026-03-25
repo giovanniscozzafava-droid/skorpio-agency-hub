@@ -1,75 +1,74 @@
 // ─── google-drive-delete ─────────────────────────────────────────────────────
-// Usa Google Service Account per eliminare un file da Drive.
+// Usa OAuth2 dell'utente per eliminare un file da Google Drive.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-function base64url(data: Uint8Array): string {
-  const base64 = btoa(String.fromCharCode(...data));
-  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
+const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const GOOGLE_CLIENT_ID     = Deno.env.get('GOOGLE_CALENDAR_CLIENT_ID')!;
+const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CALENDAR_CLIENT_SECRET')!;
 
-function base64urlStr(str: string): string {
-  return base64url(new TextEncoder().encode(str));
-}
+async function getValidAccessToken(teamId: string): Promise<string> {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-async function getServiceAccountToken(): Promise<string> {
-  const saJson = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON');
-  if (!saJson) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON non configurato');
+  const { data: member, error } = await supabase
+    .from('team')
+    .select('google_drive_access_token, google_drive_refresh_token, google_drive_token_expiry, google_drive_connected')
+    .eq('id', teamId)
+    .single();
 
-  const sa = JSON.parse(saJson);
-  const now = Math.floor(Date.now() / 1000);
+  if (error || !member) throw new Error('Membro team non trovato');
+  if (!member.google_drive_connected) throw new Error('Google Drive non connesso');
+  if (!member.google_drive_refresh_token) throw new Error('Refresh token mancante');
 
-  const header = base64urlStr(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
-  const payload = base64urlStr(JSON.stringify({
-    iss: sa.client_email,
-    scope: 'https://www.googleapis.com/auth/drive',
-    aud: 'https://oauth2.googleapis.com/token',
-    exp: now + 3600,
-    iat: now,
-  }));
+  const nowMs    = Date.now();
+  const expiryMs = member.google_drive_token_expiry ?? 0;
 
-  const signingInput = `${header}.${payload}`;
-  const pemBody = sa.private_key.replace(/-----BEGIN PRIVATE KEY-----/, '').replace(/-----END PRIVATE KEY-----/, '').replace(/\s/g, '');
-  const keyData = Uint8Array.from(atob(pemBody), c => c.charCodeAt(0));
+  if (member.google_drive_access_token && expiryMs - nowMs > 3 * 60 * 1000) {
+    return member.google_drive_access_token;
+  }
 
-  const cryptoKey = await crypto.subtle.importKey(
-    'pkcs8', keyData,
-    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    false, ['sign']
-  );
-
-  const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', cryptoKey, new TextEncoder().encode(signingInput));
-  const jwt = `${signingInput}.${base64url(new Uint8Array(signature))}`;
-
-  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+  const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt }),
+    body: new URLSearchParams({
+      client_id:     GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      refresh_token: member.google_drive_refresh_token,
+      grant_type:    'refresh_token',
+    }),
   });
 
-  const tokenData = await tokenRes.json();
-  if (!tokenData.access_token) throw new Error(`Errore token SA: ${JSON.stringify(tokenData)}`);
-  return tokenData.access_token;
+  const data = await res.json();
+  if (data.error) throw new Error(`Refresh fallito: ${data.error_description || data.error}`);
+
+  await supabase.from('team').update({
+    google_drive_access_token: data.access_token,
+    google_drive_token_expiry: nowMs + data.expires_in * 1000,
+  }).eq('id', teamId);
+
+  return data.access_token;
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    const { fileId } = await req.json();
-    if (!fileId) {
-      return new Response(JSON.stringify({ error: 'fileId mancante' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    const { fileId, teamId } = await req.json();
+
+    if (!fileId || !teamId) {
+      return new Response(
+        JSON.stringify({ error: 'fileId e teamId sono obbligatori' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    const accessToken = await getServiceAccountToken();
+    const accessToken = await getValidAccessToken(teamId);
 
     const deleteRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
       method: 'DELETE',
@@ -83,14 +82,17 @@ serve(async (req) => {
     }
 
     const body = await deleteRes.text();
-    return new Response(JSON.stringify({ error: `Drive API error ${deleteRes.status}: ${body}` }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return new Response(
+      JSON.stringify({ error: `Drive API error ${deleteRes.status}: ${body}` }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
 
   } catch (err: unknown) {
-    console.error('[google-drive-delete]', err);
-    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Errore' }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    const msg = err instanceof Error ? err.message : 'Errore';
+    console.error('[google-drive-delete]', msg);
+    return new Response(
+      JSON.stringify({ error: msg }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
 });
