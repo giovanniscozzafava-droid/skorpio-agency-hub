@@ -732,6 +732,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
                 <th className={thCls}>Fase CLP</th>
                 <th className={thCls}>Formato</th>
                 <th className={thCls}>Operatore</th>
+                <th className={`${thCls} w-8 text-center`}>☁️</th>
                 <th className={`${thCls} w-8 text-center`}>🗑️</th>
               </tr>
             </thead>
