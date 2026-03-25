@@ -143,9 +143,9 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       if (data.url) {
-        const popup = (window.top || window).open(data.url, 'gdrive_oauth', 'width=500,height=600,left=200,top=100');
+        const popup = window.open(data.url, 'gdrive_oauth', 'width=500,height=600,left=200,top=100');
         if (!popup) {
-          (window.top || window).location.href = data.url;
+          window.location.href = data.url;
         }
       }
 
