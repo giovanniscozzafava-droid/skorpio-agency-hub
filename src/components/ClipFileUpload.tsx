@@ -867,17 +867,17 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
           <span className="text-[10px] text-muted-foreground">→ cartella file_esportato/</span>
         </div>
 
-        {uploadingZone === 'file_esportato' && progress && (
+        {uploadingZone === 'file_esportato' && activeUpload && (
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>{progress.percent < 84 ? `Caricamento ${progress.fileName || ''}…` : 'Trasferimento su Google Drive…'}</span>
-              <span>{progress.percent}%</span>
+              <span>{activeUpload.percent < 84 ? `Caricamento ${activeUpload.fileName || ''}…` : 'Trasferimento su Google Drive…'}</span>
+              <span>{activeUpload.percent}%</span>
             </div>
             <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
               <div className="h-full rounded-full bg-[hsl(var(--clr-green))] transition-all duration-300"
-                style={{ width: `${progress.percent}%` }} />
+                style={{ width: `${activeUpload.percent}%` }} />
             </div>
-            <p className="text-xs text-muted-foreground">{formatBytes(progress.loaded)} / {formatBytes(progress.total)}</p>
+            <p className="text-xs text-muted-foreground">{formatBytes(activeUpload.loadedBytes)} / {formatBytes(activeUpload.fileSize)}</p>
           </div>
         )}
 
