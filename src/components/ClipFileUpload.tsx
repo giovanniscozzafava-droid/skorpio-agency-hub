@@ -105,7 +105,7 @@ interface ResumeState {
   mimeType: string;
 }
 
-// Invia un singolo chunk alla edge function proxy
+// Invia un singolo chunk alla edge function proxy (POST → no preflight CORS per PUT)
 async function sendChunkViaProxy(
   uploadUrl: string,
   chunk: Blob,
@@ -114,7 +114,7 @@ async function sendChunkViaProxy(
 ): Promise<{ status: number; range?: string | null; fileId?: string }> {
   const proxyUrl = `${SUPABASE_URL}/functions/v1/google-drive-upload-chunk`;
   const res = await fetch(proxyUrl, {
-    method: 'PUT',
+    method: 'POST',
     headers: {
       'apikey': SUPABASE_KEY,
       'Authorization': `Bearer ${SUPABASE_KEY}`,
