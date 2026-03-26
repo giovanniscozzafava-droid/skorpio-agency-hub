@@ -93,7 +93,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
 
   // ─── Publish state (per Elisa) ─────────────────────────────────────────────
   const [pubDate, setPubDate] = useState<Date | undefined>(
-    contenuto.data_pubblicazione ? new Date(contenuto.data_pubblicazione) : undefined
+    contenuto.data_pubblicazione ? parseLocalDate(contenuto.data_pubblicazione) : undefined
   );
   const [pubOra, setPubOra] = useState(contenuto.ora_pubblicazione?.slice(0, 5) || '');
   const [pubCalOpen, setPubCalOpen] = useState(false);
