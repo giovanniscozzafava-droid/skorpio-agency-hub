@@ -2,6 +2,7 @@
  * CLP Workflow utilities — condivisi tra CLPDetailPanel e TaskDetailPanel
  */
 import { supabase } from './supabase';
+import { toDateStr } from './dateUtils';
 import type { Contenuto, FaseCLP, TeamMember } from '../types';
 
 // Mappa tipo task → fase CLP corrente + prossima fase + prossimo task
