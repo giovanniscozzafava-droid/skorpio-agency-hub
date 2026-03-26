@@ -1,16 +1,29 @@
 // ─── google-drive-upload-chunk ───────────────────────────────────────────────
 // Proxy per caricare un singolo chunk su Google Drive tramite sessione resumable.
-// Il browser non parla MAI direttamente con googleapis.com — tutto passa qui.
-// Chunk max: 4 MB (sotto il limite body della edge function Supabase ~6 MB).
+// Il browser NON parla MAI direttamente con googleapis.com — tutto passa qui.
+// Il frontend chiama questa edge function con POST (nessun preflight CORS per PUT),
+// e la edge function internamente fa PUT a Google Drive.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-upload-url, x-content-range, x-content-type',
+  'Access-Control-Max-Age': '86400',
 };
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
+  // Accetta solo POST dal frontend
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ error: 'Method not allowed' }),
+      { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
 
   try {
     // Leggi i parametri dagli header
@@ -28,22 +41,18 @@ serve(async (req) => {
     // Leggi il body (il chunk binario)
     const chunkBody = await req.arrayBuffer();
 
-    if (chunkBody.byteLength === 0) {
-      return new Response(
-        JSON.stringify({ error: 'Chunk vuoto' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    // Chunk vuoto = status check (resume)
+    const isStatusCheck = chunkBody.byteLength === 0;
 
-    // Inoltra il chunk a Google Drive
+    // Inoltra il chunk a Google Drive con PUT (internamente, nessun CORS)
     const driveRes = await fetch(uploadUrl, {
       method: 'PUT',
       headers: {
         'Content-Range': contentRange,
         'Content-Type': mimeType,
-        'Content-Length': String(chunkBody.byteLength),
+        ...(isStatusCheck ? {} : { 'Content-Length': String(chunkBody.byteLength) }),
       },
-      body: chunkBody,
+      body: isStatusCheck ? undefined : chunkBody,
     });
 
     // 308 = upload incompleto, continua
