@@ -76,10 +76,11 @@ export function ChatPopup({ team }: ChatPopupProps) {
   // Carica messaggi — dipende solo dal nome (primitivo) per stabilità
   const caricaMessaggi = useCallback(async () => {
     if (!utenteNome) return;
+    // Usa la sintassi PostgREST corretta con virgolette per nomi con spazi
     const { data } = await supabase
       .from('chat_messaggi')
       .select('*')
-      .or(`da.eq.${utenteNome},a.eq.${utenteNome}`)
+      .or(`da.eq."${utenteNome}",a.eq."${utenteNome}"`)
       .order('created_at', { ascending: true });
     setMessaggi((data as ChatMessaggio[]) || []);
   }, [utenteNome]);
