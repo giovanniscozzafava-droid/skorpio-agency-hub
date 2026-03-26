@@ -939,7 +939,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
           />
 
           <span className="text-xs text-muted-foreground whitespace-nowrap">
-            {filtered.length} / {clips.length} clip
+            {groupedRows.length} CLP · {filtered.length} / {clips.length} clip
           </span>
 
           <div className="ml-auto flex items-center gap-2">
