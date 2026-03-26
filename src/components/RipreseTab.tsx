@@ -689,7 +689,113 @@ function RowDropZonePicker({ files, clip, onPick, onCancel }: RowDropZonePickerP
   );
 }
 
-// ─── GroupFileCell ────────────────────────────────────────────────────────────
+// ─── ZipDownloadButton ───────────────────────────────────────────────────────
+
+function ZipDownloadButton({ rawFiles, teamId, clpId, clpTitolo }: {
+  rawFiles: LogRipresa[];
+  teamId: string;
+  clpId: string;
+  clpTitolo: string;
+}) {
+  const [downloading, setDownloading] = useState(false);
+  const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const { addToast } = useApp();
+
+  const filesWithId = rawFiles.filter(c => !!c.file_id);
+  const total = filesWithId.length;
+
+  const handleDownload = async () => {
+    if (downloading || total === 0) return;
+    setDownloading(true);
+    setProgress({ current: 0, total });
+
+    try {
+      const files = filesWithId.map(c => ({
+        fileId: c.file_id!,
+        fileName: c.file_name || c.file_id || 'file',
+      }));
+
+      // Sanitize zip name
+      const safeTitolo = (clpTitolo || 'clip').replace(/[^a-zA-Z0-9À-ÿ_\- ]/g, '').replace(/\s+/g, '-');
+      const zipName = `${clpId || 'CLP'}_${safeTitolo}_clip.zip`;
+
+      // Show progress simulation (we can't get per-file progress from a single request)
+      const progressInterval = setInterval(() => {
+        setProgress(prev => {
+          const next = Math.min(prev.current + 1, prev.total - 1);
+          return { ...prev, current: next };
+        });
+      }, 800);
+
+      const res = await fetch(
+        `${SUPABASE_URL}/functions/v1/google-drive-download-zip`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': ANON_KEY,
+            'Authorization': `Bearer ${ANON_KEY}`,
+          },
+          body: JSON.stringify({ teamId, files, zipName }),
+        }
+      );
+
+      clearInterval(progressInterval);
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Download ZIP fallito' }));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+
+      setProgress({ current: total, total });
+
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = zipName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(blobUrl);
+
+      addToast(`✅ ZIP scaricato: ${zipName}`, 'success');
+    } catch (err: any) {
+      console.error('[ZipDownload]', err);
+      addToast(`❌ Errore download ZIP: ${err.message}`, 'error');
+    } finally {
+      setDownloading(false);
+      setProgress({ current: 0, total: 0 });
+    }
+  };
+
+  return (
+    <div>
+      <button
+        disabled={downloading || total === 0}
+        onClick={handleDownload}
+        className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[hsl(var(--clr-blue))] hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {downloading ? (
+          <span className="inline-block w-3 h-3 border-2 border-[hsl(var(--clr-blue))] border-t-transparent rounded-full animate-spin" />
+        ) : '📦'}
+        {downloading
+          ? `Preparazione download… ${progress.current}/${progress.total} file`
+          : `Scarica tutti come ZIP (${total} file)`}
+      </button>
+      {downloading && (
+        <div className="mt-1.5 h-1.5 w-full rounded-full bg-muted overflow-hidden">
+          <div
+            className="h-full rounded-full bg-[hsl(var(--clr-blue))] transition-all duration-300"
+            style={{ width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%` }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // Shows aggregated file info for a CLP group row.
 // On upload: matches each file to its clip by Sony code in the filename.
 
@@ -963,19 +1069,15 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
             </div>
           )}
 
-          {/* Download all — proxy download each file */}
+          {/* Download all as ZIP */}
           {rawFiles.length > 0 && (
             <div className="mt-2 pt-2 border-t border-border">
-              <button
-                onClick={async () => {
-                  for (const c of rawFiles) {
-                    if (c.file_id) await downloadFileProxy(c.file_id, utente?.id || '', c.file_name || c.file_id || 'download');
-                  }
-                }}
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[hsl(var(--clr-blue))] hover:underline"
-              >
-                📂 Scarica tutti ({totalRawFiles} file)
-              </button>
+              <ZipDownloadButton
+                rawFiles={rawFiles}
+                teamId={utente?.id || ''}
+                clpId={reprClip.id_contenuto_display || ''}
+                clpTitolo={reprClip.titolo || clp?.titolo || ''}
+              />
             </div>
           )}
 
