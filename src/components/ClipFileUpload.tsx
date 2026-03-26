@@ -84,7 +84,85 @@ function buildRenamedFileName(
   return `${clipIdDisplay}_${n}_${baseName}.${ext}`;
 }
 
-// ─── Core upload logic ────────────────────────────────────────────────────────
+// ─── Core upload logic — chunked direct to Google Drive ───────────────────────
+// Max 5 GB, chunk size 5 MB, retry 3x con backoff esponenziale.
+// Resume support via localStorage.
+
+const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB
+const MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024; // 5 GB
+
+function getResumeKey(clipId: string, zone: string, fileName: string) {
+  return `skorpio_upload_${clipId}_${zone}_${fileName}`;
+}
+
+interface ResumeState {
+  uploadUrl: string;
+  uploadedBytes: number;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+}
+
+async function uploadChunkedToDrive(
+  uploadUrl: string,
+  file: File,
+  mimeType: string,
+  startByte: number,
+  onProgress: (p: UploadProgress) => void
+): Promise<string> {
+  let uploadedBytes = startByte;
+
+  while (uploadedBytes < file.size) {
+    const end = Math.min(uploadedBytes + CHUNK_SIZE, file.size);
+    const chunk = file.slice(uploadedBytes, end);
+
+    let res: Response | null = null;
+    let lastErr: Error | null = null;
+
+    // Retry up to 3 volte con backoff esponenziale
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        res = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Range': `bytes ${uploadedBytes}-${end - 1}/${file.size}`,
+            'Content-Type': mimeType,
+          },
+          body: chunk,
+        });
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e instanceof Error ? e : new Error(String(e));
+        if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+      }
+    }
+
+    if (lastErr || !res) throw lastErr || new Error('Upload chunk fallito dopo 3 tentativi');
+
+    if (res.status === 308) {
+      // Incomplete — continua
+      const range = res.headers.get('Range');
+      uploadedBytes = range ? parseInt(range.split('-')[1]) + 1 : end;
+    } else if (res.status === 200 || res.status === 201) {
+      const data = await res.json();
+      onProgress({ loaded: file.size, total: file.size, percent: 100, fileName: file.name });
+      return data.id as string;
+    } else {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Chunk upload error ${res.status}: ${body.slice(0, 200)}`);
+    }
+
+    onProgress({
+      loaded: uploadedBytes,
+      total: file.size,
+      percent: Math.min(99, Math.round((uploadedBytes / file.size) * 100)),
+      fileName: file.name,
+    });
+  }
+
+  throw new Error('Upload terminato senza conferma da Google Drive');
+}
 
 async function uploadFileToZone(
   file: File,
@@ -94,9 +172,12 @@ async function uploadFileToZone(
   userId: string,
   onProgress: (p: UploadProgress) => void
 ): Promise<{ fileId: string; fileUrl: string; fileName: string }> {
-  const ext = file.name.split('.').pop() || 'mp4';
+  if (file.size > MAX_FILE_SIZE) {
+    throw new Error('File troppo grande. Il limite è 5 GB.');
+  }
+
+  const ext      = file.name.split('.').pop() || 'mp4';
   const mimeType = file.type || 'video/mp4';
-  const clientName = clip.cliente_nome || 'Generale';
 
   let fileName: string;
   if (zone === 'clip') {
@@ -104,71 +185,79 @@ async function uploadFileToZone(
     fileName = buildRenamedFileName(file, idDisplay, clip.raw_files_count || 0);
   } else {
     const slug = slugify(clip.titolo || clip.id_clip);
-    fileName = `${clip.id_clip}_${slug}_export_${Date.now()}.${ext}`;
+    fileName = `${clip.id_clip}_${slug}_export.${ext}`;
   }
 
-  const storagePath = `${userId}/${zone}/${Date.now()}_${fileName}`;
+  const resumeKey = getResumeKey(clip.id, zone, fileName);
+  let uploadUrl: string;
+  let startByte = 0;
 
-  // Step 1: Upload to Supabase Storage buffer
-  const { data: { session } } = await supabase.auth.getSession();
-  const authToken = session?.access_token || SUPABASE_KEY;
-
-  await new Promise<void>((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    const url = `${SUPABASE_URL}/storage/v1/object/temp-uploads/${storagePath}`;
-
-    xhr.upload.addEventListener('progress', (e) => {
-      if (e.lengthComputable) {
-        const pct = Math.round(3 + (e.loaded / e.total) * 78);
-        onProgress({ loaded: e.loaded, total: file.size, percent: pct, fileName: file.name });
-      }
-    });
-
-    xhr.addEventListener('load', () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        resolve();
-      } else {
-        console.error('[ClipFileUpload] Storage upload failed', {
-          status: xhr.status,
-          responseText: xhr.responseText,
-          zone,
-          fileSize: file.size,
+  // Controlla se c'è uno stato di resume in localStorage
+  const savedState = localStorage.getItem(resumeKey);
+  if (savedState) {
+    try {
+      const state: ResumeState = JSON.parse(savedState);
+      if (state.fileSize === file.size && state.mimeType === mimeType) {
+        // Verifica quanti byte Google ha già ricevuto
+        const checkRes = await fetch(state.uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Range': `bytes */${file.size}`, 'Content-Type': mimeType },
         });
-        reject(new Error(`Storage upload fallito (${xhr.status}): ${xhr.responseText}`));
+        if (checkRes.status === 308) {
+          const range = checkRes.headers.get('Range');
+          startByte = range ? parseInt(range.split('-')[1]) + 1 : 0;
+          uploadUrl = state.uploadUrl;
+        } else {
+          localStorage.removeItem(resumeKey);
+          uploadUrl = '';
+        }
+      } else {
+        localStorage.removeItem(resumeKey);
+        uploadUrl = '';
       }
+    } catch {
+      localStorage.removeItem(resumeKey);
+      uploadUrl = '';
+    }
+  } else {
+    uploadUrl = '';
+  }
+
+  // Se non abbiamo un URI valido, ne creiamo uno nuovo
+  if (!uploadUrl) {
+    onProgress({ loaded: 0, total: file.size, percent: 1, fileName: file.name });
+
+    const result = await invokeEdge('google-drive-upload-init', {
+      method: 'POST',
+      body: JSON.stringify({
+        fileName,
+        mimeType,
+        fileSize: file.size,
+        teamId: userId,
+        clientName: clip.cliente_nome || 'Generale',
+        zone,
+        contenutoId: clip.contenuto_id,
+        idDisplay: clp?.id_display || clip.id_contenuto_display || '',
+        titolo: clp?.titolo || clip.titolo || '',
+      }),
     });
 
-    xhr.addEventListener('error', () => reject(new Error('Errore di rete durante upload')));
-    xhr.addEventListener('abort', () => reject(new Error('Upload annullato')));
+    uploadUrl = result.uploadUrl;
+    startByte = 0;
 
-    xhr.open('POST', url);
-    xhr.setRequestHeader('apikey', SUPABASE_KEY);
-    xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
-    xhr.setRequestHeader('Content-Type', mimeType);
-    xhr.setRequestHeader('x-upsert', 'true');
-    xhr.send(file);
-  });
+    // Salva stato per eventuale resume
+    const state: ResumeState = { uploadUrl, uploadedBytes: 0, fileName, fileSize: file.size, mimeType };
+    localStorage.setItem(resumeKey, JSON.stringify(state));
+  }
 
-  onProgress({ loaded: file.size, total: file.size, percent: 85, fileName: file.name });
+  // Upload chunked diretto verso Google Drive
+  const fileId = await uploadChunkedToDrive(uploadUrl, file, mimeType, startByte, onProgress);
 
-  // Step 2: Transfer to Google Drive
-  const result = await invokeEdge('google-drive-transfer', {
-    method: 'POST',
-    body: JSON.stringify({
-      storagePath,
-      fileName,
-      mimeType,
-      fileSize: file.size,
-      clientName,
-      teamId: userId,
-      zone,
-      contenutoId: clip.contenuto_id,
-      idDisplay: clp?.id_display || clip.id_contenuto_display || '',
-      titolo: clp?.titolo || clip.titolo || '',
-    }),
-  });
+  // Pulizia localStorage
+  localStorage.removeItem(resumeKey);
 
-  return { fileId: result.fileId, fileUrl: result.fileUrl, fileName };
+  const fileUrl = `https://drive.google.com/file/d/${fileId}/view`;
+  return { fileId, fileUrl, fileName };
 }
 
 // ─── FileStatusDot: visual indicator ─────────────────────────────────────────
