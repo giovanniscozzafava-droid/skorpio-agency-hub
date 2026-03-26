@@ -674,10 +674,10 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdated }: GroupFil
 
   // Dot color logic: green=exported present, yellow=only raw, black=nothing, red=anomaly
   const dot = hasExported
-    ? 'bg-green-500'
+    ? 'bg-[hsl(var(--clr-green))]'
     : rawCount > 0
-      ? 'bg-yellow-400'
-      : 'bg-gray-400';
+      ? 'bg-[hsl(var(--clr-amber))]'
+      : 'bg-[hsl(var(--muted-foreground))]';
 
   return (
     <div className="relative inline-flex items-center gap-1.5">
