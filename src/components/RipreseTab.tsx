@@ -9,11 +9,15 @@ import { BulkUploadModal, AutoCleanupDialog } from './DriveStorageIndicator';
 import { getStorageService } from '../services/storage';
 
 // ─── Drive URL helpers ────────────────────────────────────────────────────────
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+
 function driveViewUrl(fileId: string) {
   return `https://drive.google.com/file/d/${fileId}/view`;
 }
-function driveDownloadUrl(fileId: string) {
-  return `https://drive.google.com/uc?export=download&id=${fileId}`;
+/** Proxy download through edge function — bypasses Drive permission issues */
+function proxyDownloadUrl(fileId: string, teamId: string) {
+  return `${SUPABASE_URL}/functions/v1/google-drive-download?fileId=${encodeURIComponent(fileId)}&teamId=${encodeURIComponent(teamId)}`;
 }
 function drivePreviewUrl(fileId: string) {
   return `https://drive.google.com/file/d/${fileId}/preview`;
@@ -889,7 +893,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
                     {/* Download direct */}
                     {hasId ? (
                       <button
-                        onClick={() => window.open(driveDownloadUrl(c.file_id!), '_blank', 'noopener,noreferrer')}
+                        onClick={() => window.open(proxyDownloadUrl(c.file_id!, utente?.id || ''), '_blank', 'noopener,noreferrer')}
                         className="flex-shrink-0 text-[10px] px-1 py-0.5 rounded bg-[hsl(var(--clr-blue)/0.1)] text-[hsl(var(--clr-blue))] hover:opacity-80"
                         title="Download diretto"
                       >⬇</button>
@@ -978,7 +982,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
                 >▶</button>
               )}
               <button
-                onClick={() => window.open(driveDownloadUrl(reprClip.exported_file_id!), '_blank', 'noopener,noreferrer')}
+                onClick={() => window.open(proxyDownloadUrl(reprClip.exported_file_id!, utente?.id || ''), '_blank', 'noopener,noreferrer')}
                 className="inline-flex items-center gap-1 text-[11px] font-semibold text-[hsl(var(--clr-green))] hover:underline"
               >
                 🎬 {reprClip.exported_file_name || 'File esportato'} ⬇

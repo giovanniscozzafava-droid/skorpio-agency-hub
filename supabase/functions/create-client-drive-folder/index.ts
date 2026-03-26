@@ -72,6 +72,19 @@ async function findFolder(accessToken: string, name: string, parentId: string): 
   return data.files?.length > 0 ? data.files[0].id : null;
 }
 
+// ── Imposta permessi "anyone with link = writer" ─────────────────────────────
+async function shareAnyone(accessToken: string, fileId: string): Promise<void> {
+  try {
+    await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'writer', type: 'anyone' }),
+    });
+  } catch (e) {
+    console.warn(`⚠️ Impossibile impostare permessi su ${fileId}:`, e);
+  }
+}
+
 // ── Crea cartella ─────────────────────────────────────────────────────────────
 async function createFolder(accessToken: string, name: string, parentId?: string): Promise<string> {
   const body: Record<string, unknown> = { name, mimeType: 'application/vnd.google-apps.folder' };
@@ -83,6 +96,7 @@ async function createFolder(accessToken: string, name: string, parentId?: string
   });
   const d = await res.json();
   if (!res.ok) throw new Error(`Drive create error [${res.status}]: ${JSON.stringify(d)}`);
+  await shareAnyone(accessToken, d.id);
   return d.id;
 }
 
