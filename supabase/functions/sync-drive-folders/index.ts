@@ -299,7 +299,35 @@ Deno.serve(async (req) => {
           text: `✅ CLP: ${clpCreati} create/aggiornate, ${clpEsistenti} già OK, ${clpSkipped} saltate`,
         });
 
-        send({ type: 'done', clientiCreati, clientiEsistenti, clpCreati, clpEsistenti, clpSkipped });
+        // ────────────────── FASE 3: PERMESSI BATCH ───────────────────────────
+        await sleep(300);
+        send({ type: 'section', text: '--- 🔓 Fase 3: Fix permessi (anyone with link) ---' });
+
+        let permFixed = 0;
+        let permErrors = 0;
+
+        try {
+          send({ type: 'log', icon: '🔍', label: 'Scansione', detail: 'elenco tutti i file e cartelle in SKORPIO_Clip...' });
+          const allIds = await listAllFiles(accessToken, SKORPIO_CLIP_ROOT);
+          send({ type: 'log', icon: '📊', label: `${allIds.length} elementi trovati`, detail: 'applicazione permessi...' });
+
+          for (const id of allIds) {
+            const ok = await shareAnyone(accessToken, id);
+            if (ok) permFixed++;
+            else permErrors++;
+            // Rate limit: ~5/s
+            if (permFixed % 5 === 0) await sleep(200);
+          }
+        } catch (e) {
+          send({ type: 'log', icon: '❌', label: 'Errore permessi', detail: String(e) });
+        }
+
+        send({
+          type: 'section_done',
+          text: `✅ Permessi: ${permFixed} aggiornati, ${permErrors} errori`,
+        });
+
+        send({ type: 'done', clientiCreati, clientiEsistenti, clpCreati, clpEsistenti, clpSkipped, permFixed, permErrors });
 
       } catch (err) {
         send({ type: 'error', message: String(err) });
