@@ -8,6 +8,7 @@ import { FASE_CONFIG } from './ContenutiTab';
 import { Calendar } from './ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { cn } from '../lib/utils';
+import { parseLocalDate } from '../lib/dateUtils';
 import {
   findMembro,
   completaTaskPerContenuto,
