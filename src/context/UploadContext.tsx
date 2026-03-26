@@ -324,7 +324,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     // Done — save to DB
     localStorage.removeItem(resumeKey);
 
-    const fileUrl = `https://drive.google.com/file/d/${fileId}/view`;
+    const fileUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-drive-download?fileId=${fileId}`;
     let patch: Partial<LogRipresa> = {};
 
     if (zone === 'clip') {

@@ -994,11 +994,12 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
                   onClick={() => setPreviewUrl(null)}
                   className="absolute top-2 right-2 z-10 bg-black/60 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm hover:bg-black/80"
                 >✕</button>
-                <iframe
+                <video
                   src={previewUrl}
-                  allow="autoplay"
-                  className="w-full h-full border-0"
-                  title="Anteprima video"
+                  controls
+                  autoPlay
+                  className="w-full h-full"
+                  style={{ objectFit: 'contain' }}
                 />
               </div>
             </div>
