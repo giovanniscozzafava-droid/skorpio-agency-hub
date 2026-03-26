@@ -590,10 +590,7 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
   const handleDeleteExport = async () => {
     if (!clip.exported_file_id) return;
     try {
-      await invokeEdge('google-drive-delete', {
-        method: 'POST',
-        body: JSON.stringify({ fileId: clip.exported_file_id, teamId: utente?.id }),
-      });
+      await invokeEdge('google-drive-delete', { fileId: clip.exported_file_id, teamId: utente?.id });
     } catch (err) {
       console.warn('[ClipFileUpload] delete export from Drive failed:', err);
     }
