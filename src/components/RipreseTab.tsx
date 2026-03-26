@@ -716,7 +716,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdated }: GroupFil
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold text-foreground">
-              File grezzi · {rawCount} / {totalCount} clip
+              File grezzi · {totalRawFiles} / {totalCount} clip
             </span>
             <button
               className="text-muted-foreground hover:text-foreground text-xs"
