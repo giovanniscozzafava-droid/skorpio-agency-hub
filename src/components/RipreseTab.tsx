@@ -12,18 +12,13 @@ import { getStorageService } from '../services/storage';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
 
-function driveViewUrl(fileId: string) {
-  return `https://drive.google.com/file/d/${fileId}/view`;
-}
-/** Proxy download through edge function — bypasses Drive permission issues */
+/** Proxy download through edge function */
 function proxyDownloadUrl(fileId: string, teamId: string) {
   return `${SUPABASE_URL}/functions/v1/google-drive-download?fileId=${encodeURIComponent(fileId)}&teamId=${encodeURIComponent(teamId)}`;
 }
-function drivePreviewUrl(fileId: string) {
-  return `https://drive.google.com/file/d/${fileId}/preview`;
-}
-function driveFolderUrl(folderId: string) {
-  return `https://drive.google.com/drive/folders/${folderId}`;
+/** Proxy streaming for HTML5 video player with Range support */
+function proxyStreamUrl(fileId: string, teamId: string) {
+  return `${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${encodeURIComponent(fileId)}&teamId=${encodeURIComponent(teamId)}`;
 }
 function isVideoFile(fileName?: string | null, mimeType?: string | null) {
   if (mimeType && mimeType.startsWith('video/')) return true;
@@ -882,7 +877,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
                     {/* Play preview — video only */}
                     {isVideo && hasId ? (
                       <button
-                        onClick={() => setPreviewUrl(drivePreviewUrl(c.file_id!))}
+                        onClick={() => setPreviewUrl(proxyStreamUrl(c.file_id!, utente?.id || ''))}
                         className="flex-shrink-0 text-[10px] px-1 py-0.5 rounded bg-[hsl(var(--clr-green)/0.1)] text-[hsl(var(--clr-green))] hover:opacity-80"
                         title="Anteprima video"
                       >▶</button>
@@ -901,14 +896,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
                       <span className="flex-shrink-0 text-[10px] px-1 py-0.5 rounded opacity-30 cursor-not-allowed text-muted-foreground" title="File non disponibile per il download — prova a ricaricare">⬇</span>
                     )}
 
-                    {/* Open on Drive */}
-                    {hasId && (
-                      <button
-                        onClick={() => window.open(driveViewUrl(c.file_id!), '_blank', 'noopener,noreferrer')}
-                        className="flex-shrink-0 text-[10px] px-1 py-0.5 rounded bg-[hsl(var(--muted))] text-muted-foreground hover:opacity-80"
-                        title="Apri su Drive"
-                      >↗</button>
-                    )}
+                    {/* Download proxy */}
 
                     {/* Delete */}
                     <button
@@ -959,14 +947,19 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
             </div>
           )}
 
-          {/* Drive folder link — scarica tutti */}
-          {clp?.drive_clip_folder_id && (
+          {/* Download all — proxy download each file */}
+          {rawFiles.length > 0 && (
             <div className="mt-2 pt-2 border-t border-border">
               <button
-                onClick={() => window.open(driveFolderUrl(clp.drive_clip_folder_id!), '_blank', 'noopener,noreferrer')}
+                onClick={async () => {
+                  for (const c of rawFiles) {
+                    if (c.file_id) window.open(proxyDownloadUrl(c.file_id, utente?.id || ''), '_blank');
+                    await new Promise(r => setTimeout(r, 500));
+                  }
+                }}
                 className="inline-flex items-center gap-1 text-[11px] font-semibold text-[hsl(var(--clr-blue))] hover:underline"
               >
-                📂 Apri cartella Drive — scarica tutti ({totalRawFiles} file)
+                📂 Scarica tutti ({totalRawFiles} file)
               </button>
             </div>
           )}
@@ -976,7 +969,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
             <div className="mt-2 pt-2 border-t border-border flex items-center gap-2">
               {isVideoFile(reprClip.exported_file_name, reprClip.exported_file_mime_type) && (
                 <button
-                  onClick={() => setPreviewUrl(drivePreviewUrl(reprClip.exported_file_id!))}
+                  onClick={() => setPreviewUrl(proxyStreamUrl(reprClip.exported_file_id!, utente?.id || ''))}
                   className="inline-flex items-center gap-1 text-[11px] font-semibold text-[hsl(var(--clr-green))] hover:underline"
                   title="Anteprima"
                 >▶</button>
@@ -1001,11 +994,12 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
                   onClick={() => setPreviewUrl(null)}
                   className="absolute top-2 right-2 z-10 bg-black/60 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm hover:bg-black/80"
                 >✕</button>
-                <iframe
+                <video
                   src={previewUrl}
-                  allow="autoplay"
-                  className="w-full h-full border-0"
-                  title="Anteprima video"
+                  controls
+                  autoPlay
+                  className="w-full h-full"
+                  style={{ objectFit: 'contain' }}
                 />
               </div>
             </div>

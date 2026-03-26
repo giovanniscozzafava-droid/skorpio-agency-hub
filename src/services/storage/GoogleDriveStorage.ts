@@ -91,7 +91,7 @@ export class GoogleDriveStorage implements StorageService {
     }
 
     // Step 3: Get file URL
-    const fileUrl = `https://drive.google.com/file/d/${fileId}/view`;
+    const fileUrl = `${SUPABASE_URL}/functions/v1/google-drive-download?fileId=${fileId}`;
 
     return {
       fileId,
@@ -104,7 +104,7 @@ export class GoogleDriveStorage implements StorageService {
   }
 
   async getFileUrl(fileId: string): Promise<string> {
-    return `https://drive.google.com/file/d/${fileId}/view`;
+    return `${SUPABASE_URL}/functions/v1/google-drive-download?fileId=${fileId}`;
   }
 
   async deleteFile(fileId: string): Promise<boolean> {
