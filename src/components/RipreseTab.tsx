@@ -947,14 +947,19 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
             </div>
           )}
 
-          {/* Drive folder link — scarica tutti */}
-          {clp?.drive_clip_folder_id && (
+          {/* Download all — proxy download each file */}
+          {rawFiles.length > 0 && (
             <div className="mt-2 pt-2 border-t border-border">
               <button
-                onClick={() => window.open(driveFolderUrl(clp.drive_clip_folder_id!), '_blank', 'noopener,noreferrer')}
+                onClick={async () => {
+                  for (const c of rawFiles) {
+                    if (c.file_id) window.open(proxyDownloadUrl(c.file_id, utente?.id || ''), '_blank');
+                    await new Promise(r => setTimeout(r, 500));
+                  }
+                }}
                 className="inline-flex items-center gap-1 text-[11px] font-semibold text-[hsl(var(--clr-blue))] hover:underline"
               >
-                📂 Apri cartella Drive — scarica tutti ({totalRawFiles} file)
+                📂 Scarica tutti ({totalRawFiles} file)
               </button>
             </div>
           )}
