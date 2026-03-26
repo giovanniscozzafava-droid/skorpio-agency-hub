@@ -112,6 +112,11 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
           {orologio.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
         </div>
 
+        {/* Upload indicator */}
+        <div className="mr-1">
+          <UploadIndicator />
+        </div>
+
         {/* Campanella notifiche */}
         <div className="relative flex-shrink-0 mr-2">
           <button
