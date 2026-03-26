@@ -651,6 +651,135 @@ function RowDropZonePicker({ files, clip, onPick, onCancel }: RowDropZonePickerP
   );
 }
 
+// ─── GroupFileCell ────────────────────────────────────────────────────────────
+// Shows aggregated file info for a CLP group row: total raw count + download link
+
+interface GroupFileCellProps {
+  clips: LogRipresa[];
+  clp: Contenuto | null;
+  reprClip: LogRipresa;
+  onUpdated: (patch: Partial<LogRipresa>) => void;
+}
+
+function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdated }: GroupFileCellProps) {
+  const [open, setOpen] = useState(false);
+
+  // Count clips that have at least one raw file uploaded (file_id present, not deleted)
+  const rawFiles = groupClips.filter(c => c.file_id && !c.file_deleted_at);
+  const rawCount = rawFiles.length;
+  const totalCount = groupClips.length;
+
+  // Exported file on reprClip
+  const hasExported = !!reprClip.exported_file_id;
+
+  // Dot color logic: green=exported present, yellow=only raw, black=nothing, red=anomaly
+  const dot = hasExported
+    ? 'bg-[hsl(var(--clr-green))]'
+    : rawCount > 0
+      ? 'bg-[hsl(var(--clr-amber))]'
+      : 'bg-[hsl(var(--muted-foreground))]';
+
+  return (
+    <div className="relative inline-flex items-center gap-1.5">
+      {/* Status dot */}
+      <span className={`inline-block w-2 h-2 rounded-full ${dot} flex-shrink-0`} />
+
+      {/* File count button */}
+      <button
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        onClick={e => { e.stopPropagation(); setOpen(v => !v); }}
+        title={`${rawCount} file grezzi su ${totalCount} clip`}
+      >
+        <span>📁</span>
+        <span className="font-semibold tabular-nums">{rawCount}/{totalCount}</span>
+      </button>
+
+      {/* Upload button for the group (uses reprClip) */}
+      <ClipFileUpload
+        clip={reprClip}
+        clp={clp}
+        onUpdated={onUpdated}
+        variant="row"
+      />
+
+      {/* Popover with file list + download links */}
+      {open && (
+        <div
+          className="absolute top-7 right-0 z-50 w-72 rounded-lg border border-border bg-popover shadow-lg p-3 text-left"
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-foreground">
+              File grezzi · {rawCount} / {totalCount} clip
+            </span>
+            <button
+              className="text-muted-foreground hover:text-foreground text-xs"
+              onClick={() => setOpen(false)}
+            >✕</button>
+          </div>
+
+          {/* Raw files list */}
+          {rawFiles.length === 0 ? (
+            <p className="text-xs text-muted-foreground italic">Nessun file caricato</p>
+          ) : (
+            <div className="max-h-40 overflow-y-auto space-y-1">
+              {rawFiles.map(c => (
+                <div key={c.id} className="flex items-center justify-between gap-2 py-0.5">
+                  <span className="font-mono text-[10px] text-muted-foreground truncate max-w-[120px]" title={c.file_name || c.id_clip}>
+                    {c.file_name || c.id_clip}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                    {c.file_size ? `${(c.file_size / 1024 / 1024).toFixed(0)} MB` : '—'}
+                  </span>
+                  {c.file_url && (
+                    <a
+                      href={c.file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] text-[hsl(var(--clr-blue))] hover:underline whitespace-nowrap"
+                      title="Apri su Drive"
+                    >
+                      ↗ Drive
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Drive folder link */}
+          {clp?.drive_clip_folder_id && (
+            <div className="mt-2 pt-2 border-t border-border">
+              <a
+                href={`https://drive.google.com/drive/folders/${clp.drive_clip_folder_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[hsl(var(--clr-blue))] hover:underline"
+              >
+                📂 Apri cartella Drive — Scarica tutti ({rawCount} file)
+              </a>
+            </div>
+          )}
+
+          {/* Exported file */}
+          {hasExported && reprClip.exported_file_url && (
+            <div className="mt-2 pt-2 border-t border-border">
+              <a
+                href={reprClip.exported_file_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[hsl(var(--clr-green))] hover:underline"
+              >
+                🎬 File esportato — {reprClip.exported_file_name || 'Scarica'}
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Tab ─────────────────────────────────────────────────────────────────
 
 interface RipreseTabProps {
@@ -1244,14 +1373,9 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
                         <span className="text-xs text-muted-foreground">{operatori.join(', ') || '—'}</span>
                       </td>
 
-                      {/* File column */}
+                      {/* File column — group summary */}
                       <td className={`${tdCls} text-center relative`} onClick={e => e.stopPropagation()}>
-                        <ClipFileUpload
-                          clip={reprClip}
-                          clp={clp}
-                          onUpdated={patch => updateClipLocally(reprClip.id, patch)}
-                          variant="row"
-                        />
+                        <GroupFileCell clips={groupClips} clp={clp} reprClip={reprClip} onUpdated={patch => updateClipLocally(reprClip.id, patch)} />
                       </td>
 
                       {/* Delete group */}
