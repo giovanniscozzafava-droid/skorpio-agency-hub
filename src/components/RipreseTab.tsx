@@ -694,6 +694,7 @@ function extractSonyCode(fileName: string): string | null {
 function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: GroupFileCellProps) {
   const [open, setOpen] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { utente, addToast } = useApp();
   const { enqueue, queue } = useUpload();
