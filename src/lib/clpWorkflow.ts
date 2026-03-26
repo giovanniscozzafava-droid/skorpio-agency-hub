@@ -202,6 +202,7 @@ export async function avanzaFaseDaTask(
 }
 
 
+/**
  * Funzione di completamento via tasto "Completato" del task:
  * avanza la fase CLP + crea il task successivo.
  */
