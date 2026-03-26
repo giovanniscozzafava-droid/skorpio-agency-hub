@@ -877,7 +877,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
                     {/* Play preview — video only */}
                     {isVideo && hasId ? (
                       <button
-                        onClick={() => setPreviewUrl(drivePreviewUrl(c.file_id!))}
+                        onClick={() => setPreviewUrl(proxyStreamUrl(c.file_id!, utente?.id || ''))}
                         className="flex-shrink-0 text-[10px] px-1 py-0.5 rounded bg-[hsl(var(--clr-green)/0.1)] text-[hsl(var(--clr-green))] hover:opacity-80"
                         title="Anteprima video"
                       >▶</button>
