@@ -98,7 +98,7 @@ export function ChatPopup({ team }: ChatPopupProps) {
     caricaReactions();
   }, [caricaMessaggi, caricaReactions]);
 
-  // Realtime messaggi — dipende solo dal nome (primitivo) per evitare ri-subscribe su ogni render
+  // Realtime messaggi — INSERT + UPDATE (per spunte blu)
   useEffect(() => {
     if (!utenteNome) return;
     const channel = supabase
@@ -124,6 +124,19 @@ export function ChatPopup({ team }: ChatPopupProps) {
                 });
               }
             }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'chat_messaggi' },
+        (payload) => {
+          // Aggiorna letto: true in tempo reale → spunta blu per il mittente
+          const updated = payload.new as ChatMessaggio;
+          if (updated.da === utenteNome || updated.a === utenteNome) {
+            setMessaggi(prev =>
+              prev.map(m => m.id === updated.id ? { ...m, letto: updated.letto } : m)
+            );
           }
         }
       )
