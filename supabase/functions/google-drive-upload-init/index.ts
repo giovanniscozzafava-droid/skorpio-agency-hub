@@ -163,6 +163,8 @@ serve(async (req) => {
     }
 
     // Inizializza sessione resumable upload Google Drive
+    // L'header Origin è necessario affinché Google includa i CORS headers corretti
+    // nell'URI di sessione, così il browser può leggere le risposte ai chunk PUT.
     const initRes = await fetch(
       `https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,size,mimeType,webViewLink`,
       {
@@ -172,6 +174,7 @@ serve(async (req) => {
           'Content-Type':            'application/json',
           'X-Upload-Content-Type':   mimeType,
           'X-Upload-Content-Length': String(fileSize),
+          'Origin':                  'https://skorpio-agency-hub.lovable.app',
         },
         body: JSON.stringify({
           name:    fileName,
