@@ -280,6 +280,36 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
   const labelCls = "text-xs font-medium text-muted-foreground mb-0.5 block";
   const isClpSelected = clpMode !== 'nuovo';
 
+  // ── Searchable CLP dropdown state ──────────────────────────────────────────
+  const [clpQuery, setClpQuery] = useState('');
+  const [clpOpen, setClpOpen] = useState(false);
+  const clpDropRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const fn = (e: MouseEvent) => {
+      if (clpDropRef.current && !clpDropRef.current.contains(e.target as Node)) setClpOpen(false);
+    };
+    document.addEventListener('mousedown', fn);
+    return () => document.removeEventListener('mousedown', fn);
+  }, []);
+
+  const allClps = [...clpSenzaClip, ...clpConClip];
+  const clpFiltered = clpQuery.trim()
+    ? allClps.filter(c =>
+        c.id_display.toLowerCase().includes(clpQuery.toLowerCase()) ||
+        c.titolo.toLowerCase().includes(clpQuery.toLowerCase()) ||
+        (c.cliente_nome || '').toLowerCase().includes(clpQuery.toLowerCase())
+      )
+    : allClps;
+
+  const clpSenzaClipFiltered = clpFiltered.filter(c => !clpClipCount[c.id]);
+  const clpConClipFiltered   = clpFiltered.filter(c =>  !!clpClipCount[c.id]);
+
+  const selectedClp = allClps.find(c => c.id === clpMode);
+  const clpDisplayLabel = clpMode === 'nuovo'
+    ? '🆕 Genera nuovo CLP'
+    : selectedClp ? `${selectedClp.id_display} — ${selectedClp.titolo}` : '— Seleziona CLP —';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
@@ -310,29 +340,106 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
             )}
           </div>
 
+          {/* Searchable CLP dropdown */}
           <div>
             <label className={labelCls}>Contenuto CLP</label>
-            <select className={inputCls} value={clpMode} onChange={e => handleClpChange(e.target.value)}>
-              <option value="nuovo">🆕 Genera nuovo CLP</option>
-              {clpSenzaClip.length > 0 && (
-                <optgroup label={`📋 CLP senza clip (${clpSenzaClip.length})`}>
-                  {clpSenzaClip.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.id_display} — {c.titolo} [{c.cliente_nome}]
-                    </option>
-                  ))}
-                </optgroup>
+            <div ref={clpDropRef} className="relative">
+              {/* Trigger */}
+              <div
+                className="w-full border border-border rounded-md px-3 py-1.5 text-sm bg-background text-foreground flex items-center justify-between cursor-pointer hover:border-[hsl(var(--clr-blue)/0.5)] transition-colors"
+                onClick={() => setClpOpen(o => !o)}
+              >
+                <span className={clpMode === 'nuovo' ? 'text-[hsl(var(--clr-blue))] font-medium' : 'text-foreground'}>
+                  {clpDisplayLabel}
+                </span>
+                <span className="text-muted-foreground text-[10px] ml-2">{clpOpen ? '▲' : '▼'}</span>
+              </div>
+
+              {clpOpen && (
+                <div className="absolute left-0 top-full mt-1 w-full z-50 rounded-xl shadow-xl border border-border bg-card overflow-hidden"
+                  style={{ maxHeight: 280 }}>
+                  {/* Search bar */}
+                  <div className="p-2 border-b border-border">
+                    <input
+                      className={inputCls + ' text-xs'}
+                      placeholder="🔍 Cerca per ID, titolo o cliente…"
+                      value={clpQuery}
+                      onChange={e => setClpQuery(e.target.value)}
+                      autoFocus
+                      onClick={e => e.stopPropagation()}
+                    />
+                  </div>
+
+                  <div className="overflow-y-auto" style={{ maxHeight: 200 }}>
+                    {/* Genera nuovo */}
+                    <div
+                      className="px-3 py-2 text-xs cursor-pointer hover:bg-muted transition-colors flex items-center gap-2"
+                      style={{ color: clpMode === 'nuovo' ? 'hsl(var(--clr-blue))' : undefined, fontWeight: clpMode === 'nuovo' ? 600 : undefined }}
+                      onClick={() => { handleClpChange('nuovo'); setClpQuery(''); setClpOpen(false); }}
+                    >
+                      🆕 <span>Genera nuovo CLP</span>
+                    </div>
+
+                    {/* Senza clip */}
+                    {clpSenzaClipFiltered.length > 0 && (
+                      <>
+                        <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/50 sticky top-0">
+                          📋 CLP senza clip ({clpSenzaClipFiltered.length})
+                        </div>
+                        {clpSenzaClipFiltered.map(c => (
+                          <div
+                            key={c.id}
+                            className="px-3 py-2 text-xs cursor-pointer hover:bg-muted transition-colors"
+                            style={{
+                              color: c.id === clpMode ? 'hsl(var(--clr-green))' : 'hsl(var(--foreground))',
+                              background: c.id === clpMode ? 'hsl(var(--clr-green)/0.08)' : undefined,
+                              fontWeight: c.id === clpMode ? 600 : undefined,
+                            }}
+                            onClick={() => { handleClpChange(c.id); setClpQuery(''); setClpOpen(false); }}
+                          >
+                            <span className="font-mono text-[10px] opacity-60 mr-1">{c.id_display}</span>
+                            {c.titolo}
+                            {c.cliente_nome && <span className="ml-1 opacity-50">[{c.cliente_nome}]</span>}
+                          </div>
+                        ))}
+                      </>
+                    )}
+
+                    {/* Con clip */}
+                    {clpConClipFiltered.length > 0 && (
+                      <>
+                        <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/50 sticky top-0">
+                          🎬 CLP con clip ({clpConClipFiltered.length})
+                        </div>
+                        {clpConClipFiltered.map(c => (
+                          <div
+                            key={c.id}
+                            className="px-3 py-2 text-xs cursor-pointer hover:bg-muted transition-colors"
+                            style={{
+                              color: c.id === clpMode ? 'hsl(var(--clr-amber))' : 'hsl(var(--foreground))',
+                              background: c.id === clpMode ? 'hsl(var(--clr-amber)/0.08)' : undefined,
+                              fontWeight: c.id === clpMode ? 600 : undefined,
+                            }}
+                            onClick={() => { handleClpChange(c.id); setClpQuery(''); setClpOpen(false); }}
+                          >
+                            <span className="font-mono text-[10px] opacity-60 mr-1">{c.id_display}</span>
+                            {c.titolo}
+                            {c.cliente_nome && <span className="ml-1 opacity-50">[{c.cliente_nome}]</span>}
+                          </div>
+                        ))}
+                      </>
+                    )}
+
+                    {clpFiltered.length === 0 && clpQuery && (
+                      <div className="px-3 py-3 text-xs text-muted-foreground text-center">
+                        Nessun CLP trovato per "{clpQuery}"
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
-              {clpConClip.length > 0 && (
-                <optgroup label={`🎬 CLP con clip (${clpConClip.length})`}>
-                  {clpConClip.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.id_display} — {c.titolo} [{c.cliente_nome}]
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
+            </div>
+
             {infoBox && (
               <div className="mt-1.5 rounded-lg px-3 py-2 text-xs font-medium border"
                 style={{ background: infoBox.bg, borderColor: infoBox.border, color: infoBox.color }}>
