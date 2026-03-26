@@ -121,12 +121,15 @@ function InlineSelect({
 interface NuovaClipModalProps {
   clienti: Cliente[];
   team: TeamMember[];
+  contenuti: Record<string, Contenuto>;
   onClose: () => void;
   onCreated: () => void;
+  onClipUpdated: (clipId: string, patch: Partial<LogRipresa>) => void;
 }
 
-function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalProps) {
-  const { addToast } = useApp();
+function NuovaClipModal({ clienti, team, contenuti, onClose, onCreated, onClipUpdated }: NuovaClipModalProps) {
+  const { addToast, utente } = useApp();
+  const { enqueue } = useUpload();
 
   const [clpMode, setClpMode] = useState<'nuovo' | string>('nuovo');
   const [clpSenzaClip, setClpSenzaClip] = useState<Contenuto[]>([]);
