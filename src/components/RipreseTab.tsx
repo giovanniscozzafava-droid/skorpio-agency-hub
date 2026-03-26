@@ -1430,7 +1430,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
 
                       {/* File column — group summary */}
                       <td className={`${tdCls} text-center relative`} onClick={e => e.stopPropagation()}>
-                        <GroupFileCell clips={groupClips} clp={clp} reprClip={reprClip} onUpdated={patch => updateClipLocally(reprClip.id, patch)} />
+                        <GroupFileCell clips={groupClips} clp={clp} reprClip={reprClip} onUpdatedById={updateClipLocally} />
                       </td>
 
                       {/* Delete group */}
