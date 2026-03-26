@@ -8,6 +8,28 @@ import { ClipReviewModal } from './ClipReviewModal';
 import { BulkUploadModal, AutoCleanupDialog } from './DriveStorageIndicator';
 import { getStorageService } from '../services/storage';
 
+// ─── Drive URL helpers ────────────────────────────────────────────────────────
+function driveViewUrl(fileId: string) {
+  return `https://drive.google.com/file/d/${fileId}/view`;
+}
+function driveDownloadUrl(fileId: string) {
+  return `https://drive.google.com/uc?export=download&id=${fileId}`;
+}
+function drivePreviewUrl(fileId: string) {
+  return `https://drive.google.com/file/d/${fileId}/preview`;
+}
+function driveFolderUrl(folderId: string) {
+  return `https://drive.google.com/drive/folders/${folderId}`;
+}
+function isVideoFile(fileName?: string | null, mimeType?: string | null) {
+  if (mimeType && mimeType.startsWith('video/')) return true;
+  if (fileName) {
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    return ['mp4', 'mov', 'avi', 'mxf', 'r3d', 'mkv', 'webm'].includes(ext || '');
+  }
+  return false;
+}
+
 // ─── constants ───────────────────────────────────────────────────────────────
 
 const STATI: LogRipresa['stato'][] = ['Da girare', 'Grezza', 'Buona', 'Scartata', 'Usata'];
@@ -672,6 +694,7 @@ function extractSonyCode(fileName: string): string | null {
 function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: GroupFileCellProps) {
   const [open, setOpen] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { utente, addToast } = useApp();
   const { enqueue, queue } = useUpload();
@@ -840,37 +863,63 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
             <p className="text-xs text-muted-foreground italic">Nessun file caricato</p>
           ) : (
             <div className="max-h-48 overflow-y-auto space-y-1">
-              {rawFiles.map(c => (
-                <div key={c.id} className="flex items-center gap-1.5 py-0.5 group/row">
-                  <span className="font-mono text-[10px] text-muted-foreground truncate flex-1 min-w-0" title={c.file_name || c.id_clip}>
-                    {c.file_name || c.id_clip}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground whitespace-nowrap flex-shrink-0">
-                    {c.file_size ? `${(c.file_size / 1024 / 1024).toFixed(0)} MB` : '—'}
-                  </span>
-                  {c.file_url && (
+              {rawFiles.map(c => {
+                const hasId = !!c.file_id;
+                const isVideo = isVideoFile(c.file_name, c.file_mime_type);
+                return (
+                  <div key={c.id} className="flex items-center gap-1 py-0.5 group/row">
+                    <span className="font-mono text-[10px] text-muted-foreground truncate flex-1 min-w-0" title={c.file_name || c.id_clip}>
+                      {c.file_name || c.id_clip}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground whitespace-nowrap flex-shrink-0">
+                      {c.file_size ? `${(c.file_size / 1024 / 1024).toFixed(0)} MB` : '—'}
+                    </span>
+
+                    {/* Play preview — video only */}
+                    {isVideo && hasId ? (
+                      <button
+                        onClick={() => setPreviewUrl(drivePreviewUrl(c.file_id!))}
+                        className="flex-shrink-0 text-[10px] px-1 py-0.5 rounded bg-[hsl(var(--clr-green)/0.1)] text-[hsl(var(--clr-green))] hover:opacity-80"
+                        title="Anteprima video"
+                      >▶</button>
+                    ) : isVideo ? (
+                      <span className="flex-shrink-0 text-[10px] px-1 py-0.5 rounded opacity-30 cursor-not-allowed text-muted-foreground" title="File non disponibile per l'anteprima — prova a ricaricare">▶</span>
+                    ) : null}
+
+                    {/* Download direct */}
+                    {hasId ? (
+                      <button
+                        onClick={() => window.open(driveDownloadUrl(c.file_id!), '_blank', 'noopener,noreferrer')}
+                        className="flex-shrink-0 text-[10px] px-1 py-0.5 rounded bg-[hsl(var(--clr-blue)/0.1)] text-[hsl(var(--clr-blue))] hover:opacity-80"
+                        title="Download diretto"
+                      >⬇</button>
+                    ) : (
+                      <span className="flex-shrink-0 text-[10px] px-1 py-0.5 rounded opacity-30 cursor-not-allowed text-muted-foreground" title="File non disponibile per il download — prova a ricaricare">⬇</span>
+                    )}
+
+                    {/* Open on Drive */}
+                    {hasId && (
+                      <button
+                        onClick={() => window.open(driveViewUrl(c.file_id!), '_blank', 'noopener,noreferrer')}
+                        className="flex-shrink-0 text-[10px] px-1 py-0.5 rounded bg-[hsl(var(--muted))] text-muted-foreground hover:opacity-80"
+                        title="Apri su Drive"
+                      >↗</button>
+                    )}
+
+                    {/* Delete */}
                     <button
-                      onClick={() => window.open(c.file_url!, '_blank', 'noopener,noreferrer')}
-                      className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-[hsl(var(--clr-blue)/0.1)] text-[hsl(var(--clr-blue))] hover:opacity-80 whitespace-nowrap"
-                      title="Apri su Drive"
-                    >
-                      ↗
-                    </button>
-                  )}
-                  <button
-                    onClick={async () => {
-                      if (!confirm(`Eliminare "${c.file_name || c.file_id || 'questo file'}" anche da Google Drive?`)) return;
-                      const { notFound } = await deleteOneFile(c);
-                      if (notFound) addToast('⚠️ File già rimosso da Drive, riferimento eliminato', 'warn');
-                      else addToast('🗑️ File eliminato da Drive', 'success');
-                    }}
-                    className="flex-shrink-0 opacity-0 group-hover/row:opacity-100 text-[10px] px-1.5 py-0.5 rounded bg-[hsl(var(--clr-red)/0.1)] text-[hsl(var(--clr-red))] hover:opacity-80 transition-opacity"
-                    title="Elimina da Drive e DB"
-                  >
-                    🗑️
-                  </button>
-                </div>
-              ))}
+                      onClick={async () => {
+                        if (!confirm(`Eliminare "${c.file_name || c.file_id || 'questo file'}" anche da Google Drive?`)) return;
+                        const { notFound } = await deleteOneFile(c);
+                        if (notFound) addToast('⚠️ File già rimosso da Drive, riferimento eliminato', 'warn');
+                        else addToast('🗑️ File eliminato da Drive', 'success');
+                      }}
+                      className="flex-shrink-0 opacity-0 group-hover/row:opacity-100 text-[10px] px-1 py-0.5 rounded bg-[hsl(var(--clr-red)/0.1)] text-[hsl(var(--clr-red))] hover:opacity-80 transition-opacity"
+                      title="Elimina da Drive e DB"
+                    >🗑️</button>
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -906,11 +955,11 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
             </div>
           )}
 
-          {/* Drive folder link */}
+          {/* Drive folder link — scarica tutti */}
           {clp?.drive_clip_folder_id && (
             <div className="mt-2 pt-2 border-t border-border">
               <button
-                onClick={() => window.open(`https://drive.google.com/drive/folders/${clp.drive_clip_folder_id}`, '_blank', 'noopener,noreferrer')}
+                onClick={() => window.open(driveFolderUrl(clp.drive_clip_folder_id!), '_blank', 'noopener,noreferrer')}
                 className="inline-flex items-center gap-1 text-[11px] font-semibold text-[hsl(var(--clr-blue))] hover:underline"
               >
                 📂 Apri cartella Drive — scarica tutti ({totalRawFiles} file)
@@ -919,14 +968,42 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
           )}
 
           {/* Exported file */}
-          {hasExported && reprClip.exported_file_url && (
-            <div className="mt-2 pt-2 border-t border-border">
+          {hasExported && reprClip.exported_file_id && (
+            <div className="mt-2 pt-2 border-t border-border flex items-center gap-2">
+              {isVideoFile(reprClip.exported_file_name, reprClip.exported_file_mime_type) && (
+                <button
+                  onClick={() => setPreviewUrl(drivePreviewUrl(reprClip.exported_file_id!))}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-[hsl(var(--clr-green))] hover:underline"
+                  title="Anteprima"
+                >▶</button>
+              )}
               <button
-                onClick={() => window.open(reprClip.exported_file_url!, '_blank', 'noopener,noreferrer')}
+                onClick={() => window.open(driveDownloadUrl(reprClip.exported_file_id!), '_blank', 'noopener,noreferrer')}
                 className="inline-flex items-center gap-1 text-[11px] font-semibold text-[hsl(var(--clr-green))] hover:underline"
               >
-                🎬 File esportato — {reprClip.exported_file_name || 'Scarica'}
+                🎬 {reprClip.exported_file_name || 'File esportato'} ⬇
               </button>
+            </div>
+          )}
+
+          {/* Video preview modal */}
+          {previewUrl && (
+            <div
+              className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80"
+              onClick={() => setPreviewUrl(null)}
+            >
+              <div className="relative bg-black rounded-xl overflow-hidden shadow-2xl" style={{ width: '80vw', maxWidth: 900, aspectRatio: '16/9' }} onClick={e => e.stopPropagation()}>
+                <button
+                  onClick={() => setPreviewUrl(null)}
+                  className="absolute top-2 right-2 z-10 bg-black/60 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm hover:bg-black/80"
+                >✕</button>
+                <iframe
+                  src={previewUrl}
+                  allow="autoplay"
+                  className="w-full h-full border-0"
+                  title="Anteprima video"
+                />
+              </div>
             </div>
           )}
         </div>
