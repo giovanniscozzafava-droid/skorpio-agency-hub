@@ -969,7 +969,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
             <div className="mt-2 pt-2 border-t border-border flex items-center gap-2">
               {isVideoFile(reprClip.exported_file_name, reprClip.exported_file_mime_type) && (
                 <button
-                  onClick={() => setPreviewUrl(drivePreviewUrl(reprClip.exported_file_id!))}
+                  onClick={() => setPreviewUrl(proxyStreamUrl(reprClip.exported_file_id!, utente?.id || ''))}
                   className="inline-flex items-center gap-1 text-[11px] font-semibold text-[hsl(var(--clr-green))] hover:underline"
                   title="Anteprima"
                 >▶</button>
