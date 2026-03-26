@@ -760,7 +760,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
       {/* Popover with file list + download links */}
       {open && (
         <div
-          className="absolute top-7 right-0 z-50 w-72 rounded-lg border border-border bg-popover shadow-lg p-3 text-left"
+          className="absolute top-7 right-0 z-50 w-80 rounded-lg border border-border bg-popover shadow-lg p-3 text-left"
           onClick={e => e.stopPropagation()}
         >
           <div className="flex items-center justify-between mb-2">
@@ -777,26 +777,40 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
           {rawFiles.length === 0 ? (
             <p className="text-xs text-muted-foreground italic">Nessun file caricato</p>
           ) : (
-            <div className="max-h-40 overflow-y-auto space-y-1">
+            <div className="max-h-48 overflow-y-auto space-y-1">
               {rawFiles.map(c => (
-                <div key={c.id} className="flex items-center justify-between gap-2 py-0.5">
-                  <span className="font-mono text-[10px] text-muted-foreground truncate max-w-[120px]" title={c.file_name || c.id_clip}>
+                <div key={c.id} className="flex items-center gap-1.5 py-0.5 group/row">
+                  <span className="font-mono text-[10px] text-muted-foreground truncate flex-1 min-w-0" title={c.file_name || c.id_clip}>
                     {c.file_name || c.id_clip}
                   </span>
-                  <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                  <span className="text-[10px] text-muted-foreground whitespace-nowrap flex-shrink-0">
                     {c.file_size ? `${(c.file_size / 1024 / 1024).toFixed(0)} MB` : '—'}
                   </span>
                   {c.file_url && (
-                    <a
-                      href={c.file_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[10px] text-[hsl(var(--clr-blue))] hover:underline whitespace-nowrap"
+                    <button
+                      onClick={() => window.open(c.file_url!, '_blank', 'noopener,noreferrer')}
+                      className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-[hsl(var(--clr-blue)/0.1)] text-[hsl(var(--clr-blue))] hover:opacity-80 whitespace-nowrap"
                       title="Apri su Drive"
                     >
-                      ↗ Drive
-                    </a>
+                      ↗
+                    </button>
                   )}
+                  <button
+                    onClick={async () => {
+                      const now = new Date().toISOString();
+                      const patch: Partial<LogRipresa> = {
+                        file_id: null, file_url: null, file_name: null,
+                        file_size: null, file_deleted_at: now,
+                        raw_files_count: 0, raw_files_size: 0,
+                      };
+                      await supabase.from('log_riprese').update(patch).eq('id', c.id);
+                      onUpdatedById(c.id, patch);
+                    }}
+                    className="flex-shrink-0 opacity-0 group-hover/row:opacity-100 text-[10px] px-1.5 py-0.5 rounded bg-[hsl(var(--clr-red)/0.1)] text-[hsl(var(--clr-red))] hover:opacity-80 transition-opacity"
+                    title="Rimuovi file dal DB"
+                  >
+                    🗑️
+                  </button>
                 </div>
               ))}
             </div>
@@ -805,28 +819,24 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
           {/* Drive folder link */}
           {clp?.drive_clip_folder_id && (
             <div className="mt-2 pt-2 border-t border-border">
-              <a
-                href={`https://drive.google.com/drive/folders/${clp.drive_clip_folder_id}`}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                onClick={() => window.open(`https://drive.google.com/drive/folders/${clp.drive_clip_folder_id}`, '_blank', 'noopener,noreferrer')}
                 className="inline-flex items-center gap-1 text-[11px] font-semibold text-[hsl(var(--clr-blue))] hover:underline"
               >
-                📂 Apri cartella Drive — Scarica tutti ({totalRawFiles} file)
-              </a>
+                📂 Apri cartella Drive — scarica tutti ({totalRawFiles} file)
+              </button>
             </div>
           )}
 
           {/* Exported file */}
           {hasExported && reprClip.exported_file_url && (
             <div className="mt-2 pt-2 border-t border-border">
-              <a
-                href={reprClip.exported_file_url}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                onClick={() => window.open(reprClip.exported_file_url!, '_blank', 'noopener,noreferrer')}
                 className="inline-flex items-center gap-1 text-[11px] font-semibold text-[hsl(var(--clr-green))] hover:underline"
               >
                 🎬 File esportato — {reprClip.exported_file_name || 'Scarica'}
-              </a>
+              </button>
             </div>
           )}
         </div>
