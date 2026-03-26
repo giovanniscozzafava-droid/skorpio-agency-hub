@@ -42,7 +42,7 @@ function MainApp() {
   const urgenti = myTasks.filter(t => t.priorita === '🔴 Alta' && t.stato !== 'Completato').length;
   const scaduti = myTasks.filter(t => {
     if (!t.scadenza || t.stato === 'Completato') return false;
-    return new Date(t.scadenza) < oggi;
+    return parseLocalDate(t.scadenza) < oggi;
   }).length;
 
   return (

@@ -352,7 +352,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
     const oggi = new Date(); oggi.setHours(0,0,0,0);
     const scaduti = (data || []).filter(t => {
       if (!t.scadenza) return false;
-      const s = new Date(t.scadenza); s.setHours(0,0,0,0);
+      const s = parseLocalDate(t.scadenza);
       return s < oggi && t.stato !== 'Completato';
     });
     if (scaduti.length > 0) sounds.alert();

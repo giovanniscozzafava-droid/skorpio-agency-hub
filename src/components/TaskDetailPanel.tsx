@@ -520,7 +520,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
           {isProgrammazioneTask && taskCompletato && (
             <div className="rounded-lg px-3 py-2.5 text-xs"
               style={{ background: 'hsl(142 70% 45% / 0.08)', color: 'hsl(142 60% 35%)', border: '1px solid hsl(142 70% 45% / 0.25)' }}>
-              ✅ Programmato per {task.scadenza ? format(new Date(task.scadenza), 'd MMM yyyy', { locale: it }) : '—'}
+              ✅ Programmato per {task.scadenza ? format(parseLocalDate(task.scadenza), 'd MMM yyyy', { locale: it }) : '—'}
               {task.ora ? ` alle ${task.ora.slice(0,5)}` : ''} — verrà pubblicato automaticamente!
             </div>
           )}

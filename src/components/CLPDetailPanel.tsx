@@ -123,7 +123,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
   useEffect(() => {
     setForm({ ...contenuto });
     prevFaseRef.current = contenuto.fase;
-    setPubDate(contenuto.data_pubblicazione ? new Date(contenuto.data_pubblicazione) : undefined);
+    setPubDate(contenuto.data_pubblicazione ? parseLocalDate(contenuto.data_pubblicazione) : undefined);
     setPubOra(contenuto.ora_pubblicazione?.slice(0, 5) || '');
     loadClips();
   }, [contenuto.id, loadClips]);
