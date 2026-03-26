@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
+import { useUpload } from '../context/UploadContext';
 import type { LogRipresa, Cliente, TeamMember, Contenuto } from '../types';
 import { ClipFileUpload, FileStatusDot, formatBytes } from './ClipFileUpload';
 import { ClipReviewModal } from './ClipReviewModal';
