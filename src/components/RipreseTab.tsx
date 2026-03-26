@@ -121,12 +121,15 @@ function InlineSelect({
 interface NuovaClipModalProps {
   clienti: Cliente[];
   team: TeamMember[];
+  contenuti: Record<string, Contenuto>;
   onClose: () => void;
   onCreated: () => void;
+  onClipUpdated: (clipId: string, patch: Partial<LogRipresa>) => void;
 }
 
-function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalProps) {
-  const { addToast } = useApp();
+function NuovaClipModal({ clienti, team, contenuti, onClose, onCreated, onClipUpdated }: NuovaClipModalProps) {
+  const { addToast, utente } = useApp();
+  const { enqueue } = useUpload();
 
   const [clpMode, setClpMode] = useState<'nuovo' | string>('nuovo');
   const [clpSenzaClip, setClpSenzaClip] = useState<Contenuto[]>([]);
@@ -134,6 +137,7 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
   const [clpClipCount, setClpClipCount] = useState<Record<string, string[]>>({});
 
   const [autoNomi, setAutoNomi] = useState(false);
+  const [uploadToDrive, setUploadToDrive] = useState(true);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -291,7 +295,7 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
       operatore: form.operatore,
     }));
 
-    const { error } = await supabase.from('log_riprese').insert(rows);
+    const { data: insertedRows, error } = await supabase.from('log_riprese').insert(rows).select();
     setLoading(false);
 
     if (error) {
@@ -315,6 +319,25 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
           .from('contenuti')
           .update({ fase: 'Girato' })
           .eq('id', contenutoId);
+      }
+    }
+
+    // ── Enqueue uploads if files were selected with autoNomi + uploadToDrive ──
+    if (autoNomi && uploadToDrive && selectedFiles.length > 0 && insertedRows && utente) {
+      const driveConnected = !!(utente as any)?.google_drive_connected;
+      if (!driveConnected) {
+        addToast('⚠️ File non caricati: connetti Google Drive nelle Impostazioni', 'warn');
+      } else {
+        const clp = contenutoId ? contenuti[contenutoId] : null;
+        // Map each file to its inserted clip record by matching code
+        for (const file of selectedFiles) {
+          const code = file.name.replace(/\.[^/.]+$/, '');
+          const clipRecord = (insertedRows as LogRipresa[]).find(r => r.id_clip === code);
+          if (clipRecord) {
+            enqueue([file], 'clip', clipRecord, clp, utente.id, (id, patch) => onClipUpdated(id, patch));
+          }
+        }
+        addToast(`☁️ ${selectedFiles.length} file in coda di upload`, 'success');
       }
     }
 
@@ -409,7 +432,7 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
                 </button>
                 {selectedFiles.length > 0 && (
                   <div className="mt-1.5 flex flex-wrap gap-1">
-                    {selectedFiles.map((f, i) => (
+                {selectedFiles.map((f, i) => (
                       <span key={f.name} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[hsl(var(--clr-blue)/0.12)] text-[hsl(var(--clr-blue))] border border-[hsl(var(--clr-blue)/0.3)]">
                         {f.name.replace(/\.[^/.]+$/, '')}
                         <button type="button" onClick={() => setSelectedFiles(prev => prev.filter((_, j) => j !== i))} className="hover:text-[hsl(var(--clr-red))] ml-0.5">×</button>
@@ -419,6 +442,19 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
                       Rimuovi tutti
                     </button>
                   </div>
+                )}
+                {selectedFiles.length > 0 && (
+                  <label className="flex items-center gap-2 mt-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={uploadToDrive}
+                      onChange={e => setUploadToDrive(e.target.checked)}
+                      className="w-3.5 h-3.5 rounded accent-[hsl(var(--clr-green))]"
+                    />
+                    <span className="text-[11px] text-muted-foreground">
+                      ☁️ Carica anche su Google Drive
+                    </span>
+                  </label>
                 )}
               </>
             ) : (
@@ -611,7 +647,7 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
             </button>
             <button type="submit" disabled={loading}
               className="flex-1 py-2.5 rounded-lg bg-[hsl(var(--clr-blue))] text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50">
-              {loading ? 'Inserimento…' : `✅ Inserisci clip`}
+              {loading ? 'Inserimento…' : autoNomi && uploadToDrive && selectedFiles.length > 0 ? `☁️ Inserisci e carica ${selectedFiles.length} clip` : `✅ Inserisci clip`}
             </button>
           </div>
         </form>
@@ -1998,8 +2034,10 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
         <NuovaClipModal
           clienti={clienti}
           team={team}
+          contenuti={contenuti}
           onClose={() => setShowNuova(false)}
           onCreated={loadClips}
+          onClipUpdated={(clipId, patch) => updateClipLocally(clipId, patch)}
         />
       )}
 
