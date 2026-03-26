@@ -432,7 +432,7 @@ function NuovaClipModal({ clienti, team, contenuti, onClose, onCreated, onClipUp
                 </button>
                 {selectedFiles.length > 0 && (
                   <div className="mt-1.5 flex flex-wrap gap-1">
-                    {selectedFiles.map((f, i) => (
+                {selectedFiles.map((f, i) => (
                       <span key={f.name} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[hsl(var(--clr-blue)/0.12)] text-[hsl(var(--clr-blue))] border border-[hsl(var(--clr-blue)/0.3)]">
                         {f.name.replace(/\.[^/.]+$/, '')}
                         <button type="button" onClick={() => setSelectedFiles(prev => prev.filter((_, j) => j !== i))} className="hover:text-[hsl(var(--clr-red))] ml-0.5">×</button>
@@ -442,6 +442,19 @@ function NuovaClipModal({ clienti, team, contenuti, onClose, onCreated, onClipUp
                       Rimuovi tutti
                     </button>
                   </div>
+                )}
+                {selectedFiles.length > 0 && (
+                  <label className="flex items-center gap-2 mt-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={uploadToDrive}
+                      onChange={e => setUploadToDrive(e.target.checked)}
+                      className="w-3.5 h-3.5 rounded accent-[hsl(var(--clr-green))]"
+                    />
+                    <span className="text-[11px] text-muted-foreground">
+                      ☁️ Carica anche su Google Drive
+                    </span>
+                  </label>
                 )}
               </>
             ) : (
