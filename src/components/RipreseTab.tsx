@@ -689,7 +689,7 @@ function RowDropZonePicker({ files, clip, onPick, onCancel }: RowDropZonePickerP
   );
 }
 
-// ─── ZipDownloadButton ───────────────────────────────────────────────────────
+// ─── ZipDownloadButton (client-side ZIP via client-zip + streamsaver) ────────
 
 function ZipDownloadButton({ rawFiles, teamId, clpId, clpTitolo }: {
   rawFiles: LogRipresa[];
@@ -698,7 +698,7 @@ function ZipDownloadButton({ rawFiles, teamId, clpId, clpTitolo }: {
   clpTitolo: string;
 }) {
   const [downloading, setDownloading] = useState(false);
-  const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [progress, setProgress] = useState({ current: 0, total: 0, bytes: 0 });
   const { addToast } = useApp();
 
   const filesWithId = rawFiles.filter(c => !!c.file_id);
@@ -707,57 +707,49 @@ function ZipDownloadButton({ rawFiles, teamId, clpId, clpTitolo }: {
   const handleDownload = async () => {
     if (downloading || total === 0) return;
     setDownloading(true);
-    setProgress({ current: 0, total });
+    setProgress({ current: 0, total, bytes: 0 });
 
     try {
-      const files = filesWithId.map(c => ({
-        fileId: c.file_id!,
-        fileName: c.file_name || c.file_id || 'file',
-      }));
+      const { downloadZip } = await import('client-zip');
+      const streamSaver = (await import('streamsaver')).default;
 
-      // Sanitize zip name
       const safeTitolo = (clpTitolo || 'clip').replace(/[^a-zA-Z0-9À-ÿ_\- ]/g, '').replace(/\s+/g, '-');
       const zipName = `${clpId || 'CLP'}_${safeTitolo}_clip.zip`;
 
-      // Show progress simulation (we can't get per-file progress from a single request)
-      const progressInterval = setInterval(() => {
-        setProgress(prev => {
-          const next = Math.min(prev.current + 1, prev.total - 1);
-          return { ...prev, current: next };
-        });
-      }, 800);
+      let completed = 0;
+      let totalBytes = 0;
 
-      const res = await fetch(
-        `${SUPABASE_URL}/functions/v1/google-drive-download-zip`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': ANON_KEY,
-            'Authorization': `Bearer ${ANON_KEY}`,
-          },
-          body: JSON.stringify({ teamId, files, zipName }),
+      // Build an async generator that yields file entries one by one
+      async function* fileEntries() {
+        for (const clip of filesWithId) {
+          const url = `${SUPABASE_URL}/functions/v1/google-drive-download?fileId=${encodeURIComponent(clip.file_id!)}&teamId=${encodeURIComponent(teamId)}`;
+          const res = await fetch(url, {
+            headers: {
+              'apikey': ANON_KEY,
+              'Authorization': `Bearer ${ANON_KEY}`,
+            },
+          });
+          if (!res.ok) {
+            console.warn(`[ZipDownload] Skip ${clip.file_name}: HTTP ${res.status}`);
+            completed++;
+            setProgress(p => ({ ...p, current: completed }));
+            continue;
+          }
+          const blob = await res.blob();
+          totalBytes += blob.size;
+          completed++;
+          setProgress({ current: completed, total, bytes: totalBytes });
+          yield { name: clip.file_name || clip.file_id || `file_${completed}`, input: blob };
         }
-      );
-
-      clearInterval(progressInterval);
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Download ZIP fallito' }));
-        throw new Error(err.error || `HTTP ${res.status}`);
       }
 
-      setProgress({ current: total, total });
+      const zipResponse = downloadZip(fileEntries());
+      const zipBody = zipResponse.body;
 
-      const blob = await res.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = zipName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(blobUrl);
+      if (!zipBody) throw new Error('ZIP stream not available');
+
+      const fileStream = streamSaver.createWriteStream(zipName);
+      await zipBody.pipeTo(fileStream);
 
       addToast(`✅ ZIP scaricato: ${zipName}`, 'success');
     } catch (err: any) {
@@ -765,8 +757,14 @@ function ZipDownloadButton({ rawFiles, teamId, clpId, clpTitolo }: {
       addToast(`❌ Errore download ZIP: ${err.message}`, 'error');
     } finally {
       setDownloading(false);
-      setProgress({ current: 0, total: 0 });
+      setProgress({ current: 0, total: 0, bytes: 0 });
     }
+  };
+
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   };
 
   return (
@@ -780,7 +778,7 @@ function ZipDownloadButton({ rawFiles, teamId, clpId, clpTitolo }: {
           <span className="inline-block w-3 h-3 border-2 border-[hsl(var(--clr-blue))] border-t-transparent rounded-full animate-spin" />
         ) : '📦'}
         {downloading
-          ? `Preparazione download… ${progress.current}/${progress.total} file`
+          ? `Scaricamento… ${progress.current}/${progress.total} file${progress.bytes > 0 ? ` (${formatSize(progress.bytes)})` : ''}`
           : `Scarica tutti come ZIP (${total} file)`}
       </button>
       {downloading && (
