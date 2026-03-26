@@ -672,7 +672,7 @@ function extractSonyCode(fileName: string): string | null {
 function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: GroupFileCellProps) {
   const [open, setOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { utente } = useApp();
+  const { utente, addToast } = useApp();
   const { enqueue } = useUpload();
 
   // Sum raw_files_count across all clips
@@ -684,6 +684,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
   const totalCount = groupClips.length;
   const rawFiles = groupClips.filter(c => c.file_id && !c.file_deleted_at);
   const hasExported = !!reprClip.exported_file_id;
+  const driveConnected = !!(utente as any)?.google_drive_connected;
 
   const dot = hasExported
     ? 'bg-[hsl(var(--clr-green))]'
@@ -694,7 +695,12 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
   /** Match each file to its clip by Sony code; fallback to reprClip */
   function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
-    const teamId = utente?.id || '';
+    if (!utente) { addToast('❌ Utente non trovato', 'error'); return; }
+    if (!driveConnected) {
+      addToast('⚠️ Connetti prima Google Drive nelle Impostazioni → Integrazioni', 'warn');
+      return;
+    }
+    const teamId = utente.id;
 
     // Build a map: sonyCode → clip
     const codeMap = new Map<string, LogRipresa>();
