@@ -663,6 +663,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
   const [clips, setClips] = useState<LogRipresa[]>([]);
   const [contenuti, setContenuti] = useState<Record<string, Contenuto>>({});
   const [loading, setLoading] = useState(true);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [filtroStato, setFiltroStato] = useState<string>('');
   const [filtroCliente, setFiltroCliente] = useState('');
   const [filtroOperatore, setFiltroOperatore] = useState('');
