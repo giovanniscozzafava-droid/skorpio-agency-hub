@@ -52,21 +52,30 @@ function ClienteDropdown({
   const handleCreate = async () => {
     if (!newNome.trim()) return;
     setSaving(true);
-    const { data: seqData } = await supabase.rpc('generate_display_id', { prefix: 'CLI', seq_name: 'cli_seq' });
-    const { data, error } = await supabase
-      .from('clienti')
-      .insert({ nome: newNome.trim(), stato: 'Attivo', id_display: seqData || `CLI${Date.now()}` })
-      .select()
-      .single();
-    setSaving(false);
-    if (!error && data) {
-      onChange(data.id, data.nome);
-      setQuery(data.nome);
-      setOpen(false);
-      setCreatingNew(false);
-      setNewNome('');
-      // Aggiunge il nuovo cliente alla lista locale
-      clienti.push(data as Cliente);
+    try {
+      // Prova a generare display_id, ma non bloccare se la sequenza non esiste
+      let id_display = `CLI${Date.now()}`;
+      try {
+        const { data: seqData } = await supabase.rpc('generate_display_id', { prefix: 'CLI', seq_name: 'cli_seq' });
+        if (seqData) id_display = seqData;
+      } catch (_) { /* usa fallback */ }
+
+      const { data, error } = await supabase
+        .from('clienti')
+        .insert({ nome: newNome.trim(), stato: 'Attivo', id_display })
+        .select()
+        .single();
+
+      if (!error && data) {
+        onChange(data.id, data.nome);
+        setQuery(data.nome);
+        setOpen(false);
+        setCreatingNew(false);
+        setNewNome('');
+        clienti.push(data as Cliente);
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
