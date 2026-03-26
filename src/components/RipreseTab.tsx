@@ -295,7 +295,7 @@ function NuovaClipModal({ clienti, team, contenuti, onClose, onCreated, onClipUp
       operatore: form.operatore,
     }));
 
-    const { error } = await supabase.from('log_riprese').insert(rows);
+    const { data: insertedRows, error } = await supabase.from('log_riprese').insert(rows).select();
     setLoading(false);
 
     if (error) {
@@ -319,6 +319,25 @@ function NuovaClipModal({ clienti, team, contenuti, onClose, onCreated, onClipUp
           .from('contenuti')
           .update({ fase: 'Girato' })
           .eq('id', contenutoId);
+      }
+    }
+
+    // ── Enqueue uploads if files were selected with autoNomi + uploadToDrive ──
+    if (autoNomi && uploadToDrive && selectedFiles.length > 0 && insertedRows && utente) {
+      const driveConnected = !!(utente as any)?.google_drive_connected;
+      if (!driveConnected) {
+        addToast('⚠️ File non caricati: connetti Google Drive nelle Impostazioni', 'warn');
+      } else {
+        const clp = contenutoId ? contenuti[contenutoId] : null;
+        // Map each file to its inserted clip record by matching code
+        for (const file of selectedFiles) {
+          const code = file.name.replace(/\.[^/.]+$/, '');
+          const clipRecord = (insertedRows as LogRipresa[]).find(r => r.id_clip === code);
+          if (clipRecord) {
+            enqueue([file], 'clip', clipRecord, clp, utente.id, (id, patch) => onClipUpdated(id, patch));
+          }
+        }
+        addToast(`☁️ ${selectedFiles.length} file in coda di upload`, 'success');
       }
     }
 
