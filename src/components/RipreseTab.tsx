@@ -1091,7 +1091,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
           <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
             Caricamento clip…
           </div>
-        ) : filtered.length === 0 ? (
+        ) : groupedRows.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
             <div className="text-4xl mb-2">🎬</div>
             <p className="text-sm">Nessuna clip trovata</p>
@@ -1100,134 +1100,290 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
           <table className="w-full border-collapse">
             <thead>
               <tr>
+                <th className={thCls + ' w-6'}></th>
                 <th className={thCls}>Clip Sony</th>
                 <th className={thCls}>CLP</th>
                 <th className={thCls}>Cliente</th>
                 <th className={thCls}>Titolo</th>
                 <th className={thCls}>Stato Clip</th>
                 <th className={thCls}>Fase CLP</th>
-                <th className={thCls}>Formato</th>
                 <th className={thCls}>Operatore</th>
                 <th className={`${thCls} w-12 text-center`}>FILE</th>
-                <th className={`${thCls} w-8 text-center`}>☁️</th>
                 <th className={`${thCls} w-8 text-center`}>🗑️</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map(clip => {
-                const clp = clip.contenuto_id ? contenuti[clip.contenuto_id] : null;
-                const isDeleting = deletingId === clip.id;
-                const isDragTarget = rowDragTarget === clip.id;
+              {groupedRows.map(group => {
+                const { key, clp, clips: groupClips, isOrphan } = group;
+                const isExpanded = expandedGroups.has(key);
+                const firstClip = groupClips[0];
+
+                // Aggregate stato counts
+                const statoCounts = groupClips.reduce((acc, c) => {
+                  acc[c.stato] = (acc[c.stato] || 0) + 1;
+                  return acc;
+                }, {} as Record<string, number>);
+
+                // Exported file: find first clip with exported_file_id
+                const exportedClip = groupClips.find(c => c.exported_file_id) || null;
+                // Representative clip for FileUpload (prefer exportedClip, fallback first)
+                const reprClip = exportedClip || firstClip;
+
+                // Sony codes
+                const MAX_VISIBLE = 5;
+                const codes = groupClips.map(c => c.id_clip);
+                const visibleCodes = codes.slice(0, MAX_VISIBLE);
+                const hiddenCount = codes.length - MAX_VISIBLE;
+
+                // Operatori unici
+                const operatori = [...new Set(groupClips.map(c => c.operatore).filter(Boolean))];
+
+                const isDragTargetGroup = groupClips.some(c => rowDragTarget === c.id);
+
                 return (
-                  <tr key={clip.id}
-                    className={`hover:bg-muted/40 transition-colors group cursor-pointer ${isDragTarget ? 'bg-primary/5 outline outline-2 outline-primary/40' : ''}`}
-                    onClick={() => setDetailClip(clip)}
-                    onDragOver={e => { e.preventDefault(); setRowDragTarget(clip.id); }}
-                    onDragLeave={() => setRowDragTarget(null)}
-                    onDrop={e => {
-                      e.preventDefault();
-                      setRowDragTarget(null);
-                      const files = Array.from(e.dataTransfer.files).filter(f =>
-                        f.type.startsWith('video/') || /\.(mp4|mov|avi|mxf|r3d)$/i.test(f.name)
-                      );
-                      if (files.length === 0) return;
-                      e.stopPropagation();
-                      setDropZonePicker({ files, clip });
-                    }}
-                  >
-                    {/* Clip ID */}
-                    <td className={`${tdCls} font-mono font-semibold text-[hsl(var(--clr-blue))]`}>
-                      {clip.id_clip}
-                    </td>
-
-                    {/* CLP */}
-                    <td className={tdCls} onClick={e => e.stopPropagation()}>
-                      {clip.id_contenuto_display ? (
-                        <span className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                          {clip.id_contenuto_display}
-                        </span>
-                      ) : <span className="text-muted-foreground text-xs">—</span>}
-                    </td>
-
-                    {/* Cliente */}
-                    <td className={`${tdCls} max-w-[120px]`}>
-                      <span className="truncate block text-xs text-muted-foreground">
-                        {clip.cliente_nome || '—'}
-                      </span>
-                    </td>
-
-                    {/* Titolo */}
-                    <td className={`${tdCls} max-w-[180px]`}>
-                      <span className="truncate block text-xs">{clip.titolo || '—'}</span>
-                    </td>
-
-                    {/* Stato inline select */}
-                    <td className={tdCls} onClick={e => e.stopPropagation()}>
-                      <InlineSelect
-                        value={clip.stato}
-                        options={STATI}
-                        onChange={v => handleStatoChange(clip, v)}
-                        colorMap={Object.fromEntries(
-                          Object.entries(STATO_CFG).map(([k, v]) => [k, { text: v.text, border: v.border }])
-                        )}
-                      />
-                    </td>
-
-                    {/* Fase CLP badge */}
-                    <td className={tdCls}>
-                      {clp ? <FaseBadge fase={clp.fase} /> : <span className="text-xs text-muted-foreground">—</span>}
-                    </td>
-
-                    {/* Formato inline select */}
-                    <td className={tdCls} onClick={e => e.stopPropagation()}>
-                      <InlineSelect
-                        value={clip.formato || ''}
-                        options={['', ...FORMATI]}
-                        onChange={v => updateClip(clip.id, { formato: v })}
-                      />
-                    </td>
-
-                    {/* Operatore */}
-                    <td className={tdCls}>
-                      <span className="text-xs text-muted-foreground">{clip.operatore || '—'}</span>
-                    </td>
-
-                    {/* File column — Google Drive */}
-                    <td className={`${tdCls} text-center relative`} onClick={e => e.stopPropagation()}>
-                      <ClipFileUpload
-                        clip={clip}
-                        clp={clp}
-                        onUpdated={patch => updateClipLocally(clip.id, patch)}
-                        variant="row"
-                      />
-                    </td>
-
-                    {/* ☁️ placeholder col — keeps table balanced */}
-                    <td className={`${tdCls} text-center`} />
-
-                    {/* Delete */}
-                    <td className={`${tdCls} text-center`} onClick={e => e.stopPropagation()}>
-                      {isDeleting ? (
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => deleteClip(clip.id)}
-                            className="text-[10px] px-1.5 py-0.5 rounded bg-[hsl(var(--clr-red))] text-white font-semibold hover:opacity-80">
-                            Sì
-                          </button>
-                          <button onClick={() => setDeletingId(null)}
-                            className="text-[10px] px-1.5 py-0.5 rounded border border-border hover:bg-muted">
-                            No
-                          </button>
-                        </div>
-                      ) : (
+                  <React.Fragment key={key}>
+                    {/* ── GROUP ROW ── */}
+                    <tr
+                      className={`hover:bg-muted/40 transition-colors group cursor-pointer border-b border-border/30 ${isDragTargetGroup ? 'bg-primary/5' : ''}`}
+                      onClick={() => toggleGroup(key)}
+                      onDragOver={e => { e.preventDefault(); setRowDragTarget(firstClip.id); }}
+                      onDragLeave={() => setRowDragTarget(null)}
+                      onDrop={e => {
+                        e.preventDefault();
+                        setRowDragTarget(null);
+                        const files = Array.from(e.dataTransfer.files).filter(f =>
+                          f.type.startsWith('video/') || /\.(mp4|mov|avi|mxf|r3d)$/i.test(f.name)
+                        );
+                        if (files.length === 0) return;
+                        e.stopPropagation();
+                        setDropZonePicker({ files, clip: reprClip });
+                      }}
+                    >
+                      {/* Expand toggle */}
+                      <td className={`${tdCls} text-center w-6`} onClick={e => e.stopPropagation()}>
                         <button
-                          onClick={() => setDeletingId(clip.id)}
-                          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-[hsl(var(--clr-red))] transition-all text-sm"
+                          onClick={() => toggleGroup(key)}
+                          className="text-muted-foreground hover:text-foreground text-[11px] w-5 h-5 flex items-center justify-center rounded transition-colors"
+                          title={isExpanded ? 'Comprimi' : `Espandi ${groupClips.length} clip`}
                         >
-                          🗑️
+                          {isExpanded ? '▾' : '▸'}
                         </button>
-                      )}
-                    </td>
-                  </tr>
+                      </td>
+
+                      {/* Sony codes as chips */}
+                      <td className={`${tdCls} max-w-[220px]`}>
+                        <div className="flex flex-wrap gap-1 items-center">
+                          {visibleCodes.map(code => (
+                            <span
+                              key={code}
+                              className="font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[hsl(var(--clr-blue)/0.1)] text-[hsl(var(--clr-blue))] border border-[hsl(var(--clr-blue)/0.25)] cursor-pointer hover:bg-[hsl(var(--clr-blue)/0.18)]"
+                              onClick={e => {
+                                e.stopPropagation();
+                                const c = groupClips.find(x => x.id_clip === code);
+                                if (c) setDetailClip(c);
+                              }}
+                            >
+                              {code}
+                            </span>
+                          ))}
+                          {hiddenCount > 0 && (
+                            <span className="text-[10px] text-muted-foreground font-medium">
+                              +{hiddenCount} altre
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* CLP */}
+                      <td className={tdCls}>
+                        {clp ? (
+                          <span className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                            {clp.id_display}
+                          </span>
+                        ) : <span className="text-muted-foreground text-xs">—</span>}
+                      </td>
+
+                      {/* Cliente */}
+                      <td className={`${tdCls} max-w-[120px]`}>
+                        <span className="truncate block text-xs text-muted-foreground">
+                          {firstClip.cliente_nome || '—'}
+                        </span>
+                      </td>
+
+                      {/* Titolo */}
+                      <td className={`${tdCls} max-w-[180px]`}>
+                        <span className="truncate block text-xs">{clp?.titolo || firstClip.titolo || '—'}</span>
+                      </td>
+
+                      {/* Stato aggregate */}
+                      <td className={tdCls} onClick={e => e.stopPropagation()}>
+                        <div className="flex flex-wrap gap-1">
+                          {Object.entries(statoCounts)
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([stato, cnt]) => {
+                              const cfg = STATO_CFG[stato] || STATO_CFG['Grezza'];
+                              return (
+                                <span key={stato}
+                                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border"
+                                  style={{ background: cfg.bg, color: cfg.text, borderColor: cfg.border }}
+                                >
+                                  {cnt} {stato}
+                                </span>
+                              );
+                            })}
+                        </div>
+                      </td>
+
+                      {/* Fase CLP */}
+                      <td className={tdCls}>
+                        {clp ? <FaseBadge fase={clp.fase} /> : <span className="text-xs text-muted-foreground">—</span>}
+                      </td>
+
+                      {/* Operatore */}
+                      <td className={tdCls}>
+                        <span className="text-xs text-muted-foreground">{operatori.join(', ') || '—'}</span>
+                      </td>
+
+                      {/* File column */}
+                      <td className={`${tdCls} text-center relative`} onClick={e => e.stopPropagation()}>
+                        <ClipFileUpload
+                          clip={reprClip}
+                          clp={clp}
+                          onUpdated={patch => updateClipLocally(reprClip.id, patch)}
+                          variant="row"
+                        />
+                      </td>
+
+                      {/* Delete group */}
+                      <td className={`${tdCls} text-center`} onClick={e => e.stopPropagation()}>
+                        {deletingId === key ? (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={async () => {
+                                for (const c of groupClips) await deleteClip(c.id);
+                                setDeletingId(null);
+                              }}
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-[hsl(var(--clr-red))] text-white font-semibold hover:opacity-80"
+                            >
+                              Sì
+                            </button>
+                            <button onClick={() => setDeletingId(null)}
+                              className="text-[10px] px-1.5 py-0.5 rounded border border-border hover:bg-muted">
+                              No
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setDeletingId(key)}
+                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-[hsl(var(--clr-red))] transition-all text-sm"
+                            title={`Elimina tutte le ${groupClips.length} clip`}
+                          >
+                            🗑️
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+
+                    {/* ── EXPANDED: individual clip sub-rows ── */}
+                    {isExpanded && groupClips.map(clip => {
+                      const isDeleting = deletingId === clip.id;
+                      const isDragTarget = rowDragTarget === clip.id;
+                      return (
+                        <tr key={clip.id}
+                          className={`transition-colors group cursor-pointer bg-muted/20 hover:bg-muted/40 ${isDragTarget ? 'bg-primary/5' : ''}`}
+                          onClick={() => setDetailClip(clip)}
+                          onDragOver={e => { e.preventDefault(); setRowDragTarget(clip.id); }}
+                          onDragLeave={() => setRowDragTarget(null)}
+                          onDrop={e => {
+                            e.preventDefault();
+                            setRowDragTarget(null);
+                            const files = Array.from(e.dataTransfer.files).filter(f =>
+                              f.type.startsWith('video/') || /\.(mp4|mov|avi|mxf|r3d)$/i.test(f.name)
+                            );
+                            if (files.length === 0) return;
+                            e.stopPropagation();
+                            setDropZonePicker({ files, clip });
+                          }}
+                        >
+                          {/* indent spacer */}
+                          <td className={tdCls}></td>
+
+                          {/* Clip ID */}
+                          <td className={`${tdCls} pl-5`}>
+                            <span className="font-mono text-[11px] font-semibold text-[hsl(var(--clr-blue))]">
+                              ↳ {clip.id_clip}
+                            </span>
+                          </td>
+
+                          {/* CLP (empty in sub-row) */}
+                          <td className={tdCls}></td>
+
+                          {/* Cliente */}
+                          <td className={`${tdCls} max-w-[120px]`}>
+                            <span className="truncate block text-xs text-muted-foreground">{clip.cliente_nome || '—'}</span>
+                          </td>
+
+                          {/* Titolo */}
+                          <td className={`${tdCls} max-w-[180px]`}>
+                            <span className="truncate block text-xs text-muted-foreground">{clip.titolo || '—'}</span>
+                          </td>
+
+                          {/* Stato inline select */}
+                          <td className={tdCls} onClick={e => e.stopPropagation()}>
+                            <InlineSelect
+                              value={clip.stato}
+                              options={STATI}
+                              onChange={v => handleStatoChange(clip, v)}
+                              colorMap={Object.fromEntries(
+                                Object.entries(STATO_CFG).map(([k, v]) => [k, { text: v.text, border: v.border }])
+                              )}
+                            />
+                          </td>
+
+                          {/* Fase CLP */}
+                          <td className={tdCls}></td>
+
+                          {/* Operatore */}
+                          <td className={tdCls}>
+                            <span className="text-xs text-muted-foreground">{clip.operatore || '—'}</span>
+                          </td>
+
+                          {/* File upload */}
+                          <td className={`${tdCls} text-center relative`} onClick={e => e.stopPropagation()}>
+                            <ClipFileUpload
+                              clip={clip}
+                              clp={clp}
+                              onUpdated={patch => updateClipLocally(clip.id, patch)}
+                              variant="row"
+                            />
+                          </td>
+
+                          {/* Delete single clip */}
+                          <td className={`${tdCls} text-center`} onClick={e => e.stopPropagation()}>
+                            {isDeleting ? (
+                              <div className="flex items-center gap-1">
+                                <button onClick={() => deleteClip(clip.id)}
+                                  className="text-[10px] px-1.5 py-0.5 rounded bg-[hsl(var(--clr-red))] text-white font-semibold hover:opacity-80">
+                                  Sì
+                                </button>
+                                <button onClick={() => setDeletingId(null)}
+                                  className="text-[10px] px-1.5 py-0.5 rounded border border-border hover:bg-muted">
+                                  No
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setDeletingId(clip.id)}
+                                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-[hsl(var(--clr-red))] transition-all text-sm"
+                              >
+                                🗑️
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </React.Fragment>
                 );
               })}
             </tbody>
