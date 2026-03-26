@@ -86,6 +86,20 @@ async function findFolder(accessToken: string, name: string, parentId: string): 
   return data.files?.length > 0 ? data.files[0].id : null;
 }
 
+/** Imposta permessi "anyone with link = writer" */
+async function shareAnyone(accessToken: string, fileId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'writer', type: 'anyone' }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 /** Crea una cartella su Google Drive */
 async function createFolder(accessToken: string, name: string, parentId?: string): Promise<string> {
   const body: Record<string, unknown> = { name, mimeType: 'application/vnd.google-apps.folder' };
@@ -97,15 +111,31 @@ async function createFolder(accessToken: string, name: string, parentId?: string
   });
   const data = await res.json();
   if (!res.ok) throw new Error(`Drive create error [${res.status}]: ${JSON.stringify(data)}`);
+  await shareAnyone(accessToken, data.id);
   return data.id;
 }
 
-/** Trova o crea una cartella */
-async function findOrCreate(accessToken: string, name: string, parentId: string): Promise<{ id: string; existed: boolean }> {
-  const existing = await findFolder(accessToken, name, parentId);
-  if (existing) return { id: existing, existed: true };
-  const id = await createFolder(accessToken, name, parentId);
-  return { id, existed: false };
+/** Elenca tutti i file/cartelle dentro un folder (ricorsivo) */
+async function listAllFiles(accessToken: string, folderId: string): Promise<string[]> {
+  const ids: string[] = [folderId];
+  let pageToken: string | undefined;
+  do {
+    const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
+    let url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=nextPageToken,files(id,mimeType)&pageSize=1000`;
+    if (pageToken) url += `&pageToken=${pageToken}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const data = await res.json();
+    if (!res.ok) break;
+    for (const f of (data.files || [])) {
+      ids.push(f.id);
+      if (f.mimeType === 'application/vnd.google-apps.folder') {
+        const subIds = await listAllFiles(accessToken, f.id);
+        ids.push(...subIds.filter(id => id !== f.id));
+      }
+    }
+    pageToken = data.nextPageToken;
+  } while (pageToken);
+  return ids;
 }
 
 type LogEntry = { icon: string; label: string; detail: string };
