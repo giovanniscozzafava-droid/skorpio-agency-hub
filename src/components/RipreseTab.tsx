@@ -1878,7 +1878,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
                           <button
                             onClick={() => setDeletingId(key)}
                             className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-[hsl(var(--clr-red))] transition-all text-sm"
-                            title={`Elimina tutte le ${groupClips.length} clip`}
+                            title={`Elimina tutte le ${groupClips.length} clip (+ file da Drive)`}
                           >
                             🗑️
                           </button>
