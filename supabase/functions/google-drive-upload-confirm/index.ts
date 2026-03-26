@@ -68,8 +68,9 @@ serve(async (req) => {
       fileName,
       fileSize,
       mimeType,
-      rawFilesCount,  // per zona clip: conteggio aggiornato
-      rawFilesSize,   // per zona clip: dimensione totale aggiornata
+      rawFilesCount,
+      rawFilesSize,
+      teamId,       // per impostare i permessi
     } = await req.json();
 
     if (!clipId || !zone || !fileId || !fileName) {
@@ -77,6 +78,16 @@ serve(async (req) => {
         JSON.stringify({ error: 'Parametri mancanti: clipId, zone, fileId, fileName' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // Share the uploaded file with "anyone with link"
+    if (teamId) {
+      try {
+        const accessToken = await getValidAccessToken(teamId);
+        await shareAnyone(accessToken, fileId);
+      } catch (e) {
+        console.warn('[upload-confirm] Permessi non impostati:', e);
+      }
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
