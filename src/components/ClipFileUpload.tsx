@@ -84,11 +84,13 @@ function buildRenamedFileName(
   return `${clipIdDisplay}_${n}_${baseName}.${ext}`;
 }
 
-// ─── Core upload logic — chunked direct to Google Drive ───────────────────────
-// Max 5 GB, chunk size 5 MB, retry 3x con backoff esponenziale.
+// ─── Core upload logic — chunked via Edge Function proxy ─────────────────────
+// Il browser NON parla mai direttamente con googleapis.com.
+// Ogni chunk passa per la edge function google-drive-upload-chunk.
+// Chunk size: 4 MB (sotto il limite body ~6 MB delle edge functions Supabase).
 // Resume support via localStorage.
 
-const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB
+const CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB (proxy-safe)
 const MAX_FILE_SIZE = 5 * 1024 * 1024 * 1024; // 5 GB
 
 function getResumeKey(clipId: string, zone: string, fileName: string) {
@@ -103,26 +105,33 @@ interface ResumeState {
   mimeType: string;
 }
 
-// Interroga Google Drive per verificare se l'upload è già completato
-// Utile quando l'ultimo chunk fallisce con network error ma il file è già su Drive
-async function checkDriveUploadComplete(uploadUrl: string, fileSize: number, mimeType: string): Promise<string | null> {
-  try {
-    const res = await fetch(uploadUrl, {
-      method: 'PUT',
-      headers: {
-        'Content-Range': `bytes */${fileSize}`,
-        'Content-Type': mimeType,
-      },
-    });
-    if (res.status === 200 || res.status === 201) {
-      const data = await res.json().catch(() => null);
-      if (data?.id) return data.id as string;
-    }
-    // 308 = ancora incompleto, null = dobbiamo riprendere
-    return null;
-  } catch {
-    return null;
+// Invia un singolo chunk alla edge function proxy
+async function sendChunkViaProxy(
+  uploadUrl: string,
+  chunk: Blob,
+  contentRange: string,
+  mimeType: string
+): Promise<{ status: number; range?: string | null; fileId?: string }> {
+  const proxyUrl = `${SUPABASE_URL}/functions/v1/google-drive-upload-chunk`;
+  const res = await fetch(proxyUrl, {
+    method: 'PUT',
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'x-upload-url': uploadUrl,
+      'x-content-range': contentRange,
+      'x-content-type': mimeType,
+      'Content-Type': 'application/octet-stream',
+    },
+    body: chunk,
+  });
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(errData?.error || `Proxy error ${res.status}`);
   }
+
+  return res.json();
 }
 
 async function uploadChunkedToDrive(
@@ -137,56 +146,35 @@ async function uploadChunkedToDrive(
   while (uploadedBytes < file.size) {
     const end = Math.min(uploadedBytes + CHUNK_SIZE, file.size);
     const chunk = file.slice(uploadedBytes, end);
-    const isLastChunk = end === file.size;
+    const contentRange = `bytes ${uploadedBytes}-${end - 1}/${file.size}`;
 
-    let res: Response | null = null;
+    let result: { status: number; range?: string | null; fileId?: string } | null = null;
     let lastErr: Error | null = null;
 
-    // Retry up to 3 volte con backoff esponenziale
+    // Retry fino a 3 volte con backoff esponenziale
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        res = await fetch(uploadUrl, {
-          method: 'PUT',
-          headers: {
-            'Content-Range': `bytes ${uploadedBytes}-${end - 1}/${file.size}`,
-            'Content-Type': mimeType,
-          },
-          body: chunk,
-        });
+        result = await sendChunkViaProxy(uploadUrl, chunk, contentRange, mimeType);
         lastErr = null;
         break;
       } catch (e) {
         lastErr = e instanceof Error ? e : new Error(String(e));
+        console.warn(`[upload] Chunk attempt ${attempt + 1} fallito:`, lastErr.message);
         if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
       }
     }
 
-    // Se network error sull'ultimo chunk, Drive potrebbe aver già completato l'upload.
-    // Interroga lo stato della sessione prima di arrendersi.
-    if ((lastErr || !res) && isLastChunk) {
-      console.warn('[upload] Network error sull\'ultimo chunk, verifico stato Drive...');
-      await new Promise(r => setTimeout(r, 2000)); // attendi che Drive processi
-      const recoveredId = await checkDriveUploadComplete(uploadUrl, file.size, mimeType);
-      if (recoveredId) {
-        console.log('[upload] Recovery riuscita! fileId:', recoveredId);
-        onProgress({ loaded: file.size, total: file.size, percent: 100, fileName: file.name });
-        return recoveredId;
-      }
-    }
+    if (lastErr || !result) throw lastErr || new Error('Upload chunk fallito dopo 3 tentativi');
 
-    if (lastErr || !res) throw lastErr || new Error('Upload chunk fallito dopo 3 tentativi');
-
-    if (res.status === 308) {
-      // Incomplete — continua
-      const range = res.headers.get('Range');
-      uploadedBytes = range ? parseInt(range.split('-')[1]) + 1 : end;
-    } else if (res.status === 200 || res.status === 201) {
-      const data = await res.json();
+    if (result.status === 308) {
+      // Incompleto — aggiorna posizione
+      uploadedBytes = result.range ? parseInt(result.range.split('-')[1]) + 1 : end;
+    } else if (result.status === 200 || result.status === 201) {
+      if (!result.fileId) throw new Error('Upload completato ma fileId mancante');
       onProgress({ loaded: file.size, total: file.size, percent: 100, fileName: file.name });
-      return data.id as string;
+      return result.fileId;
     } else {
-      const body = await res.text().catch(() => '');
-      throw new Error(`Chunk upload error ${res.status}: ${body.slice(0, 200)}`);
+      throw new Error(`Chunk upload status inatteso: ${result.status}`);
     }
 
     onProgress({
@@ -195,13 +183,6 @@ async function uploadChunkedToDrive(
       percent: Math.min(99, Math.round((uploadedBytes / file.size) * 100)),
       fileName: file.name,
     });
-  }
-
-  // Fallback finale: verifica se Drive ha completato silenziosamente
-  const finalCheck = await checkDriveUploadComplete(uploadUrl, file.size, mimeType);
-  if (finalCheck) {
-    onProgress({ loaded: file.size, total: file.size, percent: 100, fileName: file.name });
-    return finalCheck;
   }
 
   throw new Error('Upload terminato senza conferma da Google Drive');
