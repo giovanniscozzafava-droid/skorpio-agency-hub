@@ -8,6 +8,28 @@ import { ClipReviewModal } from './ClipReviewModal';
 import { BulkUploadModal, AutoCleanupDialog } from './DriveStorageIndicator';
 import { getStorageService } from '../services/storage';
 
+// ─── Drive URL helpers ────────────────────────────────────────────────────────
+function driveViewUrl(fileId: string) {
+  return `https://drive.google.com/file/d/${fileId}/view`;
+}
+function driveDownloadUrl(fileId: string) {
+  return `https://drive.google.com/uc?export=download&id=${fileId}`;
+}
+function drivePreviewUrl(fileId: string) {
+  return `https://drive.google.com/file/d/${fileId}/preview`;
+}
+function driveFolderUrl(folderId: string) {
+  return `https://drive.google.com/drive/folders/${folderId}`;
+}
+function isVideoFile(fileName?: string | null, mimeType?: string | null) {
+  if (mimeType && mimeType.startsWith('video/')) return true;
+  if (fileName) {
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    return ['mp4', 'mov', 'avi', 'mxf', 'r3d', 'mkv', 'webm'].includes(ext || '');
+  }
+  return false;
+}
+
 // ─── constants ───────────────────────────────────────────────────────────────
 
 const STATI: LogRipresa['stato'][] = ['Da girare', 'Grezza', 'Buona', 'Scartata', 'Usata'];
