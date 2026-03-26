@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { toDateStr } from '../lib/dateUtils';
 import type { Task, TeamMember, Cliente } from '../types';
 
 const TIPI_TASK = ['Call', 'Briefing', 'Sopralluogo', 'Riprese', 'Shooting', 'Consegna Foto', 'Piano Editoriale', 'Amministrativo', 'Grafica', 'Montaggio', 'Copywriting', 'Altro'];
@@ -50,7 +51,7 @@ export function NuovoTaskModal({ team, clienti, utente, onClose, onCreated, data
     } else if (!hasData && form.scadenza_giorni) {
       const d = new Date();
       d.setDate(d.getDate() + parseInt(form.scadenza_giorni));
-      scadenza = d.toISOString().split('T')[0];
+      scadenza = toDateStr(d);
     }
 
     const clienteSel = clienti.find(c => c.id === form.cliente_id);

@@ -28,16 +28,20 @@ function ClienteDropdown({
   const [creatingNew, setCreatingNew] = useState(false);
   const [newNome, setNewNome] = useState('');
   const [saving, setSaving] = useState(false);
+  const [localClienti, setLocalClienti] = useState<Cliente[]>(clienti);
   const ref = useRef<HTMLDivElement>(null);
 
-  const attivi = clienti.filter(c => c.stato === 'Attivo');
+  useEffect(() => {
+    setLocalClienti(clienti);
+  }, [clienti]);
+
+  const attivi = localClienti.filter(c => c.stato === 'Attivo');
   const filtered = query.trim()
     ? attivi.filter(c => c.nome.toLowerCase().includes(query.toLowerCase()))
     : attivi;
 
   const selected = attivi.find(c => c.id === value);
 
-  // Click outside
   useEffect(() => {
     const fn = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
@@ -53,12 +57,11 @@ function ClienteDropdown({
     if (!newNome.trim()) return;
     setSaving(true);
     try {
-      // Prova a generare display_id, ma non bloccare se la sequenza non esiste
       let id_display = `CLI${Date.now()}`;
       try {
         const { data: seqData } = await supabase.rpc('generate_display_id', { prefix: 'CLI', seq_name: 'cli_seq' });
         if (seqData) id_display = seqData;
-      } catch (_) { /* usa fallback */ }
+      } catch (_) { }
 
       const { data, error } = await supabase
         .from('clienti')
@@ -67,12 +70,12 @@ function ClienteDropdown({
         .single();
 
       if (!error && data) {
+        setLocalClienti(prev => [...prev, data as Cliente]);
         onChange(data.id, data.nome);
         setQuery(data.nome);
         setOpen(false);
         setCreatingNew(false);
         setNewNome('');
-        clienti.push(data as Cliente);
       }
     } finally {
       setSaving(false);

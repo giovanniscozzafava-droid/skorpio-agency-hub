@@ -699,72 +699,115 @@ function ZipDownloadButton({ rawFiles, teamId, clpId, clpTitolo }: {
 }) {
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0, bytes: 0 });
+  const mountedRef = useRef(true);
   const { addToast } = useApp();
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const filesWithId = rawFiles.filter(c => !!c.file_id);
   const total = filesWithId.length;
-
-  const handleDownload = async () => {
-    if (downloading || total === 0) return;
-    setDownloading(true);
-    setProgress({ current: 0, total, bytes: 0 });
-
-    try {
-      const { downloadZip } = await import('client-zip');
-      const streamSaver = (await import('streamsaver')).default;
-
-      const safeTitolo = (clpTitolo || 'clip').replace(/[^a-zA-Z0-9À-ÿ_\- ]/g, '').replace(/\s+/g, '-');
-      const zipName = `${clpId || 'CLP'}_${safeTitolo}_clip.zip`;
-
-      let completed = 0;
-      let totalBytes = 0;
-
-      // Build an async generator that yields file entries one by one
-      async function* fileEntries() {
-        for (const clip of filesWithId) {
-          const url = `${SUPABASE_URL}/functions/v1/google-drive-download?fileId=${encodeURIComponent(clip.file_id!)}&teamId=${encodeURIComponent(teamId)}`;
-          const res = await fetch(url, {
-            headers: {
-              'apikey': ANON_KEY,
-              'Authorization': `Bearer ${ANON_KEY}`,
-            },
-          });
-          if (!res.ok) {
-            console.warn(`[ZipDownload] Skip ${clip.file_name}: HTTP ${res.status}`);
-            completed++;
-            setProgress(p => ({ ...p, current: completed }));
-            continue;
-          }
-          const blob = await res.blob();
-          totalBytes += blob.size;
-          completed++;
-          setProgress({ current: completed, total, bytes: totalBytes });
-          yield { name: clip.file_name || clip.file_id || `file_${completed}`, input: blob };
-        }
-      }
-
-      const zipResponse = downloadZip(fileEntries());
-      const zipBody = zipResponse.body;
-
-      if (!zipBody) throw new Error('ZIP stream not available');
-
-      const fileStream = streamSaver.createWriteStream(zipName);
-      await zipBody.pipeTo(fileStream);
-
-      addToast(`✅ ZIP scaricato: ${zipName}`, 'success');
-    } catch (err: any) {
-      console.error('[ZipDownload]', err);
-      addToast(`❌ Errore download ZIP: ${err.message}`, 'error');
-    } finally {
-      setDownloading(false);
-      setProgress({ current: 0, total: 0, bytes: 0 });
-    }
-  };
 
   const formatSize = (bytes: number) => {
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
     if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  };
+
+  const handleDownload = () => {
+    if (downloading || total === 0) return;
+
+    setDownloading(true);
+    setProgress({ current: 0, total, bytes: 0 });
+
+    void (async () => {
+      try {
+        const { downloadZip } = await import('client-zip');
+        const streamSaver = (await import('streamsaver')).default;
+
+        const safeTitolo = (clpTitolo || 'clip').replace(/[^a-zA-Z0-9À-ÿ_\- ]/g, '').replace(/\s+/g, '-');
+        const zipName = `${clpId || 'CLP'}_${safeTitolo}_clip.zip`;
+
+        let completed = 0;
+        let totalBytes = 0;
+
+        async function createTrackedStream(clip: LogRipresa) {
+          const url = `${SUPABASE_URL}/functions/v1/google-drive-download?fileId=${encodeURIComponent(clip.file_id!)}&teamId=${encodeURIComponent(teamId)}`;
+          const res = await fetch(url, {
+            headers: {
+              apikey: ANON_KEY,
+              Authorization: `Bearer ${ANON_KEY}`,
+            },
+          });
+
+          if (!res.ok || !res.body) {
+            console.warn(`[ZipDownload] Skip ${clip.file_name}: HTTP ${res.status}`);
+            completed += 1;
+            if (mountedRef.current) {
+              setProgress({ current: completed, total, bytes: totalBytes });
+            }
+            return null;
+          }
+
+          const reader = res.body.getReader();
+          let fileBytes = 0;
+
+          return new ReadableStream<Uint8Array>({
+            async pull(controller) {
+              const { done, value } = await reader.read();
+
+              if (done) {
+                totalBytes += fileBytes;
+                completed += 1;
+                if (mountedRef.current) {
+                  setProgress({ current: completed, total, bytes: totalBytes });
+                }
+                controller.close();
+                return;
+              }
+
+              fileBytes += value.byteLength;
+              if (mountedRef.current) {
+                setProgress({ current: completed, total, bytes: totalBytes + fileBytes });
+              }
+              controller.enqueue(value);
+            },
+            async cancel(reason) {
+              try {
+                await reader.cancel(reason);
+              } catch {
+              }
+            },
+          });
+        }
+
+        async function* fileEntries() {
+          for (const clip of filesWithId) {
+            const input = await createTrackedStream(clip);
+            if (!input) continue;
+            yield { name: clip.file_name || clip.file_id || `file_${completed + 1}`, input };
+          }
+        }
+
+        const zipBody = downloadZip(fileEntries()).body;
+        if (!zipBody) throw new Error('ZIP stream not available');
+
+        const fileStream = streamSaver.createWriteStream(zipName);
+        await zipBody.pipeTo(fileStream);
+        addToast(`✅ ZIP scaricato: ${zipName}`, 'success');
+      } catch (err: any) {
+        console.error('[ZipDownload]', err);
+        addToast(`❌ Errore download ZIP: ${err.message}`, 'error');
+      } finally {
+        if (mountedRef.current) {
+          setDownloading(false);
+          setProgress({ current: 0, total: 0, bytes: 0 });
+        }
+      }
+    })();
   };
 
   return (

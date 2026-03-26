@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { AppProvider, useApp } from '../context/AppContext';
 import { UploadProvider } from '../context/UploadContext';
 import { LandingPage } from './LandingPage';
@@ -24,12 +24,16 @@ function MainApp() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [personaView, setPersonaView] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadSharedData = useCallback(() => {
     if (!utente) return;
     supabase.from('team').select('*').order('created_at').then(({ data }) => setTeam((data as TeamMember[]) || []));
     supabase.from('clienti').select('*').order('nome').then(({ data }) => setClienti((data as Cliente[]) || []));
     supabase.from('task').select('*').neq('stato', 'Archiviato').then(({ data }) => setTasks((data as Task[]) || []));
   }, [utente]);
+
+  useEffect(() => {
+    loadSharedData();
+  }, [loadSharedData, tab]);
 
   // 1. Non autenticato → Landing Page
   if (!session) return <LandingPage onAuthenticated={() => {}} />;
