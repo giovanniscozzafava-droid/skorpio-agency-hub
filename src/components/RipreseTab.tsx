@@ -896,14 +896,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
                       <span className="flex-shrink-0 text-[10px] px-1 py-0.5 rounded opacity-30 cursor-not-allowed text-muted-foreground" title="File non disponibile per il download — prova a ricaricare">⬇</span>
                     )}
 
-                    {/* Open on Drive */}
-                    {hasId && (
-                      <button
-                        onClick={() => window.open(driveViewUrl(c.file_id!), '_blank', 'noopener,noreferrer')}
-                        className="flex-shrink-0 text-[10px] px-1 py-0.5 rounded bg-[hsl(var(--muted))] text-muted-foreground hover:opacity-80"
-                        title="Apri su Drive"
-                      >↗</button>
-                    )}
+                    {/* Download proxy */}
 
                     {/* Delete */}
                     <button
