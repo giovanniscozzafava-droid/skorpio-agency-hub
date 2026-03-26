@@ -228,18 +228,15 @@ async function uploadFileToZone(
     onProgress({ loaded: 0, total: file.size, percent: 1, fileName: file.name });
 
     const result = await invokeEdge('google-drive-upload-init', {
-      method: 'POST',
-      body: JSON.stringify({
-        fileName,
-        mimeType,
-        fileSize: file.size,
-        teamId: userId,
-        clientName: clip.cliente_nome || 'Generale',
-        zone,
-        contenutoId: clip.contenuto_id,
-        idDisplay: clp?.id_display || clip.id_contenuto_display || '',
-        titolo: clp?.titolo || clip.titolo || '',
-      }),
+      fileName,
+      mimeType,
+      fileSize: file.size,
+      teamId: userId,
+      clientName: clip.cliente_nome || 'Generale',
+      zone,
+      contenutoId: clip.contenuto_id,
+      idDisplay: clp?.id_display || clip.id_contenuto_display || '',
+      titolo: clp?.titolo || clip.titolo || '',
     });
 
     uploadUrl = result.uploadUrl;
