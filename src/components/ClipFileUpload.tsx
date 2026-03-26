@@ -610,10 +610,7 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
     if (!clip.file_id) return;
     if (!confirm(`Rimuovere il file grezzo "${clip.file_name}" da Google Drive?`)) return;
     try {
-      await invokeEdge('google-drive-delete', {
-        method: 'POST',
-        body: JSON.stringify({ fileId: clip.file_id, teamId: utente?.id }),
-      });
+      await invokeEdge('google-drive-delete', { fileId: clip.file_id, teamId: utente?.id });
     } catch (err) {
       console.warn('[ClipFileUpload] delete raw failed:', err);
     }
