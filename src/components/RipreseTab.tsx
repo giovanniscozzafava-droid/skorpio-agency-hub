@@ -2034,8 +2034,10 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
         <NuovaClipModal
           clienti={clienti}
           team={team}
+          contenuti={contenuti}
           onClose={() => setShowNuova(false)}
           onCreated={loadClips}
+          onClipUpdated={(clipId, patch) => updateClipLocally(clipId, patch)}
         />
       )}
 
