@@ -1,7 +1,7 @@
 // ─── google-drive-upload-confirm ─────────────────────────────────────────────
 // Chiamata dal frontend dopo che l'upload chunked è completato.
 // Salva i metadati del file (fileId, fileUrl, fileName, fileSize, ecc.)
-// nel record log_riprese corrispondente.
+// nel record log_riprese corrispondente e imposta i permessi di condivisione.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -12,6 +12,50 @@ const corsHeaders = {
 
 const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const GOOGLE_CLIENT_ID     = Deno.env.get('GOOGLE_CLIENT_ID')!;
+const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET')!;
+
+async function getValidAccessToken(teamId: string): Promise<string> {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  const { data: member, error } = await supabase
+    .from('team')
+    .select('google_drive_access_token, google_drive_refresh_token, google_drive_token_expiry, google_drive_connected')
+    .eq('id', teamId)
+    .single();
+  if (error || !member) throw new Error('Membro team non trovato');
+  if (!member.google_drive_refresh_token) throw new Error('Refresh token mancante');
+  const nowMs = Date.now();
+  if (member.google_drive_access_token && (member.google_drive_token_expiry ?? 0) - nowMs > 180000) {
+    return member.google_drive_access_token;
+  }
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET,
+      refresh_token: member.google_drive_refresh_token, grant_type: 'refresh_token',
+    }),
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(`Refresh fallito: ${data.error}`);
+  await supabase.from('team').update({
+    google_drive_access_token: data.access_token,
+    google_drive_token_expiry: nowMs + data.expires_in * 1000,
+  }).eq('id', teamId);
+  return data.access_token;
+}
+
+async function shareAnyone(accessToken: string, fileId: string): Promise<void> {
+  try {
+    await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'writer', type: 'anyone' }),
+    });
+  } catch (e) {
+    console.warn(`⚠️ Permessi non impostati su ${fileId}:`, e);
+  }
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
