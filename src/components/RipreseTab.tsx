@@ -671,9 +671,10 @@ function extractSonyCode(fileName: string): string | null {
 
 function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: GroupFileCellProps) {
   const [open, setOpen] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { utente, addToast } = useApp();
-  const { enqueue } = useUpload();
+  const { enqueue, queue } = useUpload();
 
   // Sum raw_files_count across all clips
   const totalRawFiles = groupClips.reduce((sum, c) => {
@@ -685,6 +686,15 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
   const rawFiles = groupClips.filter(c => c.file_id && !c.file_deleted_at);
   const hasExported = !!reprClip.exported_file_id;
   const driveConnected = !!(utente as any)?.google_drive_connected;
+
+  // Check if any upload is active for this CLP group
+  const clpIds = new Set(groupClips.map(c => c.id));
+  const isUploading = queue.some(u =>
+    clpIds.has(u.clipId) && (u.status === 'uploading' || u.status === 'queued')
+  );
+  const uploadingCount = queue.filter(u =>
+    clpIds.has(u.clipId) && (u.status === 'uploading' || u.status === 'queued')
+  ).length;
 
   const dot = hasExported
     ? 'bg-[hsl(var(--clr-green))]'
