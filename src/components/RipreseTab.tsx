@@ -133,6 +133,10 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
   const [clpConClip, setClpConClip] = useState<Contenuto[]>([]);
   const [clpClipCount, setClpClipCount] = useState<Record<string, string[]>>({});
 
+  const [autoNomi, setAutoNomi] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [form, setForm] = useState({
     codici: '',
     titolo: '',
@@ -143,6 +147,9 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
     operatore: '',
   });
   const [loading, setLoading] = useState(false);
+
+  // Extract clip codes from file names (without extension)
+  const autoCodesList = selectedFiles.map(f => f.name.replace(/\.[^/.]+$/, ''));
 
   useEffect(() => {
     async function load() {
@@ -220,8 +227,10 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const rawCodes = form.codici.split(',').map(s => s.trim()).filter(Boolean);
-    if (rawCodes.length === 0) { addToast('⚠️ Inserisci almeno un codice Sony', 'warn'); return; }
+    const rawCodes = autoNomi
+      ? autoCodesList
+      : form.codici.split(',').map(s => s.trim()).filter(Boolean);
+    if (rawCodes.length === 0) { addToast(autoNomi ? '⚠️ Seleziona almeno un file' : '⚠️ Inserisci almeno un codice Sony', 'warn'); return; }
     if (!form.clienteId && clpMode === 'nuovo') {
       addToast('⚠️ Seleziona un cliente', 'warn'); return;
     }
@@ -359,22 +368,78 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
 
         <form onSubmit={submit} className="px-6 py-5 space-y-4 overflow-y-auto flex-1">
           <div>
-            <label className={labelCls}>Codice(i) Sony * <span className="text-muted-foreground font-normal">(separati da virgola)</span></label>
-            <input
-              autoFocus
-              className={inputCls}
-              placeholder="es: C7876, C7877, C7878"
-              value={form.codici}
-              onChange={e => set('codici', e.target.value)}
-            />
-            {form.codici && (
-              <div className="mt-1 flex flex-wrap gap-1">
-                {form.codici.split(',').map(s => s.trim()).filter(Boolean).map(code => (
-                  <span key={code} className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-[hsl(var(--clr-blue)/0.12)] text-[hsl(var(--clr-blue))] border border-[hsl(var(--clr-blue)/0.3)]">
-                    {code}
-                  </span>
-                ))}
-              </div>
+            <div className="flex items-center justify-between mb-1">
+              <label className={labelCls + ' mb-0'}>
+                {autoNomi ? 'File da cui estrarre i nomi' : 'Codice(i) Sony *'}
+                {!autoNomi && <span className="text-muted-foreground font-normal"> (separati da virgola)</span>}
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={autoNomi}
+                  onChange={e => { setAutoNomi(e.target.checked); setSelectedFiles([]); }}
+                  className="w-3.5 h-3.5 rounded accent-[hsl(var(--clr-blue))]"
+                />
+                <span className="text-[11px] text-muted-foreground">Nomi automatici dai file</span>
+              </label>
+            </div>
+
+            {autoNomi ? (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={e => {
+                    const files = Array.from(e.target.files || []);
+                    setSelectedFiles(prev => {
+                      const existing = new Set(prev.map(f => f.name));
+                      return [...prev, ...files.filter(f => !existing.has(f.name))];
+                    });
+                    e.target.value = '';
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full border-2 border-dashed border-border rounded-lg px-3 py-3 text-sm text-muted-foreground hover:border-[hsl(var(--clr-blue)/0.5)] hover:text-foreground transition-colors text-center"
+                >
+                  📂 Clicca per selezionare i file clip
+                </button>
+                {selectedFiles.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {selectedFiles.map((f, i) => (
+                      <span key={f.name} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[hsl(var(--clr-blue)/0.12)] text-[hsl(var(--clr-blue))] border border-[hsl(var(--clr-blue)/0.3)]">
+                        {f.name.replace(/\.[^/.]+$/, '')}
+                        <button type="button" onClick={() => setSelectedFiles(prev => prev.filter((_, j) => j !== i))} className="hover:text-[hsl(var(--clr-red))] ml-0.5">×</button>
+                      </span>
+                    ))}
+                    <button type="button" onClick={() => setSelectedFiles([])} className="text-[10px] text-muted-foreground hover:text-[hsl(var(--clr-red))] ml-1">
+                      Rimuovi tutti
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <input
+                  autoFocus
+                  className={inputCls}
+                  placeholder="es: C7876, C7877, C7878"
+                  value={form.codici}
+                  onChange={e => set('codici', e.target.value)}
+                />
+                {form.codici && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {form.codici.split(',').map(s => s.trim()).filter(Boolean).map(code => (
+                      <span key={code} className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-[hsl(var(--clr-blue)/0.12)] text-[hsl(var(--clr-blue))] border border-[hsl(var(--clr-blue)/0.3)]">
+                        {code}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
 
