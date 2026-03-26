@@ -254,6 +254,16 @@ export async function completaTaskEAvanzaFase(
     }
   }
 
+  // Se faseNext = Programmato e la data di pubblicazione è <= oggi → pubblica subito + cleanup
+  if (step.faseNext === 'Programmato' && contenuto.data_pubblicazione) {
+    const oggi = toDateStr(new Date());
+    if (contenuto.data_pubblicazione <= oggi) {
+      await supabase.from('contenuti').update({ fase: 'Pubblicato' }).eq('id', contenutoId);
+      await creaTaskCleanup(contenuto as Contenuto, team as any[]);
+      return 'Pubblicato' as FaseCLP;
+    }
+  }
+
   return step.faseNext;
 }
 

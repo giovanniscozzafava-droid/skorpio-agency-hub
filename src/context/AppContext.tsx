@@ -115,20 +115,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('message', handler);
   }, [utente]);
 
-  // ── Auto-pubblica CLPs programmati con data <= oggi ──────────────────────
+  // ── Auto-pubblica CLPs programmati con data <= oggi (mount + ogni 5 min) ──
   useEffect(() => {
-    checkAutoPubblica().then(n => {
+    const run = () => checkAutoPubblica().then(n => {
       if (n > 0) {
         const id = Math.random().toString(36).slice(2);
         setToasts(prev => [...prev, {
           id,
-          msg: `🚀 ${n} contenuto${n > 1 ? 'i' : ''} auto-pubblicato${n > 1 ? 'i' : ''} — task Elisa completati`,
+          msg: `🚀 ${n} contenuto${n > 1 ? 'i' : ''} auto-pubblicato${n > 1 ? 'i' : ''} — task cleanup creati per Elisa`,
           tipo: 'success'
         }]);
         setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 5000);
       }
     });
-  }, []); // solo al mount
+    run();
+    const interval = setInterval(run, 5 * 60 * 1000); // ogni 5 minuti
+    return () => clearInterval(interval);
+  }, []);
 
   const addToast = (msg: string, tipo: 'info' | 'success' | 'error' | 'warn' = 'info') => {
     const id = Math.random().toString(36).slice(2);
