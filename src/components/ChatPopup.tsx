@@ -76,10 +76,11 @@ export function ChatPopup({ team }: ChatPopupProps) {
   // Carica messaggi — dipende solo dal nome (primitivo) per stabilità
   const caricaMessaggi = useCallback(async () => {
     if (!utenteNome) return;
+    // Usa la sintassi PostgREST corretta con virgolette per nomi con spazi
     const { data } = await supabase
       .from('chat_messaggi')
       .select('*')
-      .or(`da.eq.${utenteNome},a.eq.${utenteNome}`)
+      .or(`da.eq."${utenteNome}",a.eq."${utenteNome}"`)
       .order('created_at', { ascending: true });
     setMessaggi((data as ChatMessaggio[]) || []);
   }, [utenteNome]);
@@ -97,7 +98,7 @@ export function ChatPopup({ team }: ChatPopupProps) {
     caricaReactions();
   }, [caricaMessaggi, caricaReactions]);
 
-  // Realtime messaggi — dipende solo dal nome (primitivo) per evitare ri-subscribe su ogni render
+  // Realtime messaggi — INSERT + UPDATE (per spunte blu)
   useEffect(() => {
     if (!utenteNome) return;
     const channel = supabase
@@ -123,6 +124,19 @@ export function ChatPopup({ team }: ChatPopupProps) {
                 });
               }
             }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'chat_messaggi' },
+        (payload) => {
+          // Aggiorna letto: true in tempo reale → spunta blu per il mittente
+          const updated = payload.new as ChatMessaggio;
+          if (updated.da === utenteNome || updated.a === utenteNome) {
+            setMessaggi(prev =>
+              prev.map(m => m.id === updated.id ? { ...m, letto: updated.letto } : m)
+            );
           }
         }
       )
@@ -668,14 +682,23 @@ export function ChatPopup({ team }: ChatPopupProps) {
                             )}
 
                             {/* Ora + spunta letto */}
-                            <div className="flex items-center gap-1.5 mt-0.5 px-1">
+                            <div className="flex items-center gap-1 mt-0.5 px-1">
                               <span className="text-xs opacity-50" style={{ color: 'hsl(var(--muted-foreground))', fontSize: 10 }}>
                                 {new Date(msg.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
                               </span>
                               {isMio && (
-                                <span style={{ fontSize: 10, color: 'hsl(var(--muted-foreground))' }}>
-                                  {msg.letto ? '✓✓' : '✓'}
-                                </span>
+                                msg.letto ? (
+                                  /* Doppie spunte blu — letto */
+                                  <svg width="16" height="10" viewBox="0 0 16 10" fill="none" style={{ flexShrink: 0 }}>
+                                    <path d="M1 5l3.5 3.5L11 1" stroke="hsl(210 100% 56%)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                                    <path d="M5 5l3.5 3.5L15 1" stroke="hsl(210 100% 56%)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                                  </svg>
+                                ) : (
+                                  /* Singola spunta grigia — inviato */
+                                  <svg width="10" height="8" viewBox="0 0 10 8" fill="none" style={{ flexShrink: 0 }}>
+                                    <path d="M1 4l3 3L9 1" stroke="hsl(var(--muted-foreground))" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" opacity="0.6"/>
+                                  </svg>
+                                )
                               )}
                             </div>
                           </div>
