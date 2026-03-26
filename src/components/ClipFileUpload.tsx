@@ -615,13 +615,13 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
 
   // ─── ROW variant ──────────────────────────────────────────────────────────
   if (variant === 'row') {
-    if (uploadingZone && progress) {
+    if (isUploading && activeUpload) {
       return (
         <div className="flex items-center gap-1 min-w-[80px]">
           <div className="w-12 h-1 rounded-full bg-muted overflow-hidden flex-shrink-0">
-            <div className="h-full bg-primary transition-all" style={{ width: `${progress.percent}%` }} />
+            <div className="h-full bg-primary transition-all" style={{ width: `${activeUpload.percent}%` }} />
           </div>
-          <span className="text-[10px] text-muted-foreground">{progress.percent}%</span>
+          <span className="text-[10px] text-muted-foreground">{activeUpload.percent}%</span>
         </div>
       );
     }
