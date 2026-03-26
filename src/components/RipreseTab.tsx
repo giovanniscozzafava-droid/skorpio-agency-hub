@@ -664,18 +664,24 @@ interface GroupFileCellProps {
 function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdated }: GroupFileCellProps) {
   const [open, setOpen] = useState(false);
 
-  // Count clips that have at least one raw file uploaded (file_id present, not deleted)
-  const rawFiles = groupClips.filter(c => c.file_id && !c.file_deleted_at);
-  const rawCount = rawFiles.length;
+  // Sum raw_files_count across all clips (each clip can have multiple raw files uploaded)
+  // Fallback: if raw_files_count is 0/null but file_id is present, count as 1
+  const totalRawFiles = groupClips.reduce((sum, c) => {
+    if (c.raw_files_count && c.raw_files_count > 0) return sum + c.raw_files_count;
+    if (c.file_id && !c.file_deleted_at) return sum + 1;
+    return sum;
+  }, 0);
   const totalCount = groupClips.length;
+  // Clips with at least one file (for the popover list)
+  const rawFiles = groupClips.filter(c => c.file_id && !c.file_deleted_at);
 
   // Exported file on reprClip
   const hasExported = !!reprClip.exported_file_id;
 
-  // Dot color logic: green=exported present, yellow=only raw, black=nothing, red=anomaly
+  // Dot color logic: green=exported present, yellow=has raw files, muted=nothing
   const dot = hasExported
     ? 'bg-[hsl(var(--clr-green))]'
-    : rawCount > 0
+    : totalRawFiles > 0
       ? 'bg-[hsl(var(--clr-amber))]'
       : 'bg-[hsl(var(--muted-foreground))]';
 
@@ -688,10 +694,10 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdated }: GroupFil
       <button
         className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
         onClick={e => { e.stopPropagation(); setOpen(v => !v); }}
-        title={`${rawCount} file grezzi su ${totalCount} clip`}
+        title={`${totalRawFiles} file grezzi caricati su ${totalCount} clip`}
       >
         <span>📁</span>
-        <span className="font-semibold tabular-nums">{rawCount}/{totalCount}</span>
+        <span className="font-semibold tabular-nums">{totalRawFiles}/{totalCount}</span>
       </button>
 
       {/* Upload button for the group (uses reprClip) */}
@@ -710,7 +716,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdated }: GroupFil
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold text-foreground">
-              File grezzi · {rawCount} / {totalCount} clip
+              File grezzi · {totalRawFiles} / {totalCount} clip
             </span>
             <button
               className="text-muted-foreground hover:text-foreground text-xs"
@@ -756,7 +762,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdated }: GroupFil
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-[11px] font-semibold text-[hsl(var(--clr-blue))] hover:underline"
               >
-                📂 Apri cartella Drive — Scarica tutti ({rawCount} file)
+                📂 Apri cartella Drive — Scarica tutti ({totalRawFiles} file)
               </a>
             </div>
           )}
