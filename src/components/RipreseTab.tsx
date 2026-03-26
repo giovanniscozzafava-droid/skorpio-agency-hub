@@ -963,19 +963,15 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
             </div>
           )}
 
-          {/* Download all — proxy download each file */}
+          {/* Download all as ZIP */}
           {rawFiles.length > 0 && (
             <div className="mt-2 pt-2 border-t border-border">
-              <button
-                onClick={async () => {
-                  for (const c of rawFiles) {
-                    if (c.file_id) await downloadFileProxy(c.file_id, utente?.id || '', c.file_name || c.file_id || 'download');
-                  }
-                }}
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[hsl(var(--clr-blue))] hover:underline"
-              >
-                📂 Scarica tutti ({totalRawFiles} file)
-              </button>
+              <ZipDownloadButton
+                rawFiles={rawFiles}
+                teamId={utente?.id || ''}
+                clpId={reprClip.id_contenuto_display || ''}
+                clpTitolo={reprClip.titolo || clp?.titolo || ''}
+              />
             </div>
           )}
 
