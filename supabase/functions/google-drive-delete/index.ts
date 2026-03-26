@@ -61,24 +61,44 @@ serve(async (req) => {
   try {
     const { fileId, teamId } = await req.json();
 
-    if (!fileId || !teamId) {
+    if (!fileId) {
       return new Response(
-        JSON.stringify({ error: 'fileId e teamId sono obbligatori' }),
+        JSON.stringify({ error: 'fileId è obbligatorio' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const accessToken = await getValidAccessToken(teamId);
+    let accessToken: string;
+    try {
+      if (!teamId) throw new Error('teamId mancante');
+      accessToken = await getValidAccessToken(teamId);
+    } catch (tokenErr: unknown) {
+      const msg = tokenErr instanceof Error ? tokenErr.message : 'Token error';
+      console.error('[google-drive-delete] token error:', msg);
+      return new Response(
+        JSON.stringify({ error: `Token non disponibile: ${msg}` }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     const deleteRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${accessToken}` },
     });
 
+    // 204 = deleted, 200 = ok
     if (deleteRes.status === 204 || deleteRes.status === 200) {
       return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+    }
+
+    // 404 = file already gone — not a blocking error
+    if (deleteRes.status === 404) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'notFound', message: 'File non trovato su Drive (già eliminato)' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const body = await deleteRes.text();
