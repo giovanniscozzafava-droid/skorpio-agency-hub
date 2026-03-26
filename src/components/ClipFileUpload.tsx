@@ -521,102 +521,45 @@ function FileInfoPopover({ clip, clp, onDeleteRaw, onOpenUpload, onUpdated }: Fi
 
 export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFileUploadProps) {
   const { addToast, utente } = useApp();
-  const rawInputRef  = useRef<HTMLInputElement>(null);
-  const expInputRef  = useRef<HTMLInputElement>(null);
+  const { enqueue, queue } = useUpload();
+  const rawInputRef = useRef<HTMLInputElement>(null);
+  const expInputRef = useRef<HTMLInputElement>(null);
 
-  const [uploadingZone, setUploadingZone] = useState<'clip' | 'file_esportato' | null>(null);
-  const [uploadQueue, setUploadQueue] = useState<{ name: string; done: boolean }[]>([]);
-  const [progress, setProgress] = useState<UploadProgress | null>(null);
   const [draggingZone, setDraggingZone] = useState<'clip' | 'file_esportato' | null>(null);
   const [showDeleteExport, setShowDeleteExport] = useState(false);
   const [showVideoPlayer, setShowVideoPlayer] = useState(false);
-
-  // We keep a local mutable ref for raw_files_count to handle sequential uploads
-  const localRawCount = useRef(clip.raw_files_count || 0);
-  const localRawSize  = useRef(clip.raw_files_size  || 0);
 
   const hasExport  = !!(clip.exported_file_id && clip.exported_file_url);
   const hasRawFile = !!(clip.file_id && !clip.file_deleted_at) || (clip.raw_files_count || 0) > 0;
   const driveConnected = !!(utente as any)?.google_drive_connected;
 
-  // Update local refs when clip changes externally
-  React.useEffect(() => {
-    localRawCount.current = clip.raw_files_count || 0;
-    localRawSize.current  = clip.raw_files_size  || 0;
-  }, [clip.raw_files_count, clip.raw_files_size]);
+  // Global uploads for THIS clip
+  const clipUploads = queue.filter(u => u.clipId === clip.id);
+  const activeUpload = clipUploads.find(u => u.status === 'uploading');
+  const isUploading = !!activeUpload;
+  const uploadingZone = activeUpload?.zone ?? null;
 
-  const doUpload = useCallback(async (file: File, zone: 'clip' | 'file_esportato') => {
+  // Callback passed to UploadContext so it can update the local component state
+  const handleUpdated = useCallback((_clipId: string, patch: Partial<LogRipresa>) => {
+    onUpdated(patch);
+  }, [onUpdated]);
+
+  const doMultiUpload = useCallback((files: File[], zone: 'clip' | 'file_esportato') => {
     if (!utente) { addToast('❌ Utente non trovato', 'error'); return; }
     if (!driveConnected) {
       addToast('⚠️ Connetti prima Google Drive nelle Impostazioni → Integrazioni', 'warn');
       return;
     }
-
-    setUploadingZone(zone);
-    setProgress({ loaded: 0, total: file.size, percent: 2, fileName: file.name });
-
-    try {
-      const { fileId, fileUrl, fileName } = await uploadFileToZone(
-        file, zone, clip, clp, utente.id,
-        (p) => setProgress(p)
-      );
-
-      setProgress({ loaded: file.size, total: file.size, percent: 99, fileName: file.name });
-
-      let patch: Partial<LogRipresa> = {};
-
-      if (zone === 'clip') {
-        localRawCount.current += 1;
-        localRawSize.current  += file.size;
-        patch = {
-          file_id: fileId,
-          file_url: fileUrl,
-          file_name: fileName,
-          file_size: file.size,
-          file_mime_type: file.type || 'video/mp4',
-          file_uploaded_at: new Date().toISOString(),
-          file_deleted_at: null,
-          raw_files_count: localRawCount.current,
-          raw_files_size: localRawSize.current,
-        };
-      } else {
-        patch = {
-          exported_file_id: fileId,
-          exported_file_url: fileUrl,
-          exported_file_name: fileName,
-          exported_file_size: file.size,
-          exported_file_mime_type: file.type || 'video/mp4',
-          exported_file_uploaded_at: new Date().toISOString(),
-        };
-      }
-
-      const { error } = await supabase.from('log_riprese').update(patch).eq('id', clip.id);
-      if (error) throw error;
-
-      setProgress({ loaded: file.size, total: file.size, percent: 100, fileName: file.name });
-      onUpdated(patch);
-
-      const label = zone === 'clip' ? `📁 Grezzo caricato (${localRawCount.current} tot.)` : '✅ Video esportato caricato';
-      addToast(`${label}: ${fileName}`, 'success');
-    } catch (err: unknown) {
-      console.error('[ClipFileUpload] upload failed:', err);
-      const msg = err instanceof Error ? err.message : 'Errore sconosciuto';
-      addToast(`❌ Upload fallito: ${msg.slice(0, 100)}`, 'error');
-    } finally {
-      setUploadingZone(null);
-      setProgress(null);
+    if (zone === 'file_esportato' && files.length > 1) {
+      addToast('⚠️ Puoi caricare un solo file esportato alla volta', 'warn');
+      files = [files[0]];
     }
-  }, [clip, clp, onUpdated, addToast, utente, driveConnected]);
+    enqueue(files, zone, clip, clp, utente.id, handleUpdated);
+  }, [utente, driveConnected, enqueue, clip, clp, handleUpdated, addToast]);
 
-  // Sequential multi-file upload
-  const doMultiUpload = useCallback(async (files: File[], zone: 'clip' | 'file_esportato') => {
-    setUploadQueue(files.map(f => ({ name: f.name, done: false })));
-    for (let i = 0; i < files.length; i++) {
-      await doUpload(files[i], zone);
-      setUploadQueue(q => q.map((item, idx) => idx === i ? { ...item, done: true } : item));
-    }
-    setUploadQueue([]);
-  }, [doUpload]);
+  const doUpload = useCallback((file: File, zone: 'clip' | 'file_esportato') => {
+    doMultiUpload([file], zone);
+  }, [doMultiUpload]);
 
   const handleDeleteExport = async () => {
     if (!clip.exported_file_id) return;
