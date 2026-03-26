@@ -103,6 +103,28 @@ interface ResumeState {
   mimeType: string;
 }
 
+// Interroga Google Drive per verificare se l'upload è già completato
+// Utile quando l'ultimo chunk fallisce con network error ma il file è già su Drive
+async function checkDriveUploadComplete(uploadUrl: string, fileSize: number, mimeType: string): Promise<string | null> {
+  try {
+    const res = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Range': `bytes */${fileSize}`,
+        'Content-Type': mimeType,
+      },
+    });
+    if (res.status === 200 || res.status === 201) {
+      const data = await res.json().catch(() => null);
+      if (data?.id) return data.id as string;
+    }
+    // 308 = ancora incompleto, null = dobbiamo riprendere
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function uploadChunkedToDrive(
   uploadUrl: string,
   file: File,
@@ -115,6 +137,7 @@ async function uploadChunkedToDrive(
   while (uploadedBytes < file.size) {
     const end = Math.min(uploadedBytes + CHUNK_SIZE, file.size);
     const chunk = file.slice(uploadedBytes, end);
+    const isLastChunk = end === file.size;
 
     let res: Response | null = null;
     let lastErr: Error | null = null;
@@ -135,6 +158,19 @@ async function uploadChunkedToDrive(
       } catch (e) {
         lastErr = e instanceof Error ? e : new Error(String(e));
         if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+      }
+    }
+
+    // Se network error sull'ultimo chunk, Drive potrebbe aver già completato l'upload.
+    // Interroga lo stato della sessione prima di arrendersi.
+    if ((lastErr || !res) && isLastChunk) {
+      console.warn('[upload] Network error sull\'ultimo chunk, verifico stato Drive...');
+      await new Promise(r => setTimeout(r, 2000)); // attendi che Drive processi
+      const recoveredId = await checkDriveUploadComplete(uploadUrl, file.size, mimeType);
+      if (recoveredId) {
+        console.log('[upload] Recovery riuscita! fileId:', recoveredId);
+        onProgress({ loaded: file.size, total: file.size, percent: 100, fileName: file.name });
+        return recoveredId;
       }
     }
 
@@ -159,6 +195,13 @@ async function uploadChunkedToDrive(
       percent: Math.min(99, Math.round((uploadedBytes / file.size) * 100)),
       fileName: file.name,
     });
+  }
+
+  // Fallback finale: verifica se Drive ha completato silenziosamente
+  const finalCheck = await checkDriveUploadComplete(uploadUrl, file.size, mimeType);
+  if (finalCheck) {
+    onProgress({ loaded: file.size, total: file.size, percent: 100, fileName: file.name });
+    return finalCheck;
   }
 
   throw new Error('Upload terminato senza conferma da Google Drive');
