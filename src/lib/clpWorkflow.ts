@@ -2,6 +2,7 @@
  * CLP Workflow utilities — condivisi tra CLPDetailPanel e TaskDetailPanel
  */
 import { supabase } from './supabase';
+import { toDateStr } from './dateUtils';
 import type { Contenuto, FaseCLP, TeamMember } from '../types';
 
 // Mappa tipo task → fase CLP corrente + prossima fase + prossimo task
@@ -261,7 +262,7 @@ export async function completaTaskEAvanzaFase(
  * vengono portati a "Pubblicato" e il task Programmazione di Elisa viene completato.
  */
 export async function checkAutoPubblica(): Promise<number> {
-  const oggi = new Date().toISOString().split('T')[0];
+  const oggi = toDateStr(new Date());
 
   const { data: daPublicare } = await supabase
     .from('contenuti')
