@@ -138,6 +138,14 @@ async function listAllFiles(accessToken: string, folderId: string): Promise<stri
   return ids;
 }
 
+/** Trova o crea una cartella */
+async function findOrCreate(accessToken: string, name: string, parentId: string): Promise<{ id: string; existed: boolean }> {
+  const existing = await findFolder(accessToken, name, parentId);
+  if (existing) return { id: existing, existed: true };
+  const id = await createFolder(accessToken, name, parentId);
+  return { id, existed: false };
+}
+
 type LogEntry = { icon: string; label: string; detail: string };
 
 Deno.serve(async (req) => {
