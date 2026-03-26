@@ -316,7 +316,7 @@ export function ContenutiTab({ team, clienti }: ContentTabProps) {
                     </td>
                     <td className="px-3 py-2">
                       <span className="text-xs" style={{ color: 'hsl(var(--skorpio-text-secondary))' }}>
-                        {c.data_ripresa ? new Date(c.data_ripresa).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }) : '—'}
+                        {c.data_ripresa ? parseLocalDate(c.data_ripresa).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }) : '—'}
                       </span>
                     </td>
                     <td className="px-3 py-2">
