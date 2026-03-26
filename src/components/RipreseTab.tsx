@@ -893,7 +893,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
                     {/* Download direct */}
                     {hasId ? (
                       <button
-                        onClick={() => window.open(driveDownloadUrl(c.file_id!), '_blank', 'noopener,noreferrer')}
+                        onClick={() => window.open(proxyDownloadUrl(c.file_id!, utente?.id || ''), '_blank', 'noopener,noreferrer')}
                         className="flex-shrink-0 text-[10px] px-1 py-0.5 rounded bg-[hsl(var(--clr-blue)/0.1)] text-[hsl(var(--clr-blue))] hover:opacity-80"
                         title="Download diretto"
                       >⬇</button>
