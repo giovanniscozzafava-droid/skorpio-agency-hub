@@ -227,8 +227,10 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const rawCodes = form.codici.split(',').map(s => s.trim()).filter(Boolean);
-    if (rawCodes.length === 0) { addToast('⚠️ Inserisci almeno un codice Sony', 'warn'); return; }
+    const rawCodes = autoNomi
+      ? autoCodesList
+      : form.codici.split(',').map(s => s.trim()).filter(Boolean);
+    if (rawCodes.length === 0) { addToast(autoNomi ? '⚠️ Seleziona almeno un file' : '⚠️ Inserisci almeno un codice Sony', 'warn'); return; }
     if (!form.clienteId && clpMode === 'nuovo') {
       addToast('⚠️ Seleziona un cliente', 'warn'); return;
     }
