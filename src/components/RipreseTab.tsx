@@ -768,7 +768,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdated }: GroupFil
                 href={reprClip.exported_file_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-green-600 hover:underline"
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[hsl(var(--clr-green))] hover:underline"
               >
                 🎬 File esportato — {reprClip.exported_file_name || 'Scarica'}
               </a>
