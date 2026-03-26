@@ -133,6 +133,10 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
   const [clpConClip, setClpConClip] = useState<Contenuto[]>([]);
   const [clpClipCount, setClpClipCount] = useState<Record<string, string[]>>({});
 
+  const [autoNomi, setAutoNomi] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [form, setForm] = useState({
     codici: '',
     titolo: '',
@@ -143,6 +147,9 @@ function NuovaClipModal({ clienti, team, onClose, onCreated }: NuovaClipModalPro
     operatore: '',
   });
   const [loading, setLoading] = useState(false);
+
+  // Extract clip codes from file names (without extension)
+  const autoCodesList = selectedFiles.map(f => f.name.replace(/\.[^/.]+$/, ''));
 
   useEffect(() => {
     async function load() {
