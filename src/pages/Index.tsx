@@ -13,6 +13,7 @@ import { CalendarioTab } from '../components/CalendarioTab';
 import { CreativeEngineTab } from '../components/CreativeEngineTab';
 import { ChatPopup } from '../components/ChatPopup';
 import { DeadlineAlertModal } from '../components/DeadlineAlertModal';
+import { parseLocalDate } from '../lib/dateUtils';
 import type { TeamMember, Cliente, Task } from '../types';
 import { supabase } from '../integrations/supabase/client';
 
@@ -42,7 +43,7 @@ function MainApp() {
   const urgenti = myTasks.filter(t => t.priorita === '🔴 Alta' && t.stato !== 'Completato').length;
   const scaduti = myTasks.filter(t => {
     if (!t.scadenza || t.stato === 'Completato') return false;
-    return new Date(t.scadenza) < oggi;
+    return parseLocalDate(t.scadenza) < oggi;
   }).length;
 
   return (

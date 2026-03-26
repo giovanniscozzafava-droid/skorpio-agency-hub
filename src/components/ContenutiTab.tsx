@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import type { Contenuto, FaseCLP, TeamMember, Cliente } from '../types';
+import { parseLocalDate } from '../lib/dateUtils';
 import { CLPDetailPanel } from './CLPDetailPanel';
 import { NuovoCLPModal } from './NuovoCLPModal';
 
@@ -316,12 +317,12 @@ export function ContenutiTab({ team, clienti }: ContentTabProps) {
                     </td>
                     <td className="px-3 py-2">
                       <span className="text-xs" style={{ color: 'hsl(var(--skorpio-text-secondary))' }}>
-                        {c.data_ripresa ? new Date(c.data_ripresa).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }) : '—'}
+                        {c.data_ripresa ? parseLocalDate(c.data_ripresa).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }) : '—'}
                       </span>
                     </td>
                     <td className="px-3 py-2">
                       <span className="text-xs" style={{ color: 'hsl(var(--skorpio-text-secondary))' }}>
-                        {c.data_pubblicazione ? new Date(c.data_pubblicazione).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }) : '—'}
+                        {c.data_pubblicazione ? parseLocalDate(c.data_pubblicazione).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }) : '—'}
                       </span>
                     </td>
                     <td className="px-3 py-2">

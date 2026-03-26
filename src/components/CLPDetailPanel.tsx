@@ -8,6 +8,7 @@ import { FASE_CONFIG } from './ContenutiTab';
 import { Calendar } from './ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { cn } from '../lib/utils';
+import { parseLocalDate } from '../lib/dateUtils';
 import {
   findMembro,
   completaTaskPerContenuto,
@@ -93,7 +94,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
 
   // ─── Publish state (per Elisa) ─────────────────────────────────────────────
   const [pubDate, setPubDate] = useState<Date | undefined>(
-    contenuto.data_pubblicazione ? new Date(contenuto.data_pubblicazione) : undefined
+    contenuto.data_pubblicazione ? parseLocalDate(contenuto.data_pubblicazione) : undefined
   );
   const [pubOra, setPubOra] = useState(contenuto.ora_pubblicazione?.slice(0, 5) || '');
   const [pubCalOpen, setPubCalOpen] = useState(false);
@@ -123,7 +124,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
   useEffect(() => {
     setForm({ ...contenuto });
     prevFaseRef.current = contenuto.fase;
-    setPubDate(contenuto.data_pubblicazione ? new Date(contenuto.data_pubblicazione) : undefined);
+    setPubDate(contenuto.data_pubblicazione ? parseLocalDate(contenuto.data_pubblicazione) : undefined);
     setPubOra(contenuto.ora_pubblicazione?.slice(0, 5) || '');
     loadClips();
   }, [contenuto.id, loadClips]);
