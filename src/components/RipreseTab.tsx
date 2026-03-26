@@ -12,18 +12,13 @@ import { getStorageService } from '../services/storage';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
 
-function driveViewUrl(fileId: string) {
-  return `https://drive.google.com/file/d/${fileId}/view`;
-}
-/** Proxy download through edge function — bypasses Drive permission issues */
+/** Proxy download through edge function */
 function proxyDownloadUrl(fileId: string, teamId: string) {
   return `${SUPABASE_URL}/functions/v1/google-drive-download?fileId=${encodeURIComponent(fileId)}&teamId=${encodeURIComponent(teamId)}`;
 }
-function drivePreviewUrl(fileId: string) {
-  return `https://drive.google.com/file/d/${fileId}/preview`;
-}
-function driveFolderUrl(folderId: string) {
-  return `https://drive.google.com/drive/folders/${folderId}`;
+/** Proxy streaming for HTML5 video player with Range support */
+function proxyStreamUrl(fileId: string, teamId: string) {
+  return `${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${encodeURIComponent(fileId)}&teamId=${encodeURIComponent(teamId)}`;
 }
 function isVideoFile(fileName?: string | null, mimeType?: string | null) {
   if (mimeType && mimeType.startsWith('video/')) return true;
