@@ -12,9 +12,25 @@ import { getStorageService } from '../services/storage';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
 
-/** Proxy download through edge function */
-function proxyDownloadUrl(fileId: string, teamId: string) {
-  return `${SUPABASE_URL}/functions/v1/google-drive-download?fileId=${encodeURIComponent(fileId)}&teamId=${encodeURIComponent(teamId)}`;
+/** Download file via fetch+blob — no new tab */
+async function downloadFileProxy(fileId: string, teamId: string, fileName?: string) {
+  const url = `${SUPABASE_URL}/functions/v1/google-drive-download?fileId=${encodeURIComponent(fileId)}&teamId=${encodeURIComponent(teamId)}`;
+  const res = await fetch(url, {
+    headers: {
+      'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string,
+      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string}`,
+    },
+  });
+  if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+  const blob = await res.blob();
+  const blobUrl = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = fileName || 'download';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(blobUrl);
 }
 /** Proxy streaming for HTML5 video player with Range support */
 function proxyStreamUrl(fileId: string, teamId: string) {
@@ -888,7 +904,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
                     {/* Download direct */}
                     {hasId ? (
                       <button
-                        onClick={() => window.open(proxyDownloadUrl(c.file_id!, utente?.id || ''), '_blank', 'noopener,noreferrer')}
+                        onClick={() => downloadFileProxy(c.file_id!, utente?.id || '', c.file_name || c.file_id || 'download')}
                         className="flex-shrink-0 text-[10px] px-1 py-0.5 rounded bg-[hsl(var(--clr-blue)/0.1)] text-[hsl(var(--clr-blue))] hover:opacity-80"
                         title="Download diretto"
                       >⬇</button>
@@ -953,8 +969,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
               <button
                 onClick={async () => {
                   for (const c of rawFiles) {
-                    if (c.file_id) window.open(proxyDownloadUrl(c.file_id, utente?.id || ''), '_blank');
-                    await new Promise(r => setTimeout(r, 500));
+                    if (c.file_id) await downloadFileProxy(c.file_id, utente?.id || '', c.file_name || c.file_id || 'download');
                   }
                 }}
                 className="inline-flex items-center gap-1 text-[11px] font-semibold text-[hsl(var(--clr-blue))] hover:underline"
@@ -975,7 +990,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
                 >▶</button>
               )}
               <button
-                onClick={() => window.open(proxyDownloadUrl(reprClip.exported_file_id!, utente?.id || ''), '_blank', 'noopener,noreferrer')}
+                onClick={() => downloadFileProxy(reprClip.exported_file_id!, utente?.id || '', reprClip.exported_file_name || 'export')}
                 className="inline-flex items-center gap-1 text-[11px] font-semibold text-[hsl(var(--clr-green))] hover:underline"
               >
                 🎬 {reprClip.exported_file_name || 'File esportato'} ⬇
