@@ -222,16 +222,22 @@ async function uploadFileToZone(
     try {
       const state: ResumeState = JSON.parse(savedState);
       if (state.fileSize === file.size && state.mimeType === mimeType) {
-        // Verifica quanti byte Google ha già ricevuto
-        const checkRes = await fetch(state.uploadUrl, {
-          method: 'PUT',
-          headers: { 'Content-Range': `bytes */${file.size}`, 'Content-Type': mimeType },
-        });
-        if (checkRes.status === 308) {
-          const range = checkRes.headers.get('Range');
-          startByte = range ? parseInt(range.split('-')[1]) + 1 : 0;
-          uploadUrl = state.uploadUrl;
-        } else {
+        // Verifica quanti byte Google ha già ricevuto — tramite proxy per evitare CORS
+        try {
+          const checkResult = await sendChunkViaProxy(
+            state.uploadUrl,
+            new Blob([]),  // body vuoto per status check
+            `bytes */${file.size}`,
+            mimeType
+          );
+          if (checkResult.status === 308 && checkResult.range) {
+            startByte = parseInt(checkResult.range.split('-')[1]) + 1;
+            uploadUrl = state.uploadUrl;
+          } else {
+            localStorage.removeItem(resumeKey);
+            uploadUrl = '';
+          }
+        } catch {
           localStorage.removeItem(resumeKey);
           uploadUrl = '';
         }
@@ -271,7 +277,7 @@ async function uploadFileToZone(
     localStorage.setItem(resumeKey, JSON.stringify(state));
   }
 
-  // Upload chunked diretto verso Google Drive
+  // Upload chunked tramite proxy (nessuna chiamata diretta a googleapis.com)
   const fileId = await uploadChunkedToDrive(uploadUrl, file, mimeType, startByte, onProgress);
 
   // Pulizia localStorage
