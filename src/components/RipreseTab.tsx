@@ -137,6 +137,7 @@ function NuovaClipModal({ clienti, team, contenuti, onClose, onCreated, onClipUp
   const [clpClipCount, setClpClipCount] = useState<Record<string, string[]>>({});
 
   const [autoNomi, setAutoNomi] = useState(false);
+  const [uploadToDrive, setUploadToDrive] = useState(true);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
