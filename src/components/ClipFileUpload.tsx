@@ -333,10 +333,7 @@ function FileInfoPopover({ clip, clp, onDeleteRaw, onOpenUpload, onUpdated }: Fi
     if (!clip.exported_file_id) return;
     setDeletingExport(true);
     try {
-      await invokeEdge('google-drive-delete', {
-        method: 'POST',
-        body: JSON.stringify({ fileId: clip.exported_file_id, teamId: utente?.id }),
-      });
+     await invokeEdge('google-drive-delete', { fileId: clip.exported_file_id, teamId: utente?.id });
     } catch (err) {
       console.warn('[FileInfoPopover] delete export failed:', err);
     }
