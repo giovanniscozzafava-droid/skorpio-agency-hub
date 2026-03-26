@@ -969,8 +969,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
               <button
                 onClick={async () => {
                   for (const c of rawFiles) {
-                    if (c.file_id) window.open(proxyDownloadUrl(c.file_id, utente?.id || ''), '_blank');
-                    await new Promise(r => setTimeout(r, 500));
+                    if (c.file_id) await downloadFileProxy(c.file_id, utente?.id || '', c.file_name || c.file_id || 'download');
                   }
                 }}
                 className="inline-flex items-center gap-1 text-[11px] font-semibold text-[hsl(var(--clr-blue))] hover:underline"
