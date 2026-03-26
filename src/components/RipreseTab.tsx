@@ -982,7 +982,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
                 >▶</button>
               )}
               <button
-                onClick={() => window.open(driveDownloadUrl(reprClip.exported_file_id!), '_blank', 'noopener,noreferrer')}
+                onClick={() => window.open(proxyDownloadUrl(reprClip.exported_file_id!, utente?.id || ''), '_blank', 'noopener,noreferrer')}
                 className="inline-flex items-center gap-1 text-[11px] font-semibold text-[hsl(var(--clr-green))] hover:underline"
               >
                 🎬 {reprClip.exported_file_name || 'File esportato'} ⬇
