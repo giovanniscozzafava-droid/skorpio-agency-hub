@@ -55,16 +55,16 @@ function isVideoMime(mimeType: string | null | undefined): boolean {
   return !!(mimeType && (mimeType.startsWith('video/') || mimeType === 'application/octet-stream'));
 }
 
-async function invokeEdge(path: string, options: RequestInit = {}) {
+async function invokeEdge(path: string, payload: Record<string, unknown> = {}) {
   const url = `${SUPABASE_URL}/functions/v1/${path}`;
   const res = await fetch(url, {
-    ...options,
+    method: 'POST',
     headers: {
       apikey: SUPABASE_KEY,
       Authorization: `Bearer ${SUPABASE_KEY}`,
       'Content-Type': 'application/json',
-      ...(options.headers || {}),
     },
+    body: JSON.stringify(payload),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error || `Edge function error ${res.status}`);
