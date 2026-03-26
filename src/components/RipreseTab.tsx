@@ -1427,11 +1427,36 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
   }
 
   async function deleteClip(id: string) {
+    const clip = clips.find(c => c.id === id);
+    // Delete file from Drive if it exists
+    if (clip?.file_id && utente?.id) {
+      try {
+        await fetch(`${SUPABASE_URL}/functions/v1/google-drive-delete`, {
+          method: 'POST',
+          headers: { 'apikey': ANON_KEY, 'Authorization': `Bearer ${ANON_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileId: clip.file_id, teamId: utente.id }),
+        });
+      } catch (e) {
+        console.warn('[deleteClip] Drive delete failed, continuing DB delete:', e);
+      }
+    }
+    // Delete exported file from Drive if it exists
+    if (clip?.exported_file_id && utente?.id) {
+      try {
+        await fetch(`${SUPABASE_URL}/functions/v1/google-drive-delete`, {
+          method: 'POST',
+          headers: { 'apikey': ANON_KEY, 'Authorization': `Bearer ${ANON_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileId: clip.exported_file_id, teamId: utente.id }),
+        });
+      } catch (e) {
+        console.warn('[deleteClip] Drive export delete failed:', e);
+      }
+    }
     const { error } = await supabase.from('log_riprese').delete().eq('id', id);
     if (error) { addToast('❌ Errore eliminazione', 'error'); return; }
     setClips(prev => prev.filter(c => c.id !== id));
     setDeletingId(null);
-    addToast('🗑️ Clip eliminata', 'warn');
+    addToast('🗑️ Clip eliminata (+ file Drive)', 'warn');
   }
 
   const thCls = "px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide whitespace-nowrap bg-muted/60 sticky top-0 z-10";
@@ -1853,7 +1878,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
                           <button
                             onClick={() => setDeletingId(key)}
                             className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-[hsl(var(--clr-red))] transition-all text-sm"
-                            title={`Elimina tutte le ${groupClips.length} clip`}
+                            title={`Elimina tutte le ${groupClips.length} clip (+ file da Drive)`}
                           >
                             🗑️
                           </button>
