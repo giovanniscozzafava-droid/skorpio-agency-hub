@@ -762,7 +762,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdated }: GroupFil
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-[11px] font-semibold text-[hsl(var(--clr-blue))] hover:underline"
               >
-                📂 Apri cartella Drive — Scarica tutti ({rawCount} file)
+                📂 Apri cartella Drive — Scarica tutti ({totalRawFiles} file)
               </a>
             </div>
           )}
