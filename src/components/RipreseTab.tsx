@@ -864,11 +864,14 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
             onChange={e => setFiltroCliente(e.target.value)}
           >
             <option value="">Tutti i clienti</option>
-            {reportClienti.map(r => (
-              <option key={r.nome} value={r.nome}>
-                {r.nome} ({r.totale} clip)
-              </option>
-            ))}
+            {clienti.map(c => {
+              const count = clips.filter(cl => cl.cliente_id === c.id || cl.cliente_nome === c.nome).length;
+              return (
+                <option key={c.id} value={c.nome}>
+                  {c.nome}{count > 0 ? ` (${count})` : ''}
+                </option>
+              );
+            })}
           </select>
 
           <select
