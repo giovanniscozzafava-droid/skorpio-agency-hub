@@ -9,12 +9,28 @@ import { NuovoTaskModal } from './NuovoTaskModal';
 import { parseLocalDate } from '../lib/dateUtils';
 
 // ─── Countdown universale per task con scadenza ─────────────────────────────
+// Se non c'è ora esplicita, la scadenza è fine giornata (23:59).
+// Tuttavia, se il task scade OGGI senza ora → trattiamo come urgente
+// perché l'utente deve gestirlo entro la giornata corrente.
 function getTargetDate(scadenza: string, ora: string | null): Date {
   return new Date(`${scadenza}T${ora ? ora.slice(0, 5) : '23:59'}:00`);
 }
 
-/** Formato human-readable del countdown */
-function formatCountdownHuman(diff: number): { text: string; icon: string; level: 'ok' | 'warn' | 'urgent' | 'scaduto' } {
+/** Controlla se la data di scadenza è oggi (confronto solo giorno, locale) */
+function isScadenzaOggi(scadenza: string): boolean {
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return scadenza === today;
+}
+
+/** Formato human-readable del countdown.
+ *  scadenzaOggi: se true e il task non ha ora esplicita, forza livello 'urgent'
+ */
+function formatCountdownHuman(
+  diff: number,
+  scadenzaOggi = false,
+  hasOra = false,
+): { text: string; icon: string; level: 'ok' | 'warn' | 'urgent' | 'scaduto' } {
   if (diff <= 0) {
     const elapsed = Math.abs(diff);
     const d = Math.floor(elapsed / 86400000);
@@ -26,6 +42,8 @@ function formatCountdownHuman(diff: number): { text: string; icon: string; level
   const h = Math.floor((diff % 86400000) / 3600000);
   const m = Math.floor((diff % 3600000) / 60000);
   if (d > 7) return { text: `📅 ${d} giorni`, icon: '📅', level: 'ok' };
+  // Task senza ora che scade oggi → urgente (l'utente deve gestirlo oggi)
+  if (scadenzaOggi && !hasOra) return { text: `oggi · ${h}h ${m}min`, icon: '🔴', level: 'urgent' };
   if (d >= 1) return { text: `⏰ ${d}g ${h}h`, icon: '⏰', level: 'warn' };
   if (h >= 1) return { text: `🔴 ${h}h ${m}min`, icon: '🔴', level: 'urgent' };
   return { text: `🔴 ${m}min`, icon: '🔴', level: 'urgent' };
@@ -42,7 +60,7 @@ function LiveClock({ scadenza, ora }: { scadenza: string; ora: string | null }) 
     return () => clearInterval(id);
   }, [scadenza, ora]);
 
-  const { text, level } = formatCountdownHuman(diff);
+  const { text, level } = formatCountdownHuman(diff, isScadenzaOggi(scadenza), !!ora);
 
   const styles = {
     ok:      { bg: 'hsl(214 80% 55% / 0.10)', color: 'hsl(214 70% 44%)', border: 'hsl(214 80% 55% / 0.25)' },
