@@ -652,38 +652,77 @@ function RowDropZonePicker({ files, clip, onPick, onCancel }: RowDropZonePickerP
 }
 
 // ─── GroupFileCell ────────────────────────────────────────────────────────────
-// Shows aggregated file info for a CLP group row: total raw count + download link
+// Shows aggregated file info for a CLP group row.
+// On upload: matches each file to its clip by Sony code in the filename.
 
 interface GroupFileCellProps {
   clips: LogRipresa[];
   clp: Contenuto | null;
   reprClip: LogRipresa;
-  onUpdated: (patch: Partial<LogRipresa>) => void;
+  onUpdatedById: (clipId: string, patch: Partial<LogRipresa>) => void;
 }
 
-function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdated }: GroupFileCellProps) {
-  const [open, setOpen] = useState(false);
+/** Extract Sony code from a filename, e.g. "C8623.MP4" → "C8623" */
+function extractSonyCode(fileName: string): string | null {
+  const m = fileName.match(/\b(C\d{4,5})\b/i);
+  return m ? m[1].toUpperCase() : null;
+}
 
-  // Sum raw_files_count across all clips (each clip can have multiple raw files uploaded)
-  // Fallback: if raw_files_count is 0/null but file_id is present, count as 1
+function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: GroupFileCellProps) {
+  const [open, setOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { utente } = useApp();
+  const { enqueue } = useUpload();
+
+  // Sum raw_files_count across all clips
   const totalRawFiles = groupClips.reduce((sum, c) => {
     if (c.raw_files_count && c.raw_files_count > 0) return sum + c.raw_files_count;
     if (c.file_id && !c.file_deleted_at) return sum + 1;
     return sum;
   }, 0);
   const totalCount = groupClips.length;
-  // Clips with at least one file (for the popover list)
   const rawFiles = groupClips.filter(c => c.file_id && !c.file_deleted_at);
-
-  // Exported file on reprClip
   const hasExported = !!reprClip.exported_file_id;
 
-  // Dot color logic: green=exported present, yellow=has raw files, muted=nothing
   const dot = hasExported
     ? 'bg-[hsl(var(--clr-green))]'
     : totalRawFiles > 0
       ? 'bg-[hsl(var(--clr-amber))]'
       : 'bg-[hsl(var(--muted-foreground))]';
+
+  /** Match each file to its clip by Sony code; fallback to reprClip */
+  function handleFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const teamId = utente?.id || '';
+
+    // Build a map: sonyCode → clip
+    const codeMap = new Map<string, LogRipresa>();
+    groupClips.forEach(c => {
+      const code = c.id_clip?.replace(/\.[^.]+$/, '').toUpperCase();
+      if (code) codeMap.set(code, c);
+    });
+
+    // Group files by matched clip
+    const clipFiles = new Map<string, { clip: LogRipresa; files: File[] }>();
+    Array.from(files).forEach(file => {
+      const code = extractSonyCode(file.name);
+      const clip = (code && codeMap.get(code)) || reprClip;
+      if (!clipFiles.has(clip.id)) clipFiles.set(clip.id, { clip, files: [] });
+      clipFiles.get(clip.id)!.files.push(file);
+    });
+
+    // Enqueue each group separately
+    clipFiles.forEach(({ clip, files: clipFileList }) => {
+      enqueue(
+        clipFileList,
+        'clip',
+        clip,
+        clp,
+        teamId,
+        (id, patch) => onUpdatedById(id, patch)
+      );
+    });
+  }
 
   return (
     <div className="relative inline-flex items-center gap-1.5">
@@ -700,13 +739,22 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdated }: GroupFil
         <span className="font-semibold tabular-nums">{totalRawFiles}/{totalCount}</span>
       </button>
 
-      {/* Upload button for the group (uses reprClip) */}
-      <ClipFileUpload
-        clip={reprClip}
-        clp={clp}
-        onUpdated={onUpdated}
-        variant="row"
+      {/* Upload button — smart match to individual clips */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="video/*,.mp4,.mov,.avi,.mxf,.r3d"
+        multiple
+        className="hidden"
+        onChange={e => { handleFiles(e.target.files); e.target.value = ''; }}
       />
+      <button
+        onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}
+        className="opacity-60 hover:opacity-100 text-muted-foreground hover:text-primary text-sm transition-all"
+        title="Carica file per questo CLP (abbinamento automatico per codice Sony)"
+      >
+        ☁️↑
+      </button>
 
       {/* Popover with file list + download links */}
       {open && (
