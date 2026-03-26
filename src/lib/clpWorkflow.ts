@@ -188,8 +188,19 @@ export async function avanzaFaseDaTask(
     }
   }
 
+  // 6. Se fase = Programmato e data pubblicazione <= oggi → pubblica subito + cleanup
+  if (nuovaFase === 'Programmato' && contenuto.data_pubblicazione) {
+    const oggi = toDateStr(new Date());
+    if (contenuto.data_pubblicazione <= oggi) {
+      await supabase.from('contenuti').update({ fase: 'Pubblicato' }).eq('id', contenutoId);
+      await creaTaskCleanup(contenuto as Contenuto, team as any[]);
+      return { completatoTask: true, taskCreato: !!newTask, driveTriggered };
+    }
+  }
+
   return { completatoTask: true, taskCreato: !!newTask, driveTriggered };
 }
+
 
 /**
  * Funzione di completamento via tasto "Completato" del task:
@@ -251,6 +262,16 @@ export async function completaTaskEAvanzaFase(
       });
     } catch (e) {
       console.error('Errore Drive trigger:', e);
+    }
+  }
+
+  // Se faseNext = Programmato e la data di pubblicazione è <= oggi → pubblica subito + cleanup
+  if (step.faseNext === 'Programmato' && contenuto.data_pubblicazione) {
+    const oggi = toDateStr(new Date());
+    if (contenuto.data_pubblicazione <= oggi) {
+      await supabase.from('contenuti').update({ fase: 'Pubblicato' }).eq('id', contenutoId);
+      await creaTaskCleanup(contenuto as Contenuto, team as any[]);
+      return 'Pubblicato' as FaseCLP;
     }
   }
 
