@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AppProvider, useApp } from '../context/AppContext';
+import { UploadProvider } from '../context/UploadContext';
 import { LandingPage } from './LandingPage';
 import { SplashProfile } from '../components/SplashProfile';
 import { TopBar } from '../components/TopBar';
@@ -79,7 +80,9 @@ function MainApp() {
 export default function Index() {
   return (
     <AppProvider>
-      <MainApp />
+      <UploadProvider>
+        <MainApp />
+      </UploadProvider>
     </AppProvider>
   );
 }

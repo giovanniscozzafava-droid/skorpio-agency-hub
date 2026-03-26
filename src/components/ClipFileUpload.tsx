@@ -1,6 +1,7 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useApp } from '../context/AppContext';
+import { useUpload } from '../context/UploadContext';
 import type { LogRipresa, Contenuto } from '../types';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -520,102 +521,45 @@ function FileInfoPopover({ clip, clp, onDeleteRaw, onOpenUpload, onUpdated }: Fi
 
 export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFileUploadProps) {
   const { addToast, utente } = useApp();
-  const rawInputRef  = useRef<HTMLInputElement>(null);
-  const expInputRef  = useRef<HTMLInputElement>(null);
+  const { enqueue, queue } = useUpload();
+  const rawInputRef = useRef<HTMLInputElement>(null);
+  const expInputRef = useRef<HTMLInputElement>(null);
 
-  const [uploadingZone, setUploadingZone] = useState<'clip' | 'file_esportato' | null>(null);
-  const [uploadQueue, setUploadQueue] = useState<{ name: string; done: boolean }[]>([]);
-  const [progress, setProgress] = useState<UploadProgress | null>(null);
   const [draggingZone, setDraggingZone] = useState<'clip' | 'file_esportato' | null>(null);
   const [showDeleteExport, setShowDeleteExport] = useState(false);
   const [showVideoPlayer, setShowVideoPlayer] = useState(false);
-
-  // We keep a local mutable ref for raw_files_count to handle sequential uploads
-  const localRawCount = useRef(clip.raw_files_count || 0);
-  const localRawSize  = useRef(clip.raw_files_size  || 0);
 
   const hasExport  = !!(clip.exported_file_id && clip.exported_file_url);
   const hasRawFile = !!(clip.file_id && !clip.file_deleted_at) || (clip.raw_files_count || 0) > 0;
   const driveConnected = !!(utente as any)?.google_drive_connected;
 
-  // Update local refs when clip changes externally
-  React.useEffect(() => {
-    localRawCount.current = clip.raw_files_count || 0;
-    localRawSize.current  = clip.raw_files_size  || 0;
-  }, [clip.raw_files_count, clip.raw_files_size]);
+  // Global uploads for THIS clip
+  const clipUploads = queue.filter(u => u.clipId === clip.id);
+  const activeUpload = clipUploads.find(u => u.status === 'uploading');
+  const isUploading = !!activeUpload;
+  const uploadingZone = activeUpload?.zone ?? null;
 
-  const doUpload = useCallback(async (file: File, zone: 'clip' | 'file_esportato') => {
+  // Callback passed to UploadContext so it can update the local component state
+  const handleUpdated = useCallback((_clipId: string, patch: Partial<LogRipresa>) => {
+    onUpdated(patch);
+  }, [onUpdated]);
+
+  const doMultiUpload = useCallback((files: File[], zone: 'clip' | 'file_esportato') => {
     if (!utente) { addToast('❌ Utente non trovato', 'error'); return; }
     if (!driveConnected) {
       addToast('⚠️ Connetti prima Google Drive nelle Impostazioni → Integrazioni', 'warn');
       return;
     }
-
-    setUploadingZone(zone);
-    setProgress({ loaded: 0, total: file.size, percent: 2, fileName: file.name });
-
-    try {
-      const { fileId, fileUrl, fileName } = await uploadFileToZone(
-        file, zone, clip, clp, utente.id,
-        (p) => setProgress(p)
-      );
-
-      setProgress({ loaded: file.size, total: file.size, percent: 99, fileName: file.name });
-
-      let patch: Partial<LogRipresa> = {};
-
-      if (zone === 'clip') {
-        localRawCount.current += 1;
-        localRawSize.current  += file.size;
-        patch = {
-          file_id: fileId,
-          file_url: fileUrl,
-          file_name: fileName,
-          file_size: file.size,
-          file_mime_type: file.type || 'video/mp4',
-          file_uploaded_at: new Date().toISOString(),
-          file_deleted_at: null,
-          raw_files_count: localRawCount.current,
-          raw_files_size: localRawSize.current,
-        };
-      } else {
-        patch = {
-          exported_file_id: fileId,
-          exported_file_url: fileUrl,
-          exported_file_name: fileName,
-          exported_file_size: file.size,
-          exported_file_mime_type: file.type || 'video/mp4',
-          exported_file_uploaded_at: new Date().toISOString(),
-        };
-      }
-
-      const { error } = await supabase.from('log_riprese').update(patch).eq('id', clip.id);
-      if (error) throw error;
-
-      setProgress({ loaded: file.size, total: file.size, percent: 100, fileName: file.name });
-      onUpdated(patch);
-
-      const label = zone === 'clip' ? `📁 Grezzo caricato (${localRawCount.current} tot.)` : '✅ Video esportato caricato';
-      addToast(`${label}: ${fileName}`, 'success');
-    } catch (err: unknown) {
-      console.error('[ClipFileUpload] upload failed:', err);
-      const msg = err instanceof Error ? err.message : 'Errore sconosciuto';
-      addToast(`❌ Upload fallito: ${msg.slice(0, 100)}`, 'error');
-    } finally {
-      setUploadingZone(null);
-      setProgress(null);
+    if (zone === 'file_esportato' && files.length > 1) {
+      addToast('⚠️ Puoi caricare un solo file esportato alla volta', 'warn');
+      files = [files[0]];
     }
-  }, [clip, clp, onUpdated, addToast, utente, driveConnected]);
+    enqueue(files, zone, clip, clp, utente.id, handleUpdated);
+  }, [utente, driveConnected, enqueue, clip, clp, handleUpdated, addToast]);
 
-  // Sequential multi-file upload
-  const doMultiUpload = useCallback(async (files: File[], zone: 'clip' | 'file_esportato') => {
-    setUploadQueue(files.map(f => ({ name: f.name, done: false })));
-    for (let i = 0; i < files.length; i++) {
-      await doUpload(files[i], zone);
-      setUploadQueue(q => q.map((item, idx) => idx === i ? { ...item, done: true } : item));
-    }
-    setUploadQueue([]);
-  }, [doUpload]);
+  const doUpload = useCallback((file: File, zone: 'clip' | 'file_esportato') => {
+    doMultiUpload([file], zone);
+  }, [doMultiUpload]);
 
   const handleDeleteExport = async () => {
     if (!clip.exported_file_id) return;
@@ -671,13 +615,13 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
 
   // ─── ROW variant ──────────────────────────────────────────────────────────
   if (variant === 'row') {
-    if (uploadingZone && progress) {
+    if (isUploading && activeUpload) {
       return (
         <div className="flex items-center gap-1 min-w-[80px]">
           <div className="w-12 h-1 rounded-full bg-muted overflow-hidden flex-shrink-0">
-            <div className="h-full bg-primary transition-all" style={{ width: `${progress.percent}%` }} />
+            <div className="h-full bg-primary transition-all" style={{ width: `${activeUpload.percent}%` }} />
           </div>
-          <span className="text-[10px] text-muted-foreground">{progress.percent}%</span>
+          <span className="text-[10px] text-muted-foreground">{activeUpload.percent}%</span>
         </div>
       );
     }
@@ -795,30 +739,30 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
           )}
         </div>
 
-        {uploadingZone === 'clip' && progress && (
+        {uploadingZone === 'clip' && activeUpload && (
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-muted-foreground">
               <span className="truncate max-w-[200px]">
-                {progress.percent < 84
-                  ? `Caricamento ${progress.fileName || ''}…`
+                {activeUpload.percent < 84
+                  ? `Caricamento ${activeUpload.fileName || ''}…`
                   : 'Trasferimento su Google Drive…'}
               </span>
-              <span className="flex-shrink-0">{progress.percent}%</span>
+              <span className="flex-shrink-0">{activeUpload.percent}%</span>
             </div>
             <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
               <div className="h-full rounded-full bg-primary transition-all duration-300"
-                style={{ width: `${progress.percent}%` }} />
+                style={{ width: `${activeUpload.percent}%` }} />
             </div>
-            <p className="text-xs text-muted-foreground">{formatBytes(progress.loaded)} / {formatBytes(progress.total)}</p>
-            {uploadQueue.length > 1 && (
+            <p className="text-xs text-muted-foreground">{formatBytes(activeUpload.loadedBytes)} / {formatBytes(activeUpload.fileSize)}</p>
+            {clipUploads.filter(u => u.zone === 'clip').length > 1 && (
               <div className="flex flex-wrap gap-1 mt-1">
-                {uploadQueue.map((q, i) => (
-                  <span key={i} className={`text-[10px] px-1.5 py-0.5 rounded border ${
-                    q.done
+                {clipUploads.filter(u => u.zone === 'clip').map(u => (
+                  <span key={u.id} className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                    u.status === 'completed'
                       ? 'bg-[hsl(var(--clr-green)/0.1)] text-[hsl(var(--clr-green))] border-[hsl(var(--clr-green)/0.3)]'
                       : 'bg-muted text-muted-foreground border-border'
                   }`}>
-                    {q.done ? '✓' : '○'} {q.name.slice(0, 20)}
+                    {u.status === 'completed' ? '✓' : '○'} {u.fileName.slice(0, 20)}
                   </span>
                 ))}
               </div>
@@ -923,17 +867,17 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
           <span className="text-[10px] text-muted-foreground">→ cartella file_esportato/</span>
         </div>
 
-        {uploadingZone === 'file_esportato' && progress && (
+        {uploadingZone === 'file_esportato' && activeUpload && (
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>{progress.percent < 84 ? `Caricamento ${progress.fileName || ''}…` : 'Trasferimento su Google Drive…'}</span>
-              <span>{progress.percent}%</span>
+              <span>{activeUpload.percent < 84 ? `Caricamento ${activeUpload.fileName || ''}…` : 'Trasferimento su Google Drive…'}</span>
+              <span>{activeUpload.percent}%</span>
             </div>
             <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
               <div className="h-full rounded-full bg-[hsl(var(--clr-green))] transition-all duration-300"
-                style={{ width: `${progress.percent}%` }} />
+                style={{ width: `${activeUpload.percent}%` }} />
             </div>
-            <p className="text-xs text-muted-foreground">{formatBytes(progress.loaded)} / {formatBytes(progress.total)}</p>
+            <p className="text-xs text-muted-foreground">{formatBytes(activeUpload.loadedBytes)} / {formatBytes(activeUpload.fileSize)}</p>
           </div>
         )}
 

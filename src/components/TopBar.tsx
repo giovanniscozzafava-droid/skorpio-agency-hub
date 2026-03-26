@@ -7,6 +7,7 @@ import fuyueLogo from '@/assets/fuyue-logo-white.svg';
 import { NotificheDropdown } from './NotificheDropdown';
 import { useNotifiche } from '@/hooks/useNotifiche';
 import { DriveStorageIndicator } from './DriveStorageIndicator';
+import { UploadIndicator } from './UploadIndicator';
 
 interface TopBarProps {
   team: TeamMember[];
@@ -109,6 +110,11 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
         {/* Orologio */}
         <div className="text-xs font-mono mx-3 flex-shrink-0" style={{ color: 'rgba(255,255,255,0.5)' }}>
           {orologio.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+        </div>
+
+        {/* Upload indicator */}
+        <div className="mr-1">
+          <UploadIndicator />
         </div>
 
         {/* Campanella notifiche */}
