@@ -55,16 +55,16 @@ function isVideoMime(mimeType: string | null | undefined): boolean {
   return !!(mimeType && (mimeType.startsWith('video/') || mimeType === 'application/octet-stream'));
 }
 
-async function invokeEdge(path: string, options: RequestInit = {}) {
+async function invokeEdge(path: string, payload: Record<string, unknown> = {}) {
   const url = `${SUPABASE_URL}/functions/v1/${path}`;
   const res = await fetch(url, {
-    ...options,
+    method: 'POST',
     headers: {
       apikey: SUPABASE_KEY,
       Authorization: `Bearer ${SUPABASE_KEY}`,
       'Content-Type': 'application/json',
-      ...(options.headers || {}),
     },
+    body: JSON.stringify(payload),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error || `Edge function error ${res.status}`);
@@ -228,18 +228,15 @@ async function uploadFileToZone(
     onProgress({ loaded: 0, total: file.size, percent: 1, fileName: file.name });
 
     const result = await invokeEdge('google-drive-upload-init', {
-      method: 'POST',
-      body: JSON.stringify({
-        fileName,
-        mimeType,
-        fileSize: file.size,
-        teamId: userId,
-        clientName: clip.cliente_nome || 'Generale',
-        zone,
-        contenutoId: clip.contenuto_id,
-        idDisplay: clp?.id_display || clip.id_contenuto_display || '',
-        titolo: clp?.titolo || clip.titolo || '',
-      }),
+      fileName,
+      mimeType,
+      fileSize: file.size,
+      teamId: userId,
+      clientName: clip.cliente_nome || 'Generale',
+      zone,
+      contenutoId: clip.contenuto_id,
+      idDisplay: clp?.id_display || clip.id_contenuto_display || '',
+      titolo: clp?.titolo || clip.titolo || '',
     });
 
     uploadUrl = result.uploadUrl;
@@ -336,10 +333,7 @@ function FileInfoPopover({ clip, clp, onDeleteRaw, onOpenUpload, onUpdated }: Fi
     if (!clip.exported_file_id) return;
     setDeletingExport(true);
     try {
-      await invokeEdge('google-drive-delete', {
-        method: 'POST',
-        body: JSON.stringify({ fileId: clip.exported_file_id, teamId: utente?.id }),
-      });
+     await invokeEdge('google-drive-delete', { fileId: clip.exported_file_id, teamId: utente?.id });
     } catch (err) {
       console.warn('[FileInfoPopover] delete export failed:', err);
     }
@@ -596,10 +590,7 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
   const handleDeleteExport = async () => {
     if (!clip.exported_file_id) return;
     try {
-      await invokeEdge('google-drive-delete', {
-        method: 'POST',
-        body: JSON.stringify({ fileId: clip.exported_file_id, teamId: utente?.id }),
-      });
+      await invokeEdge('google-drive-delete', { fileId: clip.exported_file_id, teamId: utente?.id });
     } catch (err) {
       console.warn('[ClipFileUpload] delete export from Drive failed:', err);
     }
@@ -619,10 +610,7 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
     if (!clip.file_id) return;
     if (!confirm(`Rimuovere il file grezzo "${clip.file_name}" da Google Drive?`)) return;
     try {
-      await invokeEdge('google-drive-delete', {
-        method: 'POST',
-        body: JSON.stringify({ fileId: clip.file_id, teamId: utente?.id }),
-      });
+      await invokeEdge('google-drive-delete', { fileId: clip.file_id, teamId: utente?.id });
     } catch (err) {
       console.warn('[ClipFileUpload] delete raw failed:', err);
     }

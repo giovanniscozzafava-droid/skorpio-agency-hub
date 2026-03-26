@@ -20,6 +20,12 @@ function getCountdownMs(scadenza: string, ora: string | null): number {
   return new Date(`${scadenza}T${ora ? ora.slice(0, 5) : '23:59'}:00`).getTime() - Date.now();
 }
 
+function isScadenzaOggi(scadenza: string): boolean {
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return scadenza === today;
+}
+
 function CountdownDettaglio({ scadenza, ora }: { scadenza: string; ora: string | null }) {
   const [diff, setDiff] = useState(() => getCountdownMs(scadenza, ora));
 
@@ -33,8 +39,9 @@ function CountdownDettaglio({ scadenza, ora }: { scadenza: string; ora: string |
   const m = Math.floor((Math.abs(diff) % 3600000) / 60000);
 
   const isScaduto = diff <= 0;
-  const isUrgent  = !isScaduto && diff < 24 * 3600000;
-  const isWarning = !isScaduto && diff < 7 * 86400000;
+  // Task senza ora che scade oggi → urgente (deve essere gestito entro oggi)
+  const isUrgent  = !isScaduto && (diff < 24 * 3600000 || (isScadenzaOggi(scadenza) && !ora));
+  const isWarning = !isScaduto && !isUrgent && diff < 7 * 86400000;
 
   const level = isScaduto ? 'scaduto' : isUrgent ? 'urgent' : isWarning ? 'warn' : 'ok';
   const colors = {
@@ -44,9 +51,12 @@ function CountdownDettaglio({ scadenza, ora }: { scadenza: string; ora: string |
     scaduto: { bg: 'hsl(0 80% 55% / 0.13)',   color: 'hsl(0 70% 38%)',   border: 'hsl(0 80% 55% / 0.45)', label: '⚠️ SCADUTO DA' },
   }[level];
 
+  // Se scade oggi senza ora esplicita, mostra "oggi · Xh Ymin"
+  const todayNoOra = isScadenzaOggi(scadenza) && !ora && !isScaduto;
   const timeText = isScaduto
     ? d > 0 ? `${d}g ${h}h` : `${h}h ${m}min`
     : d > 7 ? `${d} giorni`
+    : todayNoOra ? `oggi · ${h}h ${m}min`
     : d >= 1 ? `${d}g ${h}h`
     : h >= 1 ? `${h}h ${m}min`
     : `${m} min`;
