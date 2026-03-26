@@ -760,6 +760,44 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
     ? reportClienti.find(r => r.nome === filtroCliente)
     : null;
 
+  // ─── Grouped view ────────────────────────────────────────────────────────────
+  type ClpGroup = {
+    key: string; // contenuto_id or 'orphan__id_clip'
+    clp: Contenuto | null;
+    clips: LogRipresa[];
+    isOrphan: boolean;
+  };
+
+  const groupedRows = React.useMemo((): ClpGroup[] => {
+    const map = new Map<string, ClpGroup>();
+    filtered.forEach(clip => {
+      if (clip.contenuto_id) {
+        if (!map.has(clip.contenuto_id)) {
+          map.set(clip.contenuto_id, {
+            key: clip.contenuto_id,
+            clp: contenuti[clip.contenuto_id] || null,
+            clips: [],
+            isOrphan: false,
+          });
+        }
+        map.get(clip.contenuto_id)!.clips.push(clip);
+      } else {
+        // Orphan clip (no CLP linked) → own group
+        const k = `orphan__${clip.id}`;
+        map.set(k, { key: k, clp: null, clips: [clip], isOrphan: true });
+      }
+    });
+    return Array.from(map.values());
+  }, [filtered, contenuti]);
+
+  function toggleGroup(key: string) {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
+
   function updateClipLocally(id: string, patch: Partial<LogRipresa>) {
     setClips(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
     if (detailClip?.id === id) setDetailClip(prev => prev ? { ...prev, ...patch } : prev);
