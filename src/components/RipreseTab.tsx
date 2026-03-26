@@ -647,7 +647,7 @@ function NuovaClipModal({ clienti, team, contenuti, onClose, onCreated, onClipUp
             </button>
             <button type="submit" disabled={loading}
               className="flex-1 py-2.5 rounded-lg bg-[hsl(var(--clr-blue))] text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50">
-              {loading ? 'Inserimento…' : `✅ Inserisci clip`}
+              {loading ? 'Inserimento…' : autoNomi && uploadToDrive && selectedFiles.length > 0 ? `☁️ Inserisci e carica ${selectedFiles.length} clip` : `✅ Inserisci clip`}
             </button>
           </div>
         </form>
