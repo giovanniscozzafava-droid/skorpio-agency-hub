@@ -803,31 +803,56 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
                   )}
                   <button
                     onClick={async () => {
-                      if (!confirm(`Eliminare "${c.file_name || c.file_id}" anche da Google Drive?`)) return;
-                      // Delete from Google Drive first
-                      if (c.file_id) {
-                        try {
-                          const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-                          const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
-                          await fetch(`${SUPABASE_URL}/functions/v1/google-drive-delete`, {
-                            method: 'POST',
-                            headers: {
-                              'apikey': ANON_KEY,
-                              'Authorization': `Bearer ${ANON_KEY}`,
-                              'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({ fileId: c.file_id }),
-                          });
-                        } catch (err) {
-                          console.warn('[RipreseTab] Drive delete failed, continuing DB cleanup:', err);
-                        }
-                      }
+                      if (!confirm(`Eliminare "${c.file_name || c.file_id || 'questo file'}" anche da Google Drive?`)) return;
                       const now = new Date().toISOString();
                       const patch: Partial<LogRipresa> = {
                         file_id: null, file_url: null, file_name: null,
                         file_size: null, file_deleted_at: now,
                         raw_files_count: 0, raw_files_size: 0,
                       };
+
+                      // Only attempt Drive delete if we have a valid file_id
+                      if (!c.file_id) {
+                        // No file_id in DB — just clean the record
+                        await supabase.from('log_riprese').update(patch).eq('id', c.id);
+                        onUpdatedById(c.id, patch);
+                        addToast('🗑️ Riferimento eliminato (nessun file su Drive)', 'success');
+                        return;
+                      }
+
+                      try {
+                        const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+                        const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+                        const teamId = utente?.id;
+                        const res = await fetch(`${SUPABASE_URL}/functions/v1/google-drive-delete`, {
+                          method: 'POST',
+                          headers: {
+                            'apikey': ANON_KEY,
+                            'Authorization': `Bearer ${ANON_KEY}`,
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({ fileId: c.file_id, teamId }),
+                        });
+
+                        if (res.ok) {
+                          addToast('🗑️ File eliminato da Drive', 'success');
+                        } else {
+                          let body: { error?: string } = {};
+                          try { body = await res.json(); } catch {}
+                          const isNotFound = res.status === 404 || body?.error?.includes('404') || body?.error?.includes('notFound');
+                          if (isNotFound) {
+                            addToast('⚠️ File già rimosso da Drive, riferimento eliminato', 'warn');
+                          } else {
+                            console.warn('[RipreseTab] Drive delete error:', res.status, body);
+                            addToast(`⚠️ Errore Drive (${res.status}) — record rimosso comunque`, 'warn');
+                          }
+                        }
+                      } catch (err) {
+                        console.warn('[RipreseTab] Drive delete exception:', err);
+                        addToast('⚠️ Drive non raggiungibile — record rimosso comunque', 'warn');
+                      }
+
+                      // Always clean the DB record regardless of Drive outcome
                       await supabase.from('log_riprese').update(patch).eq('id', c.id);
                       onUpdatedById(c.id, patch);
                     }}
