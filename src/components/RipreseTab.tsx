@@ -671,9 +671,10 @@ function extractSonyCode(fileName: string): string | null {
 
 function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: GroupFileCellProps) {
   const [open, setOpen] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { utente, addToast } = useApp();
-  const { enqueue } = useUpload();
+  const { enqueue, queue } = useUpload();
 
   // Sum raw_files_count across all clips
   const totalRawFiles = groupClips.reduce((sum, c) => {
@@ -685,6 +686,15 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
   const rawFiles = groupClips.filter(c => c.file_id && !c.file_deleted_at);
   const hasExported = !!reprClip.exported_file_id;
   const driveConnected = !!(utente as any)?.google_drive_connected;
+
+  // Check if any upload is active for this CLP group
+  const clpIds = new Set(groupClips.map(c => c.id));
+  const isUploading = queue.some(u =>
+    clpIds.has(u.clipId) && (u.status === 'uploading' || u.status === 'queued')
+  );
+  const uploadingCount = queue.filter(u =>
+    clpIds.has(u.clipId) && (u.status === 'uploading' || u.status === 'queued')
+  ).length;
 
   const dot = hasExported
     ? 'bg-[hsl(var(--clr-green))]'
@@ -731,10 +741,44 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
     });
   }
 
+  /** Delete a single file from Drive + DB */
+  async function deleteOneFile(c: LogRipresa) {
+    const now = new Date().toISOString();
+    const patch: Partial<LogRipresa> = {
+      file_id: null, file_url: null, file_name: null,
+      file_size: null, file_deleted_at: now,
+      raw_files_count: 0, raw_files_size: 0,
+    };
+    if (!c.file_id) {
+      await supabase.from('log_riprese').update(patch).eq('id', c.id);
+      onUpdatedById(c.id, patch);
+      return { ok: true, notFound: false };
+    }
+    try {
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+      const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/google-drive-delete`, {
+        method: 'POST',
+        headers: { 'apikey': ANON_KEY, 'Authorization': `Bearer ${ANON_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileId: c.file_id, teamId: utente?.id }),
+      });
+      let body: { error?: string } = {};
+      try { body = await res.json(); } catch {}
+      const isNotFound = res.status === 404 || body?.error?.includes('notFound');
+      await supabase.from('log_riprese').update(patch).eq('id', c.id);
+      onUpdatedById(c.id, patch);
+      return { ok: res.ok || isNotFound, notFound: isNotFound };
+    } catch {
+      await supabase.from('log_riprese').update(patch).eq('id', c.id);
+      onUpdatedById(c.id, patch);
+      return { ok: false, notFound: false };
+    }
+  }
+
   return (
     <div className="relative inline-flex items-center gap-1.5">
-      {/* Status dot */}
-      <span className={`inline-block w-2 h-2 rounded-full ${dot} flex-shrink-0`} />
+      {/* Status dot — pulses while uploading */}
+      <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${dot} ${isUploading ? 'animate-[pulse_1s_ease-in-out_infinite]' : ''}`} />
 
       {/* File count button */}
       <button
@@ -742,8 +786,20 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
         onClick={e => { e.stopPropagation(); setOpen(v => !v); }}
         title={`${totalRawFiles} file grezzi caricati su ${totalCount} clip`}
       >
-        <span>📁</span>
-        <span className="font-semibold tabular-nums">{totalRawFiles}/{totalCount}</span>
+        {isUploading ? (
+          /* Animated upload badge */
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-[hsl(var(--clr-amber)/0.15)] border border-[hsl(var(--clr-amber)/0.4)]">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-[hsl(var(--clr-amber))] animate-[pulse_0.8s_ease-in-out_infinite]" />
+            <span className="text-[10px] font-semibold text-[hsl(var(--clr-amber))]">
+              {uploadingCount} in caricamento…
+            </span>
+          </span>
+        ) : (
+          <>
+            <span>📁</span>
+            <span className="font-semibold tabular-nums">{totalRawFiles}/{totalCount}</span>
+          </>
+        )}
       </button>
 
       {/* Upload button — smart match to individual clips */}
@@ -757,7 +813,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
       />
       <button
         onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}
-        className="opacity-60 hover:opacity-100 text-muted-foreground hover:text-primary text-sm transition-all"
+        className={`text-sm transition-all ${isUploading ? 'opacity-100 animate-[pulse_1.5s_ease-in-out_infinite] text-[hsl(var(--clr-amber))]' : 'opacity-60 hover:opacity-100 text-muted-foreground hover:text-primary'}`}
         title="Carica file per questo CLP (abbinamento automatico per codice Sony)"
       >
         ☁️↑
@@ -766,7 +822,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
       {/* Popover with file list + download links */}
       {open && (
         <div
-          className="absolute top-7 right-0 z-50 w-80 rounded-lg border border-border bg-popover shadow-lg p-3 text-left"
+          className="absolute top-7 right-0 z-50 w-80 rounded-lg border border-border bg-popover shadow-lg p-3 text-left animate-in fade-in slide-in-from-top-1 duration-150"
           onClick={e => e.stopPropagation()}
         >
           <div className="flex items-center justify-between mb-2">
@@ -804,57 +860,9 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
                   <button
                     onClick={async () => {
                       if (!confirm(`Eliminare "${c.file_name || c.file_id || 'questo file'}" anche da Google Drive?`)) return;
-                      const now = new Date().toISOString();
-                      const patch: Partial<LogRipresa> = {
-                        file_id: null, file_url: null, file_name: null,
-                        file_size: null, file_deleted_at: now,
-                        raw_files_count: 0, raw_files_size: 0,
-                      };
-
-                      // Only attempt Drive delete if we have a valid file_id
-                      if (!c.file_id) {
-                        // No file_id in DB — just clean the record
-                        await supabase.from('log_riprese').update(patch).eq('id', c.id);
-                        onUpdatedById(c.id, patch);
-                        addToast('🗑️ Riferimento eliminato (nessun file su Drive)', 'success');
-                        return;
-                      }
-
-                      try {
-                        const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-                        const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
-                        const teamId = utente?.id;
-                        const res = await fetch(`${SUPABASE_URL}/functions/v1/google-drive-delete`, {
-                          method: 'POST',
-                          headers: {
-                            'apikey': ANON_KEY,
-                            'Authorization': `Bearer ${ANON_KEY}`,
-                            'Content-Type': 'application/json',
-                          },
-                          body: JSON.stringify({ fileId: c.file_id, teamId }),
-                        });
-
-                        if (res.ok) {
-                          addToast('🗑️ File eliminato da Drive', 'success');
-                        } else {
-                          let body: { error?: string } = {};
-                          try { body = await res.json(); } catch {}
-                          const isNotFound = res.status === 404 || body?.error?.includes('404') || body?.error?.includes('notFound');
-                          if (isNotFound) {
-                            addToast('⚠️ File già rimosso da Drive, riferimento eliminato', 'warn');
-                          } else {
-                            console.warn('[RipreseTab] Drive delete error:', res.status, body);
-                            addToast(`⚠️ Errore Drive (${res.status}) — record rimosso comunque`, 'warn');
-                          }
-                        }
-                      } catch (err) {
-                        console.warn('[RipreseTab] Drive delete exception:', err);
-                        addToast('⚠️ Drive non raggiungibile — record rimosso comunque', 'warn');
-                      }
-
-                      // Always clean the DB record regardless of Drive outcome
-                      await supabase.from('log_riprese').update(patch).eq('id', c.id);
-                      onUpdatedById(c.id, patch);
+                      const { notFound } = await deleteOneFile(c);
+                      if (notFound) addToast('⚠️ File già rimosso da Drive, riferimento eliminato', 'warn');
+                      else addToast('🗑️ File eliminato da Drive', 'success');
                     }}
                     className="flex-shrink-0 opacity-0 group-hover/row:opacity-100 text-[10px] px-1.5 py-0.5 rounded bg-[hsl(var(--clr-red)/0.1)] text-[hsl(var(--clr-red))] hover:opacity-80 transition-opacity"
                     title="Elimina da Drive e DB"
@@ -863,6 +871,38 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
                   </button>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Delete ALL files */}
+          {rawFiles.length > 1 && (
+            <div className="mt-2 pt-2 border-t border-border">
+              <button
+                disabled={deletingAll}
+                onClick={async () => {
+                  if (!confirm(`Eliminare tutti i ${rawFiles.length} file da Google Drive? Questa azione è irreversibile.`)) return;
+                  setDeletingAll(true);
+                  let deleted = 0, notFound = 0, errors = 0;
+                  for (const c of rawFiles) {
+                    const result = await deleteOneFile(c);
+                    if (result.notFound) notFound++;
+                    else if (result.ok) deleted++;
+                    else errors++;
+                  }
+                  setDeletingAll(false);
+                  const parts = [];
+                  if (deleted > 0) parts.push(`${deleted} eliminati`);
+                  if (notFound > 0) parts.push(`${notFound} già rimossi`);
+                  if (errors > 0) parts.push(`${errors} errori`);
+                  addToast(`🗑️ ${parts.join(' · ')}`, errors > 0 ? 'warn' : 'success');
+                }}
+                className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[hsl(var(--clr-red))] hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+              >
+                {deletingAll ? (
+                  <span className="inline-block w-3 h-3 border-2 border-[hsl(var(--clr-red))] border-t-transparent rounded-full animate-spin" />
+                ) : '🗑️'}
+                {deletingAll ? 'Eliminazione in corso…' : `Cancella tutti i file da Drive (${rawFiles.length})`}
+              </button>
             </div>
           )}
 
