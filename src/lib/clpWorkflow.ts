@@ -199,8 +199,9 @@ export async function avanzaFaseDaTask(
   }
 
   return { completatoTask: true, taskCreato: !!newTask, driveTriggered };
+}
 
-/**
+
  * Funzione di completamento via tasto "Completato" del task:
  * avanza la fase CLP + crea il task successivo.
  */
