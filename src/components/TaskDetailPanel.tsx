@@ -51,9 +51,12 @@ function CountdownDettaglio({ scadenza, ora }: { scadenza: string; ora: string |
     scaduto: { bg: 'hsl(0 80% 55% / 0.13)',   color: 'hsl(0 70% 38%)',   border: 'hsl(0 80% 55% / 0.45)', label: '⚠️ SCADUTO DA' },
   }[level];
 
+  // Se scade oggi senza ora esplicita, mostra "oggi · Xh Ymin"
+  const todayNoOra = isScadenzaOggi(scadenza) && !ora && !isScaduto;
   const timeText = isScaduto
     ? d > 0 ? `${d}g ${h}h` : `${h}h ${m}min`
     : d > 7 ? `${d} giorni`
+    : todayNoOra ? `oggi · ${h}h ${m}min`
     : d >= 1 ? `${d}g ${h}h`
     : h >= 1 ? `${h}h ${m}min`
     : `${m} min`;
