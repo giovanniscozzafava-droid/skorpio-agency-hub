@@ -80,7 +80,9 @@ function MainApp() {
 export default function Index() {
   return (
     <AppProvider>
-      <MainApp />
+      <UploadProvider>
+        <MainApp />
+      </UploadProvider>
     </AppProvider>
   );
 }

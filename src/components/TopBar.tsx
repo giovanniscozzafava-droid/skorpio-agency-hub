@@ -7,6 +7,7 @@ import fuyueLogo from '@/assets/fuyue-logo-white.svg';
 import { NotificheDropdown } from './NotificheDropdown';
 import { useNotifiche } from '@/hooks/useNotifiche';
 import { DriveStorageIndicator } from './DriveStorageIndicator';
+import { UploadIndicator } from './UploadIndicator';
 
 interface TopBarProps {
   team: TeamMember[];
