@@ -803,6 +803,25 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
                   )}
                   <button
                     onClick={async () => {
+                      if (!confirm(`Eliminare "${c.file_name || c.file_id}" anche da Google Drive?`)) return;
+                      // Delete from Google Drive first
+                      if (c.file_id) {
+                        try {
+                          const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+                          const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+                          await fetch(`${SUPABASE_URL}/functions/v1/google-drive-delete`, {
+                            method: 'POST',
+                            headers: {
+                              'apikey': ANON_KEY,
+                              'Authorization': `Bearer ${ANON_KEY}`,
+                              'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ fileId: c.file_id }),
+                          });
+                        } catch (err) {
+                          console.warn('[RipreseTab] Drive delete failed, continuing DB cleanup:', err);
+                        }
+                      }
                       const now = new Date().toISOString();
                       const patch: Partial<LogRipresa> = {
                         file_id: null, file_url: null, file_name: null,
@@ -813,7 +832,7 @@ function GroupFileCell({ clips: groupClips, clp, reprClip, onUpdatedById }: Grou
                       onUpdatedById(c.id, patch);
                     }}
                     className="flex-shrink-0 opacity-0 group-hover/row:opacity-100 text-[10px] px-1.5 py-0.5 rounded bg-[hsl(var(--clr-red)/0.1)] text-[hsl(var(--clr-red))] hover:opacity-80 transition-opacity"
-                    title="Rimuovi file dal DB"
+                    title="Elimina da Drive e DB"
                   >
                     🗑️
                   </button>
