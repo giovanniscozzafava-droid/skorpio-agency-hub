@@ -1244,14 +1244,9 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
                         <span className="text-xs text-muted-foreground">{operatori.join(', ') || '—'}</span>
                       </td>
 
-                      {/* File column */}
+                      {/* File column — group summary */}
                       <td className={`${tdCls} text-center relative`} onClick={e => e.stopPropagation()}>
-                        <ClipFileUpload
-                          clip={reprClip}
-                          clp={clp}
-                          onUpdated={patch => updateClipLocally(reprClip.id, patch)}
-                          variant="row"
-                        />
+                        <GroupFileCell clips={groupClips} clp={clp} reprClip={reprClip} onUpdated={patch => updateClipLocally(reprClip.id, patch)} />
                       </td>
 
                       {/* Delete group */}
