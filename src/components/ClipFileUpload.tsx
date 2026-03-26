@@ -1,6 +1,7 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useApp } from '../context/AppContext';
+import { useUpload } from '../context/UploadContext';
 import type { LogRipresa, Contenuto } from '../types';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
