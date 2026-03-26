@@ -739,30 +739,30 @@ export function ClipFileUpload({ clip, clp, onUpdated, variant = 'row' }: ClipFi
           )}
         </div>
 
-        {uploadingZone === 'clip' && progress && (
+        {uploadingZone === 'clip' && activeUpload && (
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-muted-foreground">
               <span className="truncate max-w-[200px]">
-                {progress.percent < 84
-                  ? `Caricamento ${progress.fileName || ''}…`
+                {activeUpload.percent < 84
+                  ? `Caricamento ${activeUpload.fileName || ''}…`
                   : 'Trasferimento su Google Drive…'}
               </span>
-              <span className="flex-shrink-0">{progress.percent}%</span>
+              <span className="flex-shrink-0">{activeUpload.percent}%</span>
             </div>
             <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
               <div className="h-full rounded-full bg-primary transition-all duration-300"
-                style={{ width: `${progress.percent}%` }} />
+                style={{ width: `${activeUpload.percent}%` }} />
             </div>
-            <p className="text-xs text-muted-foreground">{formatBytes(progress.loaded)} / {formatBytes(progress.total)}</p>
-            {uploadQueue.length > 1 && (
+            <p className="text-xs text-muted-foreground">{formatBytes(activeUpload.loadedBytes)} / {formatBytes(activeUpload.fileSize)}</p>
+            {clipUploads.filter(u => u.zone === 'clip').length > 1 && (
               <div className="flex flex-wrap gap-1 mt-1">
-                {uploadQueue.map((q, i) => (
-                  <span key={i} className={`text-[10px] px-1.5 py-0.5 rounded border ${
-                    q.done
+                {clipUploads.filter(u => u.zone === 'clip').map(u => (
+                  <span key={u.id} className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                    u.status === 'completed'
                       ? 'bg-[hsl(var(--clr-green)/0.1)] text-[hsl(var(--clr-green))] border-[hsl(var(--clr-green)/0.3)]'
                       : 'bg-muted text-muted-foreground border-border'
                   }`}>
-                    {q.done ? '✓' : '○'} {q.name.slice(0, 20)}
+                    {u.status === 'completed' ? '✓' : '○'} {u.fileName.slice(0, 20)}
                   </span>
                 ))}
               </div>
