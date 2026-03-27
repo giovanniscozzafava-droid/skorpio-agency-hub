@@ -720,24 +720,48 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       {/* Board CLP */}
       {showCLP && (
         <div className="mb-6">
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
             <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(var(--muted-foreground))' }}>
               🎬 Workflow Produzione CLP
             </span>
-            <div className="flex-1 h-px" style={{ background: 'hsl(var(--border))' }} />
-            <span className="text-[10px] text-muted-foreground italic">
+            <div className="flex-1 h-px hidden sm:block" style={{ background: 'hsl(var(--border))' }} />
+            <span className="text-[10px] text-muted-foreground italic hidden sm:inline">
               Trascina sulla colonna successiva per completare lo step
             </span>
           </div>
-          <div className="flex gap-3 overflow-x-auto pb-2">
-            {COLONNE_CLP.map(col => {
+
+          {/* Mobile: column tabs */}
+          {isMobile && (
+            <div className="flex gap-1 overflow-x-auto pb-2 mb-2 -mx-1 px-1" style={{ WebkitOverflowScrolling: 'touch' }}>
+              {COLONNE_CLP.map(col => {
+                const count = filteredCLP(col.stato).length;
+                return (
+                  <button
+                    key={col.stato}
+                    onClick={() => setMobileCLPCol(col.stato)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex-shrink-0 transition-all min-h-[36px]"
+                    style={{
+                      background: mobileCLPCol === col.stato ? col.colore : `${col.colore}15`,
+                      color: mobileCLPCol === col.stato ? '#fff' : col.colore,
+                      border: `1px solid ${col.colore}${mobileCLPCol === col.stato ? '' : '40'}`,
+                    }}
+                  >
+                    {col.icona} {col.stato} <span className="opacity-70">({count})</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div className={isMobile ? '' : 'flex gap-3 overflow-x-auto pb-2'}>
+            {COLONNE_CLP.filter(col => !isMobile || col.stato === mobileCLPCol).map(col => {
               const colTasks = filteredCLP(col.stato);
               const isDrop = dropTarget === `clp__${col.stato}`;
               return (
                 <div
                   key={col.stato}
                   className={`kanban-col ${isDrop ? 'kanban-drop-target' : ''}`}
-                  style={{ background: col.bg, border: `1px solid ${col.border}30`, minWidth: 180 }}
+                  style={{ background: col.bg, border: `1px solid ${col.border}30`, minWidth: isMobile ? '100%' : 180 }}
                   onDragOver={e => { e.preventDefault(); setDropTarget(`clp__${col.stato}`); }}
                   onDragLeave={() => { setDropTarget(null); setDragOverTaskId(null); setDragOverPos(null); }}
                   onDrop={() => {
