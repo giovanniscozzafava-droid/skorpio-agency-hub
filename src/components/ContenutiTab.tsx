@@ -79,71 +79,65 @@ export function ContenutiTab({ team, clienti }: ContentTabProps) {
     addToast('Contenuto eliminato', 'info');
   };
 
+  // ── VECCHIO handleFaseChange (commentato, non cancellato) ──
+  // const handleFaseChange_OLD = async (contenuto: Contenuto, nuovaFase: FaseCLP) => {
+  //   const { data, error } = await supabase
+  //     .from('contenuti').update({ fase: nuovaFase }).eq('id', contenuto.id).select().single();
+  //   if (!error && data) {
+  //     if (nuovaFase === 'Pubblicato' && contenuto.fase !== 'Pubblicato' && contenuto.tipo === 'Reel' && contenuto.cliente_id) {
+  //       const cliente = clienti.find(c => c.id === contenuto.cliente_id);
+  //       if (cliente) {
+  //         const nuoviReel = cliente.reel_fatti + 1;
+  //         await supabase.from('clienti').update({ reel_fatti: nuoviReel }).eq('id', cliente.id);
+  //       }
+  //     }
+  //     if (nuovaFase === 'Montato' && contenuto.fase !== 'Montato' && !contenuto.link_drive) {
+  //       // ... logica Drive folder ...
+  //     }
+  //     handleUpdate(data as Contenuto);
+  //     addToast(`Fase → ${nuovaFase}`, 'success');
+  //   }
+  // };
+
+  // ── NUOVO: usa FaseService centralizzato ──
   const handleFaseChange = async (contenuto: Contenuto, nuovaFase: FaseCLP) => {
-    const { data, error } = await supabase
-      .from('contenuti')
-      .update({ fase: nuovaFase })
-      .eq('id', contenuto.id)
-      .select()
-      .single();
+    console.log('[ContenutiTab] handleFaseChange via FaseService', { id: contenuto.id, oldFase: contenuto.fase, nuovaFase });
+    const result = await cambiaFaseCLP({
+      contenutoId: contenuto.id,
+      nuovaFase,
+      source: 'contenuti',
+      userId: utente?.id || 'unknown',
+    });
 
-    if (!error && data) {
-      // Se pubblicato e tipo Reel → incrementa reel_fatti del cliente
-      if (nuovaFase === 'Pubblicato' && contenuto.fase !== 'Pubblicato' && contenuto.tipo === 'Reel' && contenuto.cliente_id) {
-        const cliente = clienti.find(c => c.id === contenuto.cliente_id);
-        if (cliente) {
-          const nuoviReel = cliente.reel_fatti + 1;
-          await supabase.from('clienti').update({ reel_fatti: nuoviReel }).eq('id', cliente.id);
-          const emoji = nuoviReel <= cliente.reel_quota ? '🟢' : '🔴';
-          addToast(`${emoji} Reel pubblicato! ${nuoviReel}/${cliente.reel_quota} per ${cliente.nome}`, nuoviReel > cliente.reel_quota ? 'warn' : 'success');
-        }
-      }
-
-      // 📁 Quando passa a "Montato" → crea cartella Drive automaticamente
-      if (nuovaFase === 'Montato' && contenuto.fase !== 'Montato' && !contenuto.link_drive) {
-        addToast('📁 Creazione cartella Drive…', 'info');
-        try {
-          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-          const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-          const res = await fetch(
-            `${supabaseUrl}/functions/v1/create-drive-folder`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${supabaseKey}`,
-                'apikey': supabaseKey,
-              },
-              body: JSON.stringify({
-                contenuto_id: contenuto.id,
-                titolo: contenuto.titolo,
-                cliente_nome: contenuto.cliente_nome,
-                tipo: contenuto.tipo,
-                id_display: contenuto.id_display,
-                team_id: utente?.id,
-              }),
-            }
-          );
-          const result = await res.json();
-          if (result.success) {
-            addToast(`📁 Cartella Drive creata! → ${contenuto.id_display}`, 'success');
-            // Ricarica il contenuto aggiornato con link_drive
-            const { data: fresh } = await supabase
-              .from('contenuti').select('*').eq('id', contenuto.id).single();
-            if (fresh) handleUpdate(fresh as Contenuto);
-            return;
-          } else {
-            addToast(`⚠️ Drive: ${result.error}`, 'warn');
-          }
-        } catch (e) {
-          addToast('⚠️ Errore creazione cartella Drive', 'warn');
-          console.error(e);
-        }
-      }
-
-      handleUpdate(data as Contenuto);
-      addToast(`Fase → ${nuovaFase}`, 'success');
+    if (!result.success) {
+      addToast('Errore cambio fase: ' + result.errors.join(', '), 'error');
+      return;
     }
+
+    // Ricarica il contenuto aggiornato
+    const { data: fresh } = await supabase
+      .from('contenuti').select('*').eq('id', contenuto.id).single();
+    if (fresh) {
+      handleUpdate(fresh as Contenuto);
+    }
+
+    // Feedback specifico
+    if (result.reelIncremented) {
+      const cliente = clienti.find(c => c.id === contenuto.cliente_id);
+      if (cliente) {
+        const nuoviReel = cliente.reel_fatti + 1;
+        const emoji = nuoviReel <= cliente.reel_quota ? '🟢' : '🔴';
+        addToast(`${emoji} Reel pubblicato! ${nuoviReel}/${cliente.reel_quota} per ${cliente.nome}`, nuoviReel > cliente.reel_quota ? 'warn' : 'success');
+      }
+    }
+    if (result.driveFolder) {
+      addToast(`📁 Cartella Drive creata! → ${contenuto.id_display}`, 'success');
+    }
+    if (result.taskCreated) {
+      addToast(`📋 Task workflow creato`, 'info');
+    }
+
+    addToast(`Fase → ${nuovaFase}`, 'success');
   };
 
   const contatoreFasi = FASI.reduce((acc, f) => {
