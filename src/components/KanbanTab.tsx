@@ -457,13 +457,12 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
     const tipoColonna = TIPO_PER_FASE[faseCLP];
     return tasks.filter(t => {
       if (!t.id_contenuto || t.id_contenuto.trim() === '') return false;
-      if (personaView && t.assegnato_a !== personaView) return false;
-      if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
       if (!matchesSearch(t)) return false;
 
       const faseReale = clpFasi[t.id_contenuto];
       if (!faseReale) return false;
 
+      // Programmato e Pubblicato: visibili a TUTTI (nessun filtro persona)
       if (faseCLP === 'Programmato') {
         return faseReale === 'Programmato' && t.tipo === 'Programmazione';
       }
@@ -471,6 +470,10 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       if (faseCLP === 'Pubblicato') {
         return faseReale === 'Pubblicato' && (t.tipo === 'Cleanup' || (t.stato === 'Completato' && t.tipo === 'Programmazione'));
       }
+
+      // Per le altre colonne, filtra per persona
+      if (personaView && t.assegnato_a !== personaView) return false;
+      if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
 
       return faseReale === faseCLP && tipoColonna === t.tipo && t.stato !== 'Completato';
     });
