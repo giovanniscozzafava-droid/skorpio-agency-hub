@@ -231,6 +231,30 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
     }
   };
 
+  // ─── SALVA DATA PUBBLICAZIONE (senza cambiare fase) ────────────────────────
+  const handleSalvaDataPub = async () => {
+    if (!pubDate) return;
+    setSavingPub(true);
+    const dataStr = format(pubDate, 'yyyy-MM-dd');
+    const oraStr = pubOra || null;
+
+    const { data, error } = await supabase
+      .from('contenuti')
+      .update({ data_pubblicazione: dataStr, ora_pubblicazione: oraStr })
+      .eq('id', contenuto.id)
+      .select()
+      .single();
+
+    if (!error && data) {
+      onUpdate(data as Contenuto);
+      setForm(data as Contenuto);
+      // Ricalcola scadenze di TUTTI i task aperti collegati
+      const count = await ricalcolaScadenzeTask(contenuto.id, dataStr, oraStr);
+      addToast(`📅 Data salvata — ${count} scadenze task ricalcolate a ritroso`, 'success');
+    }
+    setSavingPub(false);
+  };
+
   // ─── PROGRAMMA / PUBBLICA (Elisa) ─────────────────────────────────────────
   const handleProgramma = async (nuovaFase: 'Programmato' | 'Pubblicato') => {
     setSavingPub(true);
@@ -251,21 +275,9 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
       const vecchiaFase = prevFaseRef.current;
       prevFaseRef.current = nuovaFase;
 
-      // Aggiorna scadenza sul task Pubblicazione attivo (per il countdown in Kanban)
+      // Ricalcola scadenze di tutti i task aperti collegati
       if (dataStr) {
-        const { data: pubTasks } = await supabase
-          .from('task')
-          .select('id')
-          .eq('id_contenuto', contenuto.id)
-          .eq('tipo', 'Pubblicazione')
-          .neq('stato', 'Completato')
-          .neq('stato', 'Archiviato');
-        if (pubTasks && pubTasks.length > 0) {
-          await supabase
-            .from('task')
-            .update({ scadenza: dataStr, ora: oraStr })
-            .in('id', pubTasks.map(t => t.id));
-        }
+        await ricalcolaScadenzeTask(contenuto.id, dataStr, oraStr);
       }
 
       // Completa task pubblicazione di Elisa (solo se Pubblicato, non Programmato)
@@ -282,7 +294,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
           tipo: 'pubblicazione',
           data: dataStr,
           ora: oraStr,
-          descrizione: `${contenuto.id_display} – ${contenuto.titolo}`,
+          descrizione: `📱 Pubblica ${contenuto.id_display} – ${contenuto.titolo}`,
           cliente_id: contenuto.cliente_id,
           cliente_nome: contenuto.cliente_nome || '',
           contenuto_id: contenuto.id,
