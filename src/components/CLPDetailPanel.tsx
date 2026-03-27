@@ -680,28 +680,50 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
                 </div>
 
                 {/* Bottoni azione */}
-                <div className="flex gap-2 pt-1">
-                  <button
-                    onClick={() => handleProgramma('Programmato')}
-                    disabled={savingPub || !pubDate || !pubOra}
-                    className="flex-1 text-xs px-3 py-2 rounded-lg font-semibold transition-all disabled:opacity-40"
-                    style={{ background: 'hsl(271 60% 55%)', color: 'white' }}
-                    title={!pubOra ? 'Inserisci anche l\'ora di pubblicazione' : ''}
-                  >
-                    {savingPub ? '⏳…' : '📅 Programma'}
-                  </button>
-                  <button
-                    onClick={() => handleProgramma('Pubblicato')}
-                    disabled={savingPub}
-                    className="flex-1 text-xs px-3 py-2 rounded-lg font-semibold transition-all disabled:opacity-40"
-                    style={{ background: 'hsl(142 60% 45%)', color: 'white' }}
-                  >
-                    {savingPub ? '⏳…' : '🚀 Pubblica ora'}
-                  </button>
+                <div className="flex gap-2 pt-1 flex-wrap">
+                  {/* Salva data (disponibile PRIMA della programmazione) */}
+                  {!['Programmato', 'Pubblicato'].includes(form.fase) && (
+                    <button
+                      onClick={handleSalvaDataPub}
+                      disabled={savingPub || !pubDate}
+                      className="flex-1 text-xs px-3 py-2 rounded-lg font-semibold transition-all disabled:opacity-40"
+                      style={{ background: 'hsl(214 80% 55%)', color: 'white' }}
+                    >
+                      {savingPub ? '⏳…' : '💾 Salva data'}
+                    </button>
+                  )}
+                  {/* Programma (richiede fase Revisionato o superiore) */}
+                  {['Revisionato', 'Montato'].includes(form.fase) && (
+                    <button
+                      onClick={() => handleProgramma('Programmato')}
+                      disabled={savingPub || !pubDate || !pubOra}
+                      className="flex-1 text-xs px-3 py-2 rounded-lg font-semibold transition-all disabled:opacity-40"
+                      style={{ background: 'hsl(271 60% 55%)', color: 'white' }}
+                      title={!pubOra ? 'Inserisci anche l\'ora di pubblicazione' : ''}
+                    >
+                      {savingPub ? '⏳…' : '📅 Programma'}
+                    </button>
+                  )}
+                  {/* Pubblica ora */}
+                  {!['Pubblicato'].includes(form.fase) && (
+                    <button
+                      onClick={() => handleProgramma('Pubblicato')}
+                      disabled={savingPub}
+                      className="flex-1 text-xs px-3 py-2 rounded-lg font-semibold transition-all disabled:opacity-40"
+                      style={{ background: 'hsl(142 60% 45%)', color: 'white' }}
+                    >
+                      {savingPub ? '⏳…' : '🚀 Pubblica ora'}
+                    </button>
+                  )}
                 </div>
-                {!pubOra && pubDate && (
+                {!pubOra && pubDate && !['Programmato', 'Pubblicato'].includes(form.fase) && (
                   <p className="text-xs mt-1" style={{ color: 'hsl(45 90% 50%)' }}>
                     ⚠️ Per programmare devi impostare anche l'ora di pubblicazione
+                  </p>
+                )}
+                {pubDate && !['Programmato', 'Pubblicato'].includes(form.fase) && (
+                  <p className="text-xs mt-1" style={{ color: 'hsl(214 70% 50%)' }}>
+                    💡 Salvando la data, le scadenze dei task verranno ricalcolate automaticamente
                   </p>
                 )}
               </div>
