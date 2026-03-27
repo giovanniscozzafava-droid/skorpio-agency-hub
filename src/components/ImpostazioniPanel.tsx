@@ -569,7 +569,7 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
               <div className="flex flex-col items-center gap-3 py-4 rounded-xl"
                 style={{ background: 'hsl(210 20% 97%)' }}>
                 <div className="relative">
-                  <Avatar nome={utente.nome} colore={utente.colore} size={72} />
+                  <Avatar nome={utente.nome} colore={utente.colore} size={72} avatarUrl={utente.avatar_url} />
                   <div
                     className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center text-xs border-2 border-white"
                     style={{ background: utente.colore }}
@@ -896,7 +896,7 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
                     className="flex items-center gap-3 p-3 rounded-xl border transition-all"
                     style={{ borderColor: 'hsl(var(--border))', background: 'hsl(var(--card))' }}
                   >
-                    <Avatar nome={m.nome} colore={m.colore} size={40} />
+                    <Avatar nome={m.nome} colore={m.colore} size={40} avatarUrl={m.avatar_url} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-sm truncate"
@@ -1180,7 +1180,7 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
           <div className="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl"
             style={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}>
             <div className="flex items-center gap-3 mb-4">
-              <Avatar nome={deleteTarget.nome} colore={deleteTarget.colore} size={44} />
+              <Avatar nome={deleteTarget.nome} colore={deleteTarget.colore} size={44} avatarUrl={deleteTarget.avatar_url} />
               <div>
                 <h3 className="font-bold text-base" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
                   Rimuovi {deleteTarget.nome}

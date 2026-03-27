@@ -1355,7 +1355,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
                     className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md transition-colors"
                     style={{ background: `${m.colore}15`, color: m.colore, border: `1px solid ${m.colore}30` }}
                   >
-                    <Avatar nome={m.nome} colore={m.colore} size={16} />
+                    <Avatar nome={m.nome} colore={m.colore} size={16} avatarUrl={m.avatar_url} />
                     {m.nome}
                   </button>
                 ))}

@@ -490,7 +490,7 @@ export function ChatPopup({ team }: ChatPopupProps) {
                         }}
                       >
                         <div className="relative flex-shrink-0">
-                          <Avatar nome={membro.nome} colore={membro.colore} size={38} />
+                          <Avatar nome={membro.nome} colore={membro.colore} size={38} avatarUrl={membro.avatar_url} />
                           {nonLetti > 0 && (
                             <span
                               className="absolute -top-1 -right-1 text-xs font-bold w-4 h-4 flex items-center justify-center rounded-full"
@@ -546,7 +546,7 @@ export function ChatPopup({ team }: ChatPopupProps) {
                     >
                       ←
                     </button>
-                    <Avatar nome={contattoAttivo.nome} colore={contattoAttivo.colore} size={32} />
+                    <Avatar nome={contattoAttivo.nome} colore={contattoAttivo.colore} size={32} avatarUrl={contattoAttivo.avatar_url} />
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-xs truncate" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
                         {contattoAttivo.nome}

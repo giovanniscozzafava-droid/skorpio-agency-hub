@@ -238,7 +238,7 @@ function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEn
             );
           })()}
         </div>
-        {member && <Avatar nome={member.nome} colore={member.colore} size={20} />}
+        {member && <Avatar nome={member.nome} colore={member.colore} size={20} avatarUrl={member.avatar_url} />}
       </div>
 
       {task.cliente_nome && (
