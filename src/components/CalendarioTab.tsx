@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import { NuovoTaskModal } from './NuovoTaskModal';
@@ -43,6 +43,19 @@ const FASE_COLORS: Record<string, string> = {
   Pubblicato: '#3B82F6', Scartata: '#EF4444',
 };
 
+const RICORRENZA_OPTIONS = [
+  { value: '', label: 'Nessuna' },
+  { value: 'daily', label: 'Ogni giorno' },
+  { value: 'weekly', label: 'Ogni settimana' },
+  { value: 'biweekly', label: 'Ogni 2 settimane' },
+  { value: 'monthly', label: 'Ogni mese' },
+];
+
+const WEEKDAY_LABELS = [
+  { key: 'mon', label: 'L' }, { key: 'tue', label: 'M' }, { key: 'wed', label: 'Me' },
+  { key: 'thu', label: 'G' }, { key: 'fri', label: 'V' }, { key: 'sat', label: 'S' }, { key: 'sun', label: 'D' },
+];
+
 type DesktopVista = 'mese' | 'settimana' | 'giorno' | 'agenda';
 type MobileVista = 'agenda' | 'giorno' | '3giorni' | 'settimana' | 'mese';
 
@@ -67,7 +80,6 @@ function getDayIndex(d: Date) {
 }
 
 function getEventStyle(ev: CalendarioEvent) {
-  // Workflow-generated tasks: use tipo_contenuto to pick specific color
   if (ev.tipo === 'appuntamento' && ev.descrizione?.includes('[TASK:')) {
     return WORKFLOW_STYLES[ev.tipo_contenuto] || WORKFLOW_DEFAULT;
   }
@@ -90,6 +102,93 @@ function getHourFromTime(t: string | null): number {
 function getMinuteFromTime(t: string | null): number {
   if (!t) return 0;
   return parseInt(t.slice(3, 5));
+}
+
+// ─── Countdown Helper ────────────────────────────────────────────────────────
+function getCountdown(ev: CalendarioEvent, now: Date): { text: string; color: string; level: 'green' | 'yellow' | 'red' | 'scaduto' } | null {
+  if (isEventCompletato(ev)) return null;
+  const evDate = parseLocalDate(ev.data);
+  if (ev.ora) {
+    const [h, m] = ev.ora.split(':').map(Number);
+    evDate.setHours(h, m, 0, 0);
+  } else {
+    evDate.setHours(23, 59, 59, 999);
+  }
+
+  const diffMs = evDate.getTime() - now.getTime();
+  if (diffMs < 0) return { text: 'SC', color: '#EF4444', level: 'scaduto' };
+
+  const diffH = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffD = Math.floor(diffH / 24);
+  const remainH = diffH % 24;
+
+  if (diffD > 3) return { text: `${diffD}g`, color: '#16A34A', level: 'green' };
+  if (diffD >= 1) return { text: `${diffD}g ${remainH}h`, color: '#F59E0B', level: 'yellow' };
+  if (diffH > 0) return { text: `${diffH}h`, color: '#EF4444', level: 'red' };
+  const diffMin = Math.floor(diffMs / (1000 * 60));
+  return { text: `${diffMin}min`, color: '#EF4444', level: 'red' };
+}
+
+// Countdown badge component
+function CountdownBadge({ ev, now, size = 'sm' }: { ev: CalendarioEvent; now: Date; size?: 'sm' | 'md' }) {
+  const cd = getCountdown(ev, now);
+  if (!cd) return null;
+  const isSmall = size === 'sm';
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 font-semibold rounded shrink-0 ${isSmall ? 'text-[9px] px-1 py-0.5' : 'text-xs px-1.5 py-0.5'}`}
+      style={{ background: cd.color + '18', color: cd.color }}
+    >
+      {cd.level === 'scaduto' ? '🔴' : '⏰'} {cd.text}
+    </span>
+  );
+}
+
+// ─── Search Dropdown ─────────────────────────────────────────────────────────
+function SearchDropdown({ query, eventi, onSelect, onClose }: {
+  query: string; eventi: CalendarioEvent[];
+  onSelect: (ev: CalendarioEvent) => void; onClose: () => void;
+}) {
+  const q = query.toLowerCase().trim();
+  if (!q || q.length < 2) return null;
+  const results = eventi.filter(ev => {
+    return (ev.descrizione || '').toLowerCase().includes(q) ||
+      (ev.cliente_nome || '').toLowerCase().includes(q) ||
+      (ev.persona || '').toLowerCase().includes(q) ||
+      (ev.tipo || '').toLowerCase().includes(q);
+  }).slice(0, 8);
+
+  if (results.length === 0) return (
+    <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg z-50 p-3">
+      <p className="text-xs text-muted-foreground">Nessun risultato</p>
+    </div>
+  );
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg z-50 max-h-72 overflow-y-auto">
+        {results.map(ev => {
+          const s = getEventStyle(ev);
+          const d = parseLocalDate(ev.data);
+          return (
+            <button key={ev.id} onClick={() => { onSelect(ev); onClose(); }}
+              className="w-full text-left px-3 py-2 hover:bg-accent/50 flex items-center gap-2 border-b last:border-b-0">
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.border }} />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">{ev.descrizione?.replace(/\s*\[TASK:[^\]]+\]/, '')}</div>
+                <div className="text-[10px] text-muted-foreground">
+                  {d.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}
+                  {ev.cliente_nome && ` · ${ev.cliente_nome}`}
+                  {ev.persona && ` · ${ev.persona}`}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
 }
 
 // ─── Mini Calendar (Sidebar) ────────────────────────────────────────────────
@@ -139,9 +238,9 @@ function MiniCalendar({ year, month, oggi, selectedDate, onDateSelect, onMonthCh
   );
 }
 
-// ─── Sidebar Filters ────────────────────────────────────────────────────────
-function SidebarFilters({ 
-  categories, toggleCategory, operators, toggleOperator, team 
+// ─── Sidebar Filters (with workflow categories) ─────────────────────────────
+function SidebarFilters({
+  categories, toggleCategory, operators, toggleOperator, team
 }: {
   categories: Record<string, boolean>;
   toggleCategory: (k: string) => void;
@@ -149,29 +248,27 @@ function SidebarFilters({
   toggleOperator: (name: string) => void;
   team: TeamMember[];
 }) {
+  const allCategories = [
+    ...Object.entries(TIPO_STYLE).map(([k, v]) => ({ key: k, ...v })),
+    ...Object.entries(WORKFLOW_STYLES).map(([k, v]) => ({ key: `wf_${k}`, ...v })),
+    { key: 'marketing', bg: '#FFF7ED', border: '#F97316', icon: '📌', label: 'Marketing', dot: '#F97316' },
+  ];
+
   return (
     <>
       <div className="border-t pt-3 mt-3">
         <div className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">📂 Categorie</div>
         <div className="space-y-1.5">
-          {Object.entries(TIPO_STYLE).map(([k, v]) => (
-            <label key={k} className="flex items-center gap-2 cursor-pointer text-xs hover:bg-accent/50 rounded px-1 py-0.5">
-              <input type="checkbox" checked={categories[k] !== false} onChange={() => toggleCategory(k)} className="sr-only" />
-              <span className="w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center" 
-                style={{ borderColor: v.dot, background: categories[k] !== false ? v.dot : 'transparent' }}>
-                {categories[k] !== false && <span className="text-white text-[8px]">✓</span>}
+          {allCategories.map(v => (
+            <label key={v.key} className="flex items-center gap-2 cursor-pointer text-xs hover:bg-accent/50 rounded px-1 py-0.5">
+              <input type="checkbox" checked={categories[v.key] !== false} onChange={() => toggleCategory(v.key)} className="sr-only" />
+              <span className="w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center"
+                style={{ borderColor: v.dot, background: categories[v.key] !== false ? v.dot : 'transparent' }}>
+                {categories[v.key] !== false && <span className="text-white text-[8px]">✓</span>}
               </span>
               <span>{v.icon} {v.label}</span>
             </label>
           ))}
-          <label className="flex items-center gap-2 cursor-pointer text-xs hover:bg-accent/50 rounded px-1 py-0.5">
-            <input type="checkbox" checked={categories['marketing'] !== false} onChange={() => toggleCategory('marketing')} className="sr-only" />
-            <span className="w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center"
-              style={{ borderColor: '#F97316', background: categories['marketing'] !== false ? '#F97316' : 'transparent' }}>
-              {categories['marketing'] !== false && <span className="text-white text-[8px]">✓</span>}
-            </span>
-            <span>📌 Marketing</span>
-          </label>
         </div>
       </div>
 
@@ -195,11 +292,12 @@ function SidebarFilters({
 }
 
 // ─── Desktop Agenda View ────────────────────────────────────────────────────
-function DesktopAgendaView({ eventi, marketing, oggi, onEventClick }: {
+function DesktopAgendaView({ eventi, marketing, oggi, onEventClick, now }: {
   eventi: CalendarioEvent[];
   marketing: MarketingEvent[];
   oggi: Date;
   onEventClick: (ev: CalendarioEvent) => void;
+  now: Date;
 }) {
   const allDates = new Set<string>();
   eventi.forEach(e => allDates.add(e.data));
@@ -234,14 +332,12 @@ function DesktopAgendaView({ eventi, marketing, oggi, onEventClick }: {
         return (
           <div key={dateStr} className="border-b last:border-b-0">
             <div className="flex items-start py-3 px-4">
-              {/* Date column */}
               <div className={`w-24 shrink-0 pt-0.5 ${isToday ? 'text-primary' : 'text-muted-foreground'}`}>
                 <div className="text-xs font-medium">{GIORNI_FULL[getDayIndex(d)].slice(0, 3)}</div>
                 <div className={`text-2xl font-bold leading-tight ${isToday ? 'text-primary' : ''}`}>{d.getDate()}</div>
                 <div className="text-xs">{MESI[d.getMonth()].slice(0, 3)}</div>
               </div>
 
-              {/* Events column */}
               <div className="flex-1 space-y-1.5">
                 {dayMkt.map(m => {
                   const color = MARKETING_COLOR[m.categoria] || '#F97316';
@@ -260,7 +356,7 @@ function DesktopAgendaView({ eventi, marketing, oggi, onEventClick }: {
                     <div
                       key={ev.id}
                       onClick={() => onEventClick(ev)}
-                      className={`flex items-center gap-3 py-2 px-3 rounded-lg cursor-pointer hover:shadow-sm transition-all ${completato ? 'opacity-50' : ''}`}
+                      className={`flex items-center gap-3 py-2 px-3 rounded-lg cursor-pointer hover:shadow-sm transition-all ${completato ? 'opacity-50 line-through' : ''}`}
                       style={{ background: s.bg, borderLeft: `4px solid ${scaduto ? '#EF4444' : s.border}` }}
                     >
                       <span className="text-xs font-mono w-12 shrink-0 text-muted-foreground">
@@ -274,10 +370,7 @@ function DesktopAgendaView({ eventi, marketing, oggi, onEventClick }: {
                       {ev.persona && (
                         <span className="text-xs text-muted-foreground shrink-0">{ev.persona}</span>
                       )}
-                      {scaduto && <span className="text-xs font-semibold text-destructive shrink-0">🔴 SCADUTO</span>}
-                      {ev.ora_fine && (
-                        <span className="text-xs text-muted-foreground shrink-0">→ {formatTime(ev.ora_fine)}</span>
-                      )}
+                      <CountdownBadge ev={ev} now={now} size="md" />
                     </div>
                   );
                 })}
@@ -290,8 +383,8 @@ function DesktopAgendaView({ eventi, marketing, oggi, onEventClick }: {
   );
 }
 
-// ─── Desktop Day View (timeline) ────────────────────────────────────────────
-function DesktopDayView({ date, eventi, marketing, oggi, onEventClick, onSlotClick, onEventDrop, dragEvId, setDragEvId }: {
+// ─── Desktop Day View (timeline with resize) ────────────────────────────────
+function DesktopDayView({ date, eventi, marketing, oggi, onEventClick, onSlotClick, onEventDrop, dragEvId, setDragEvId, now, onQuickCreate, onResize }: {
   date: Date;
   eventi: CalendarioEvent[];
   marketing: MarketingEvent[];
@@ -301,6 +394,9 @@ function DesktopDayView({ date, eventi, marketing, oggi, onEventClick, onSlotCli
   onEventDrop: (evId: string, newDate: string, newHour?: number) => void;
   dragEvId: string | null;
   setDragEvId: (id: string | null) => void;
+  now: Date;
+  onQuickCreate: (date: Date, startHour: number, endHour: number) => void;
+  onResize: (evId: string, newEndTime: string) => void;
 }) {
   const dateStr = toDateStr(date);
   const isToday = isSameDay(date, oggi);
@@ -311,22 +407,50 @@ function DesktopDayView({ date, eventi, marketing, oggi, onEventClick, onSlotCli
     return false;
   });
 
-  const hours = Array.from({ length: 17 }, (_, i) => i + 6); // 6:00 - 22:00
+  const hours = Array.from({ length: 17 }, (_, i) => i + 6);
   const noTimeEvents = dayEvents.filter(e => !e.ora);
   const timedEvents = dayEvents.filter(e => !!e.ora);
 
-  // Current time indicator
-  const now = new Date();
   const currentHour = now.getHours();
   const currentMinute = now.getMinutes();
   const showRedLine = isToday && currentHour >= 6 && currentHour <= 22;
   const redLineTop = showRedLine ? (currentHour - 6) * 60 + currentMinute : -1;
 
   const [dropHour, setDropHour] = useState<number | null>(null);
+  const [dragCreateStart, setDragCreateStart] = useState<number | null>(null);
+  const [dragCreateEnd, setDragCreateEnd] = useState<number | null>(null);
+  const [resizingEv, setResizingEv] = useState<string | null>(null);
+  const [resizeHour, setResizeHour] = useState<number | null>(null);
+
+  const handleMouseDown = (h: number) => {
+    if (!dragEvId) setDragCreateStart(h);
+  };
+  const handleMouseEnter = (h: number) => {
+    if (dragCreateStart !== null && !dragEvId) setDragCreateEnd(h);
+    if (resizingEv) setResizeHour(h + 1);
+  };
+  const handleMouseUp = (h: number) => {
+    if (dragCreateStart !== null && !dragEvId) {
+      const startH = Math.min(dragCreateStart, h);
+      const endH = Math.max(dragCreateStart, h) + 1;
+      if (endH > startH) onQuickCreate(date, startH, endH);
+      setDragCreateStart(null);
+      setDragCreateEnd(null);
+    }
+    if (resizingEv && resizeHour !== null) {
+      const newEnd = `${resizeHour.toString().padStart(2, '0')}:00`;
+      onResize(resizingEv, newEnd);
+      setResizingEv(null);
+      setResizeHour(null);
+    }
+  };
+
+  const isDragCreating = dragCreateStart !== null && dragCreateEnd !== null;
+  const dcMin = isDragCreating ? Math.min(dragCreateStart!, dragCreateEnd!) : -1;
+  const dcMax = isDragCreating ? Math.max(dragCreateStart!, dragCreateEnd!) : -1;
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      {/* Day header */}
+    <div className="flex-1 overflow-y-auto" onMouseUp={() => { setDragCreateStart(null); setDragCreateEnd(null); if (resizingEv) { setResizingEv(null); setResizeHour(null); } }}>
       <div className={`text-center py-3 border-b sticky top-0 z-10 ${isToday ? 'bg-primary/5' : 'bg-white'}`}>
         <div className="text-xs text-muted-foreground">{GIORNI_FULL[getDayIndex(date)]}</div>
         <div className={`text-3xl font-bold mt-0.5 w-12 h-12 mx-auto flex items-center justify-center rounded-full
@@ -336,7 +460,6 @@ function DesktopDayView({ date, eventi, marketing, oggi, onEventClick, onSlotCli
         <div className="text-xs text-muted-foreground">{MESI[date.getMonth()]} {date.getFullYear()}</div>
       </div>
 
-      {/* All-day events */}
       {(noTimeEvents.length > 0 || dayMkt.length > 0) && (
         <div className="border-b px-4 py-2 bg-muted/20">
           <div className="text-[10px] text-muted-foreground uppercase font-semibold mb-1">Tutto il giorno</div>
@@ -351,11 +474,14 @@ function DesktopDayView({ date, eventi, marketing, oggi, onEventClick, onSlotCli
             })}
             {noTimeEvents.map(ev => {
               const s = getEventStyle(ev);
+              const completato = isEventCompletato(ev);
               return (
-                <div key={ev.id} onClick={() => onEventClick(ev)} className="text-xs rounded px-2 py-1 cursor-pointer hover:opacity-80"
+                <div key={ev.id} onClick={() => onEventClick(ev)}
+                  className={`text-xs rounded px-2 py-1 cursor-pointer hover:opacity-80 ${completato ? 'opacity-50 line-through' : ''}`}
                   style={{ background: s.bg, borderLeft: `3px solid ${s.border}` }}>
                   {s.icon} {ev.descrizione?.replace(/\s*\[TASK:[^\]]+\]/, '')}
                   {ev.cliente_nome && <span className="text-muted-foreground ml-1">· {ev.cliente_nome}</span>}
+                  <CountdownBadge ev={ev} now={now} />
                 </div>
               );
             })}
@@ -363,9 +489,7 @@ function DesktopDayView({ date, eventi, marketing, oggi, onEventClick, onSlotCli
         </div>
       )}
 
-      {/* Timeline */}
       <div className="relative" style={{ minHeight: hours.length * 60 }}>
-        {/* Red line for current time */}
         {showRedLine && (
           <div className="absolute left-14 right-0 z-20 flex items-center" style={{ top: redLineTop }}>
             <div className="w-2.5 h-2.5 rounded-full bg-red-500 -ml-1" />
@@ -376,12 +500,15 @@ function DesktopDayView({ date, eventi, marketing, oggi, onEventClick, onSlotCli
         {hours.map(h => {
           const hEvents = timedEvents.filter(e => getHourFromTime(e.ora) === h);
           const isDragOver = dropHour === h;
+          const isDcRange = isDragCreating && h >= dcMin && h <= dcMax;
           return (
             <div
               key={h}
-              className="flex border-b"
+              className="flex border-b select-none"
               style={{ height: 60 }}
-              onClick={() => onSlotClick(date, h)}
+              onMouseDown={() => handleMouseDown(h)}
+              onMouseEnter={() => handleMouseEnter(h)}
+              onMouseUp={() => handleMouseUp(h)}
               onDragOver={e => { e.preventDefault(); setDropHour(h); }}
               onDragLeave={() => setDropHour(null)}
               onDrop={e => {
@@ -392,7 +519,13 @@ function DesktopDayView({ date, eventi, marketing, oggi, onEventClick, onSlotCli
               <div className="w-14 shrink-0 text-right pr-3 -mt-2 text-xs text-muted-foreground font-mono">
                 {h.toString().padStart(2, '0')}:00
               </div>
-              <div className={`flex-1 border-l px-2 py-1 cursor-pointer transition-colors ${isDragOver ? 'bg-primary/10' : 'hover:bg-accent/30'}`}>
+              <div className={`flex-1 border-l px-2 py-1 cursor-pointer transition-colors
+                ${isDragOver ? 'bg-primary/10' : isDcRange ? 'bg-primary/15' : 'hover:bg-accent/30'}`}>
+                {isDcRange && hEvents.length === 0 && h === dcMin && (
+                  <div className="text-[10px] text-primary font-medium opacity-70">
+                    Nuovo evento {dcMin.toString().padStart(2,'0')}:00 – {(dcMax+1).toString().padStart(2,'0')}:00
+                  </div>
+                )}
                 {hEvents.map(ev => {
                   const s = getEventStyle(ev);
                   const completato = isEventCompletato(ev);
@@ -403,7 +536,7 @@ function DesktopDayView({ date, eventi, marketing, oggi, onEventClick, onSlotCli
                       onDragStart={e => { e.stopPropagation(); setDragEvId(ev.id); }}
                       onDragEnd={() => setDragEvId(null)}
                       onClick={e => { e.stopPropagation(); onEventClick(ev); }}
-                      className={`rounded-lg px-3 py-1.5 text-sm cursor-grab mb-1 hover:shadow-sm transition-shadow ${completato ? 'opacity-50' : ''}`}
+                      className={`rounded-lg px-3 py-1.5 text-sm cursor-grab mb-1 hover:shadow-sm transition-shadow relative group ${completato ? 'opacity-50 line-through' : ''}`}
                       style={{ background: s.bg, borderLeft: `4px solid ${s.border}` }}
                     >
                       <div className="flex items-center gap-2">
@@ -412,12 +545,21 @@ function DesktopDayView({ date, eventi, marketing, oggi, onEventClick, onSlotCli
                         </span>
                         <span>{s.icon}</span>
                         <span className="font-medium">{ev.descrizione?.replace(/\s*\[TASK:[^\]]+\]/, '')}</span>
+                        <CountdownBadge ev={ev} now={now} />
                       </div>
                       {(ev.cliente_nome || ev.persona) && (
                         <div className="text-xs text-muted-foreground mt-0.5">
                           {ev.cliente_nome}{ev.persona && ` · ${ev.persona}`}
                         </div>
                       )}
+                      {/* Resize handle */}
+                      <div
+                        className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize opacity-0 group-hover:opacity-100 transition-opacity"
+                        style={{ background: s.border + '30' }}
+                        onMouseDown={e => { e.stopPropagation(); e.preventDefault(); setResizingEv(ev.id); setResizeHour(h + 1); }}
+                      >
+                        <div className="w-8 h-1 bg-current rounded mx-auto mt-0.5" style={{ color: s.border }} />
+                      </div>
                     </div>
                   );
                 })}
@@ -425,13 +567,24 @@ function DesktopDayView({ date, eventi, marketing, oggi, onEventClick, onSlotCli
             </div>
           );
         })}
+
+        {/* Resize tooltip */}
+        {resizingEv && resizeHour !== null && (() => {
+          const ev = eventi.find(e => e.id === resizingEv);
+          if (!ev) return null;
+          return (
+            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-foreground text-background text-xs px-3 py-1.5 rounded-lg shadow-lg">
+              {formatTime(ev.ora)} – {resizeHour.toString().padStart(2,'0')}:00
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
 }
 
-// ─── Desktop Week View (timeline) ───────────────────────────────────────────
-function DesktopWeekTimelineView({ weekStart, eventi, marketing, oggi, onEventClick, onSlotClick, onEventDrop, dragEvId, setDragEvId }: {
+// ─── Desktop Week View (timeline with resize) ──────────────────────────────
+function DesktopWeekTimelineView({ weekStart, eventi, marketing, oggi, onEventClick, onSlotClick, onEventDrop, dragEvId, setDragEvId, now, onQuickCreate, onResize }: {
   weekStart: Date;
   eventi: CalendarioEvent[];
   marketing: MarketingEvent[];
@@ -441,20 +594,22 @@ function DesktopWeekTimelineView({ weekStart, eventi, marketing, oggi, onEventCl
   onEventDrop: (evId: string, newDate: string, newHour?: number) => void;
   dragEvId: string | null;
   setDragEvId: (id: string | null) => void;
+  now: Date;
+  onQuickCreate: (date: Date, startHour: number, endHour: number) => void;
+  onResize: (evId: string, newEndTime: string) => void;
 }) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const hours = Array.from({ length: 17 }, (_, i) => i + 6);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [resizingEv, setResizingEv] = useState<string | null>(null);
+  const [resizeHour, setResizeHour] = useState<number | null>(null);
 
-  // Current time red line
-  const now = new Date();
   const currentHour = now.getHours();
   const currentMinute = now.getMinutes();
   const isCurrentWeek = days.some(d => isSameDay(d, oggi));
   const todayCol = isCurrentWeek ? days.findIndex(d => isSameDay(d, oggi)) : -1;
   const redLineTop = (currentHour >= 6 && currentHour <= 22) ? (currentHour - 6) * 60 + currentMinute : -1;
 
-  // All-day events per day
   const allDayByDay = (d: Date) => {
     const ds = toDateStr(d);
     const calEv = eventi.filter(e => e.data === ds && !e.ora);
@@ -472,18 +627,18 @@ function DesktopWeekTimelineView({ weekStart, eventi, marketing, oggi, onEventCl
   });
 
   return (
-    <div className="flex-1 overflow-auto min-h-0">
-      {/* Sticky header with day names */}
+    <div className="flex-1 overflow-auto min-h-0"
+      onMouseUp={() => { if (resizingEv && resizeHour !== null) { const newEnd = `${resizeHour.toString().padStart(2,'0')}:00`; onResize(resizingEv, newEnd); setResizingEv(null); setResizeHour(null); } }}>
       <div className="sticky top-0 z-20 bg-white border-b">
         <div className="flex">
           <div className="w-14 shrink-0" />
           {days.map(d => {
-            const isToday = isSameDay(d, oggi);
+            const isDayToday = isSameDay(d, oggi);
             return (
-              <div key={toDateStr(d)} className={`flex-1 text-center py-2 border-l ${isToday ? 'bg-primary/5' : ''}`}>
+              <div key={toDateStr(d)} className={`flex-1 text-center py-2 border-l ${isDayToday ? 'bg-primary/5' : ''}`}>
                 <div className="text-xs text-muted-foreground">{GIORNI[getDayIndex(d)]}</div>
                 <div className={`text-lg font-bold mx-auto w-8 h-8 flex items-center justify-center rounded-full mt-0.5
-                  ${isToday ? 'bg-primary text-primary-foreground' : ''}`}>
+                  ${isDayToday ? 'bg-primary text-primary-foreground' : ''}`}>
                   {d.getDate()}
                 </div>
               </div>
@@ -491,7 +646,6 @@ function DesktopWeekTimelineView({ weekStart, eventi, marketing, oggi, onEventCl
           })}
         </div>
 
-        {/* All-day events row */}
         {hasAnyAllDay && (
           <div className="flex border-t">
             <div className="w-14 shrink-0 text-right pr-2 text-[10px] text-muted-foreground pt-1">giorno</div>
@@ -510,8 +664,10 @@ function DesktopWeekTimelineView({ weekStart, eventi, marketing, oggi, onEventCl
                   })}
                   {calEv.slice(0, 1).map(ev => {
                     const s = getEventStyle(ev);
+                    const completato = isEventCompletato(ev);
                     return (
-                      <div key={ev.id} onClick={() => onEventClick(ev)} className="text-[9px] rounded px-1 py-0.5 truncate cursor-pointer"
+                      <div key={ev.id} onClick={() => onEventClick(ev)}
+                        className={`text-[9px] rounded px-1 py-0.5 truncate cursor-pointer ${completato ? 'opacity-50 line-through' : ''}`}
                         style={{ background: s.bg, borderLeft: `2px solid ${s.border}` }}>
                         {s.icon} {ev.descrizione?.replace(/\s*\[TASK:[^\]]+\]/, '').slice(0, 12)}
                       </div>
@@ -527,13 +683,11 @@ function DesktopWeekTimelineView({ weekStart, eventi, marketing, oggi, onEventCl
         )}
       </div>
 
-      {/* Timeline grid */}
       <div className="relative">
-        {/* Red line for current time */}
         {todayCol >= 0 && redLineTop >= 0 && (
-          <div className="absolute z-20 pointer-events-none" 
-            style={{ 
-              top: redLineTop, 
+          <div className="absolute z-20 pointer-events-none"
+            style={{
+              top: redLineTop,
               left: `calc(56px + ${todayCol} * (100% - 56px) / 7)`,
               width: `calc((100% - 56px) / 7)`,
             }}>
@@ -551,7 +705,7 @@ function DesktopWeekTimelineView({ weekStart, eventi, marketing, oggi, onEventCl
             </div>
             {days.map(d => {
               const ds = toDateStr(d);
-              const isToday = isSameDay(d, oggi);
+              const isDayToday = isSameDay(d, oggi);
               const targetKey = `${ds}-${h}`;
               const isDragOver = dropTarget === targetKey;
               const hEvents = eventi.filter(e => e.data === ds && e.ora && getHourFromTime(e.ora) === h);
@@ -559,9 +713,10 @@ function DesktopWeekTimelineView({ weekStart, eventi, marketing, oggi, onEventCl
               return (
                 <div
                   key={targetKey}
-                  className={`flex-1 border-l border-b px-0.5 py-0.5 cursor-pointer transition-colors
-                    ${isDragOver ? 'bg-primary/10' : isToday ? 'bg-primary/[0.02]' : 'hover:bg-accent/20'}`}
+                  className={`flex-1 border-l border-b px-0.5 py-0.5 cursor-pointer transition-colors select-none
+                    ${isDragOver ? 'bg-primary/10' : isDayToday ? 'bg-primary/[0.02]' : 'hover:bg-accent/20'}`}
                   onClick={() => onSlotClick(d, h)}
+                  onMouseEnter={() => { if (resizingEv) setResizeHour(h + 1); }}
                   onDragOver={e => { e.preventDefault(); setDropTarget(targetKey); }}
                   onDragLeave={() => setDropTarget(null)}
                   onDrop={e => {
@@ -579,14 +734,23 @@ function DesktopWeekTimelineView({ weekStart, eventi, marketing, oggi, onEventCl
                         onDragStart={e => { e.stopPropagation(); setDragEvId(ev.id); }}
                         onDragEnd={() => setDragEvId(null)}
                         onClick={e => { e.stopPropagation(); onEventClick(ev); }}
-                        className={`rounded px-1.5 py-1 text-[10px] leading-tight cursor-grab mb-0.5 hover:shadow-sm transition-shadow ${completato ? 'opacity-40' : ''}`}
+                        className={`rounded px-1.5 py-1 text-[10px] leading-tight cursor-grab mb-0.5 hover:shadow-sm transition-shadow relative group ${completato ? 'opacity-40 line-through' : ''}`}
                         style={{ background: s.bg, borderLeft: `3px solid ${s.border}`, opacity: dragEvId === ev.id ? 0.4 : undefined }}
                       >
                         <div className="font-mono font-semibold" style={{ color: s.border, fontSize: 9 }}>
                           {formatTime(ev.ora)}{ev.ora_fine ? `–${formatTime(ev.ora_fine)}` : ''}
                         </div>
                         <div className="font-medium truncate">{ev.descrizione?.replace(/\s*\[TASK:[^\]]+\]/, '').slice(0, 18)}</div>
-                        {ev.cliente_nome && <div className="truncate text-muted-foreground" style={{ fontSize: 9 }}>{ev.cliente_nome}</div>}
+                        <div className="flex items-center gap-1">
+                          {ev.cliente_nome && <span className="truncate text-muted-foreground" style={{ fontSize: 9 }}>{ev.cliente_nome}</span>}
+                          <CountdownBadge ev={ev} now={now} />
+                        </div>
+                        {/* Resize handle */}
+                        <div
+                          className="absolute bottom-0 left-0 right-0 h-1.5 cursor-ns-resize opacity-0 group-hover:opacity-100 transition-opacity"
+                          style={{ background: s.border + '40' }}
+                          onMouseDown={e => { e.stopPropagation(); e.preventDefault(); setResizingEv(ev.id); setResizeHour(h + 1); }}
+                        />
                       </div>
                     );
                   })}
@@ -596,12 +760,22 @@ function DesktopWeekTimelineView({ weekStart, eventi, marketing, oggi, onEventCl
           </div>
         ))}
       </div>
+
+      {resizingEv && resizeHour !== null && (() => {
+        const ev = eventi.find(e => e.id === resizingEv);
+        if (!ev) return null;
+        return (
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-foreground text-background text-xs px-3 py-1.5 rounded-lg shadow-lg">
+            {formatTime(ev.ora)} – {resizeHour.toString().padStart(2,'0')}:00
+          </div>
+        );
+      })()}
     </div>
   );
 }
 
 // ─── Desktop Month View (enhanced) ──────────────────────────────────────────
-function DesktopMonthView({ year, month, eventi, marketing, oggi, onDayClick, onEventClick, onEventDrop, dragEvId, setDragEvId }: {
+function DesktopMonthView({ year, month, eventi, marketing, oggi, onDayClick, onEventClick, onEventDrop, dragEvId, setDragEvId, now }: {
   year: number; month: number;
   eventi: CalendarioEvent[];
   marketing: MarketingEvent[];
@@ -611,6 +785,7 @@ function DesktopMonthView({ year, month, eventi, marketing, oggi, onDayClick, on
   onEventDrop: (evId: string, newDate: string) => void;
   dragEvId: string | null;
   setDragEvId: (id: string | null) => void;
+  now: Date;
 }) {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [morePopover, setMorePopover] = useState<{ dateStr: string; x: number; y: number } | null>(null);
@@ -659,7 +834,7 @@ function DesktopMonthView({ year, month, eventi, marketing, oggi, onDayClick, on
           return (
             <div
               key={ds}
-              className={`border-b border-r p-1 min-h-[100px] cursor-pointer transition-colors relative`}
+              className="border-b border-r p-1 min-h-[100px] cursor-pointer transition-colors relative"
               style={{
                 background: isDragOver ? 'hsl(214 80% 55% / 0.10)' : isToday ? 'hsl(214 80% 55% / 0.03)' : undefined,
                 outline: isDragOver ? '2px solid hsl(214 80% 55% / 0.50)' : undefined,
@@ -696,6 +871,7 @@ function DesktopMonthView({ year, month, eventi, marketing, oggi, onDayClick, on
               {dayEv.slice(0, MAX_SHOW - Math.min(dayMkt.length, 2)).map(ev => {
                 const s = getEventStyle(ev);
                 const completato = isEventCompletato(ev);
+                const cd = getCountdown(ev, now);
                 return (
                   <div
                     key={ev.id}
@@ -710,10 +886,17 @@ function DesktopMonthView({ year, month, eventi, marketing, oggi, onDayClick, on
                       cursor: 'grab',
                       opacity: dragEvId === ev.id ? 0.4 : completato ? 0.5 : 1,
                     }}
-                    className="truncate px-1 py-0.5 rounded text-[10px] leading-tight mb-0.5 hover:shadow-sm transition-shadow"
+                    className={`truncate px-1 py-0.5 rounded text-[10px] leading-tight mb-0.5 hover:shadow-sm transition-shadow flex items-center gap-0.5 ${completato ? 'line-through' : ''}`}
                   >
-                    {ev.ora && <span className="font-mono mr-0.5" style={{ fontSize: 9 }}>{formatTime(ev.ora)}</span>}
-                    {s.icon} {ev.descrizione?.replace(/\s*\[TASK:[^\]]+\]/, '').slice(0, 18)}
+                    <span className="truncate flex-1">
+                      {ev.ora && <span className="font-mono mr-0.5" style={{ fontSize: 9 }}>{formatTime(ev.ora)}</span>}
+                      {s.icon} {ev.descrizione?.replace(/\s*\[TASK:[^\]]+\]/, '').slice(0, 14)}
+                    </span>
+                    {cd && (
+                      <span className="shrink-0 text-[8px] font-semibold px-0.5 rounded" style={{ color: cd.color }}>
+                        {cd.level === 'scaduto' ? '🔴' : '⏰'}{cd.text}
+                      </span>
+                    )}
                   </div>
                 );
               })}
@@ -757,20 +940,24 @@ function DesktopMonthView({ year, month, eventi, marketing, oggi, onDayClick, on
                 {dayMkt.map(m => {
                   const color = MARKETING_COLOR[m.categoria] || '#F97316';
                   return (
-                    <div key={m.id} className="text-xs rounded px-2 py-1" style={{ background: '#FFF7ED', borderLeft: `3px solid ${color}`, color }}>
+                    <div key={m.id} className="text-xs rounded px-2 py-1.5" style={{ background: '#FFF7ED', borderLeft: `3px solid ${color}`, color }}>
                       {MARKETING_LABEL[m.categoria]} {m.titolo}
                     </div>
                   );
                 })}
                 {dayEv.map(ev => {
                   const s = getEventStyle(ev);
+                  const completato = isEventCompletato(ev);
                   return (
                     <div key={ev.id} onClick={() => { setMorePopover(null); onEventClick(ev); }}
-                      className="text-xs rounded px-2 py-1.5 cursor-pointer hover:shadow-sm"
+                      className={`text-xs rounded px-2 py-1.5 cursor-pointer hover:shadow-sm ${completato ? 'opacity-50 line-through' : ''}`}
                       style={{ background: s.bg, borderLeft: `3px solid ${s.border}` }}>
-                      {ev.ora && <span className="font-mono mr-1">{formatTime(ev.ora)}</span>}
-                      {s.icon} {ev.descrizione?.replace(/\s*\[TASK:[^\]]+\]/, '')}
-                      {ev.cliente_nome && <span className="text-muted-foreground ml-1">· {ev.cliente_nome}</span>}
+                      <div className="flex items-center gap-1">
+                        {ev.ora && <span className="font-mono" style={{ fontSize: 9 }}>{formatTime(ev.ora)}</span>}
+                        <span>{s.icon} {ev.descrizione?.replace(/\s*\[TASK:[^\]]+\]/, '')}</span>
+                        <CountdownBadge ev={ev} now={now} />
+                      </div>
+                      {ev.cliente_nome && <div className="text-[10px] text-muted-foreground mt-0.5">{ev.cliente_nome}</div>}
                     </div>
                   );
                 })}
@@ -783,20 +970,17 @@ function DesktopMonthView({ year, month, eventi, marketing, oggi, onDayClick, on
   );
 }
 
-// ─── Mobile Components (preserved from original) ────────────────────────────
-
-// Mobile Agenda View
-function AgendaView({ eventi, marketing, oggi, onEventClick }: {
+// ─── Mobile Agenda View ─────────────────────────────────────────────────────
+function AgendaView({ eventi, marketing, oggi, onEventClick, now }: {
   eventi: CalendarioEvent[]; marketing: MarketingEvent[]; oggi: Date;
-  onEventClick: (ev: CalendarioEvent) => void;
+  onEventClick: (ev: CalendarioEvent) => void; now: Date;
 }) {
+  const todayStr = toDateStr(oggi);
+  const futureDateStr = toDateStr(addDays(oggi, 60));
   const allDates = new Set<string>();
   eventi.forEach(e => allDates.add(e.data));
   marketing.forEach(e => allDates.add(e.data));
-  const sortedDates = Array.from(allDates).sort();
-  const todayStr = toDateStr(oggi);
-  const futureDate = addDays(oggi, 30);
-  const futureDateStr = toDateStr(futureDate);
+  const sortedDates = Array.from(allDates);
   if (!allDates.has(todayStr)) sortedDates.push(todayStr);
   sortedDates.sort();
   const visibleDates = sortedDates.filter(d => d >= toDateStr(addDays(oggi, -7)) && d <= futureDateStr);
@@ -839,13 +1023,14 @@ function AgendaView({ eventi, marketing, oggi, onEventClick }: {
               {dayEvents.map(ev => {
                 const s = getEventStyle(ev);
                 const scaduto = dateStr < todayStr && ev.stato !== 'Completato';
+                const completato = isEventCompletato(ev);
                 return (
                   <div key={ev.id} onClick={() => onEventClick(ev)}
-                    className="rounded-xl p-3 border active:scale-[0.98] transition-transform cursor-pointer"
+                    className={`rounded-xl p-3 border active:scale-[0.98] transition-transform cursor-pointer ${completato ? 'opacity-50' : ''}`}
                     style={{ background: s.bg, borderColor: s.border + '40', borderLeftWidth: 4, borderLeftColor: s.border }}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm leading-snug">{s.icon} {ev.descrizione?.replace(/\s*\[TASK:[^\]]+\]/, '')}</div>
+                        <div className={`font-medium text-sm leading-snug ${completato ? 'line-through' : ''}`}>{s.icon} {ev.descrizione?.replace(/\s*\[TASK:[^\]]+\]/, '')}</div>
                         <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                           {ev.cliente_nome && <span className="text-xs text-muted-foreground">{ev.cliente_nome}</span>}
                           {ev.persona && <span className="text-xs text-muted-foreground">· {ev.persona}</span>}
@@ -854,6 +1039,7 @@ function AgendaView({ eventi, marketing, oggi, onEventClick }: {
                               ⏰ {formatTime(ev.ora)}{ev.ora_fine ? `–${formatTime(ev.ora_fine)}` : ''}
                             </span>
                           )}
+                          <CountdownBadge ev={ev} now={now} size="md" />
                           {scaduto && <span className="text-xs font-semibold text-destructive">🔴 SCADUTO</span>}
                         </div>
                       </div>
@@ -873,9 +1059,9 @@ function AgendaView({ eventi, marketing, oggi, onEventClick }: {
 }
 
 // Mobile Day View
-function MobileDayView({ date, eventi, marketing, oggi, onEventClick }: {
+function MobileDayView({ date, eventi, marketing, oggi, onEventClick, now }: {
   date: Date; eventi: CalendarioEvent[]; marketing: MarketingEvent[]; oggi: Date;
-  onEventClick: (ev: CalendarioEvent) => void;
+  onEventClick: (ev: CalendarioEvent) => void; now: Date;
 }) {
   const dateStr = toDateStr(date);
   const dayEvents = eventi.filter(e => e.data === dateStr);
@@ -909,6 +1095,7 @@ function MobileDayView({ date, eventi, marketing, oggi, onEventClick }: {
                   style={{ background: s.bg, borderLeft: `3px solid ${s.border}` }}>
                   {s.icon} {ev.descrizione?.replace(/\s*\[TASK:[^\]]+\]/, '')}
                   {ev.cliente_nome && <span className="text-muted-foreground ml-1">· {ev.cliente_nome}</span>}
+                  <CountdownBadge ev={ev} now={now} />
                 </div>
               );
             })}
@@ -928,7 +1115,10 @@ function MobileDayView({ date, eventi, marketing, oggi, onEventClick }: {
                 return (
                   <div key={ev.id} onClick={() => onEventClick(ev)} className="rounded-lg px-2.5 py-2 text-xs cursor-pointer active:scale-[0.98]"
                     style={{ background: s.bg, borderLeft: `3px solid ${s.border}` }}>
-                    <div className="font-medium">{s.icon} {ev.descrizione?.replace(/\s*\[TASK:[^\]]+\]/, '')}</div>
+                    <div className="font-medium flex items-center gap-1">
+                      {s.icon} {ev.descrizione?.replace(/\s*\[TASK:[^\]]+\]/, '')}
+                      <CountdownBadge ev={ev} now={now} />
+                    </div>
                     <div className="text-[10px] text-muted-foreground mt-0.5">
                       {formatTime(ev.ora)}{ev.ora_fine ? `–${formatTime(ev.ora_fine)}` : ''}
                       {ev.cliente_nome && ` · ${ev.cliente_nome}`}
@@ -945,9 +1135,9 @@ function MobileDayView({ date, eventi, marketing, oggi, onEventClick }: {
 }
 
 // Mobile 3-Day View
-function Mobile3DayView({ centerDate, eventi, marketing, oggi, onEventClick }: {
+function Mobile3DayView({ centerDate, eventi, marketing, oggi, onEventClick, now }: {
   centerDate: Date; eventi: CalendarioEvent[]; marketing: MarketingEvent[]; oggi: Date;
-  onEventClick: (ev: CalendarioEvent) => void;
+  onEventClick: (ev: CalendarioEvent) => void; now: Date;
 }) {
   const days = [addDays(centerDate, -1), centerDate, addDays(centerDate, 1)];
   const hours = Array.from({ length: 14 }, (_, i) => i + 7);
@@ -1131,6 +1321,12 @@ function LegendaBottomSheet({ open, onClose }: { open: boolean; onClose: () => v
               <span className="text-sm">{v.icon} {v.label}</span>
             </div>
           ))}
+          {Object.entries(WORKFLOW_STYLES).map(([k, v]) => (
+            <div key={k} className="flex items-center gap-3 py-2">
+              <span style={{ width: 14, height: 14, borderRadius: 3, background: v.bg, border: `2px solid ${v.border}`, display: 'inline-block' }} />
+              <span className="text-sm">{v.icon} {v.label}</span>
+            </div>
+          ))}
           <div className="flex items-center gap-3 py-2">
             <span style={{ width: 14, height: 14, borderRadius: 3, background: '#FFF7ED', border: '2px solid #F97316', display: 'inline-block' }} />
             <span className="text-sm">📌 Marketing</span>
@@ -1173,30 +1369,30 @@ function DayMenu({ x, y, utente, onNewTask, onPickCLP, onSlot, onClose }: DayMen
 
 // ─── CLP Picker Modal ─────────────────────────────────────────────────────────
 interface CLPPickerProps {
-  contenuti: Contenuto[]; selectedDate: Date;
-  onSave: (contenuto: Contenuto, ora: string) => void; onClose: () => void;
+  contenuti: Contenuto[];
+  selectedDate: Date;
+  onSave: (c: Contenuto, ora: string) => void;
+  onClose: () => void;
 }
 function CLPPicker({ contenuti, selectedDate, onSave, onClose }: CLPPickerProps) {
   const [search, setSearch] = useState('');
-  const [ora, setOra] = useState('');
   const [selected, setSelected] = useState<Contenuto | null>(null);
+  const [ora, setOra] = useState('');
 
   const available = contenuti.filter(c =>
-    c.fase !== 'Pubblicato' && c.fase !== 'Scartata' &&
-    (search === '' ||
-      c.titolo.toLowerCase().includes(search.toLowerCase()) ||
-      c.id_display.toLowerCase().includes(search.toLowerCase()) ||
-      c.cliente_nome.toLowerCase().includes(search.toLowerCase()))
+    !search || c.titolo.toLowerCase().includes(search.toLowerCase()) ||
+    c.id_display.toLowerCase().includes(search.toLowerCase()) ||
+    (c.cliente_nome || '').toLowerCase().includes(search.toLowerCase())
   );
 
   return (
     <div className="sk-modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="sk-modal animate-slide-up" style={{ maxWidth: 520, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
-        <div className="flex items-center justify-between p-5 border-b">
-          <h3 className="font-semibold text-base">📹 Posiziona contenuto — {selectedDate.toLocaleDateString('it-IT', { day: 'numeric', month: 'long' })}</h3>
+      <div className="sk-modal animate-slide-up" style={{ maxWidth: 500, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="flex items-center justify-between p-5 border-b flex-shrink-0">
+          <h3 className="font-semibold text-base">📹 Posiziona CLP — {selectedDate.toLocaleDateString('it-IT', { day: 'numeric', month: 'long' })}</h3>
           <button onClick={onClose} className="sk-btn-ghost text-lg px-2 py-1">✕</button>
         </div>
-        <div className="p-4 border-b">
+        <div className="p-3 border-b flex-shrink-0">
           <input className="sk-input w-full" placeholder="Cerca per titolo, ID, cliente…" value={search} onChange={e => setSearch(e.target.value)} autoFocus />
         </div>
         <div className="flex-1 overflow-y-auto p-2 min-h-0">
@@ -1284,12 +1480,56 @@ function SlotModal({ selectedDate, team, onSave, onClose }: SlotModalProps) {
   );
 }
 
+// ─── Recurrence Edit Component ───────────────────────────────────────────────
+function RecurrenceEditor({ tipo, giorni, fine, onChange }: {
+  tipo: string; giorni: string[]; fine: string;
+  onChange: (tipo: string, giorni: string[], fine: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <div>
+        <label className="sk-label">Ripeti</label>
+        <select className="sk-select w-full text-sm" value={tipo} onChange={e => onChange(e.target.value, giorni, fine)}>
+          {RICORRENZA_OPTIONS.map(o => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </div>
+      {tipo === 'weekly' && (
+        <div>
+          <label className="sk-label text-xs">Giorni della settimana</label>
+          <div className="flex gap-1 mt-1">
+            {WEEKDAY_LABELS.map(wd => (
+              <button key={wd.key} type="button"
+                onClick={() => {
+                  const newGiorni = giorni.includes(wd.key) ? giorni.filter(g => g !== wd.key) : [...giorni, wd.key];
+                  onChange(tipo, newGiorni, fine);
+                }}
+                className={`w-8 h-8 rounded-full text-xs font-medium transition-colors ${giorni.includes(wd.key) ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent'}`}
+              >
+                {wd.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {tipo && (
+        <div>
+          <label className="sk-label text-xs">Fine ricorrenza (opzionale)</label>
+          <input type="date" className="sk-input w-full text-sm" value={fine} onChange={e => onChange(tipo, giorni, e.target.value)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Event Detail Panel ──────────────────────────────────────────────────────
 interface EventDetailProps {
   ev: CalendarioEvent; team: TeamMember[]; clienti: Cliente[];
   onClose: () => void; onDelete: () => void; onUpdate: (updated: CalendarioEvent) => void;
+  now: Date;
 }
-function EventDetail({ ev, team, clienti, onClose, onDelete, onUpdate }: EventDetailProps) {
+function EventDetail({ ev, team, clienti, onClose, onDelete, onUpdate, now }: EventDetailProps) {
   const s = getEventStyle(ev);
   const { addToast } = useApp();
   const [editing, setEditing] = useState(false);
@@ -1302,12 +1542,18 @@ function EventDetail({ ev, team, clienti, onClose, onDelete, onUpdate }: EventDe
     cliente_id: ev.cliente_id || '',
     stato: ev.stato || '',
   });
+  const [recTipo, setRecTipo] = useState((ev as any).ricorrenza_tipo || '');
+  const [recGiorni, setRecGiorni] = useState<string[]>((ev as any).ricorrenza_giorni || []);
+  const [recFine, setRecFine] = useState((ev as any).ricorrenza_fine || '');
   const [saving, setSaving] = useState(false);
+  const [deleteMode, setDeleteMode] = useState<null | 'ask'>(null);
   const setF = (k: string, v: string) => setForm(prev => ({ ...prev, [k]: v }));
+
+  const isRecurring = !!(ev as any).ricorrenza_tipo || !!(ev as any).ricorrenza_parent_id;
 
   const handleSave = async () => {
     setSaving(true);
-    const payload = {
+    const payload: any = {
       descrizione: form.descrizione,
       data: form.data,
       ora: form.ora || null,
@@ -1316,20 +1562,40 @@ function EventDetail({ ev, team, clienti, onClose, onDelete, onUpdate }: EventDe
       cliente_id: form.cliente_id || null,
       cliente_nome: clienti.find(c => c.id === form.cliente_id)?.nome || ev.cliente_nome,
       stato: form.stato || null,
+      ricorrenza_tipo: recTipo || null,
+      ricorrenza_giorni: recGiorni.length > 0 ? recGiorni : null,
+      ricorrenza_fine: recFine || null,
     };
     const { data, error } = await supabase.from('calendario').update(payload).eq('id', ev.id).select().single();
     setSaving(false);
     if (!error && data) {
-      if (ev.tipo === 'appuntamento') {
-        await supabase.from('task').update({ scadenza: form.data, ora: form.ora || null })
-          .like('descrizione', `%${ev.descrizione.replace(/\[TASK:.*\]/, '').trim()}%`)
-          .eq('scadenza', ev.data);
+      // Sync task if linked
+      if (ev.tipo === 'appuntamento' && ev.descrizione?.includes('[TASK:')) {
+        const taskIdMatch = ev.descrizione.match(/\[TASK:([^\]]+)\]/);
+        if (taskIdMatch) {
+          await supabase.from('task').update({ scadenza: form.data, ora: form.ora || null }).eq('id', taskIdMatch[1]);
+        }
       }
       onUpdate(data as CalendarioEvent);
       setEditing(false);
       addToast('✅ Evento aggiornato', 'success');
     }
   };
+
+  const handleDeleteRecurring = async (mode: 'this' | 'future' | 'all') => {
+    if (mode === 'this') {
+      await supabase.from('calendario').delete().eq('id', ev.id);
+    } else if (mode === 'all') {
+      const parentId = (ev as any).ricorrenza_parent_id || ev.id;
+      await supabase.from('calendario').delete().or(`id.eq.${parentId},ricorrenza_parent_id.eq.${parentId}`);
+    } else if (mode === 'future') {
+      const parentId = (ev as any).ricorrenza_parent_id || ev.id;
+      await supabase.from('calendario').delete().eq('ricorrenza_parent_id', parentId).gte('data', ev.data);
+    }
+    onDelete();
+  };
+
+  const cd = getCountdown(ev, now);
 
   return (
     <div className="fixed inset-y-0 right-0 w-96 max-w-full bg-white border-l shadow-2xl z-50 flex flex-col"
@@ -1378,6 +1644,8 @@ function EventDetail({ ev, team, clienti, onClose, onDelete, onUpdate }: EventDe
                 {clienti.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
               </select>
             </div>
+            <RecurrenceEditor tipo={recTipo} giorni={recGiorni} fine={recFine}
+              onChange={(t, g, f) => { setRecTipo(t); setRecGiorni(g); setRecFine(f); }} />
             <div className="flex gap-2 pt-2">
               <button onClick={() => setEditing(false)} className="flex-1 sk-btn-ghost text-sm">Annulla</button>
               <button onClick={handleSave} disabled={saving} className="flex-1 sk-btn-primary text-sm">{saving ? 'Salvo…' : '✅ Salva'}</button>
@@ -1399,11 +1667,28 @@ function EventDetail({ ev, team, clienti, onClose, onDelete, onUpdate }: EventDe
                 <div className="text-sm">{formatTime(ev.ora)}{ev.ora_fine ? ` – ${formatTime(ev.ora_fine)}` : ''}</div>
               </div>
             )}
+            {cd && (
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Countdown</div>
+                <div className="flex items-center gap-2">
+                  <CountdownBadge ev={ev} now={now} size="md" />
+                  <span className="text-sm text-muted-foreground">
+                    {cd.level === 'scaduto' ? 'Scaduto' : `${cd.text} rimasti`}
+                  </span>
+                </div>
+              </div>
+            )}
             {ev.cliente_nome && <div><div className="text-xs text-muted-foreground mb-1">Cliente</div><div className="text-sm">{ev.cliente_nome}</div></div>}
             {ev.id_contenuto_display && <div><div className="text-xs text-muted-foreground mb-1">Contenuto</div><div className="text-sm font-mono text-primary">{ev.id_contenuto_display}</div></div>}
             {ev.canale && <div><div className="text-xs text-muted-foreground mb-1">Canale</div><div className="text-sm">{ev.canale}</div></div>}
             {ev.persona && <div><div className="text-xs text-muted-foreground mb-1">Persona</div><div className="text-sm">{ev.persona}</div></div>}
             {ev.stato && <div><div className="text-xs text-muted-foreground mb-1">Stato</div><div className="text-sm">{ev.stato}</div></div>}
+            {(ev as any).ricorrenza_tipo && (
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Ricorrenza</div>
+                <div className="text-sm">🔁 {RICORRENZA_OPTIONS.find(o => o.value === (ev as any).ricorrenza_tipo)?.label || (ev as any).ricorrenza_tipo}</div>
+              </div>
+            )}
             <div className="rounded-lg px-3 py-2 text-xs"
               style={{ background: 'hsl(214 80% 55% / 0.07)', color: 'hsl(214 70% 44%)', border: '1px solid hsl(214 80% 55% / 0.20)' }}>
               💡 Puoi anche trascinare l'evento nel calendario per cambiare data
@@ -1412,10 +1697,21 @@ function EventDetail({ ev, team, clienti, onClose, onDelete, onUpdate }: EventDe
         )}
       </div>
 
-      <div className="p-4 border-t">
-        <button onClick={onDelete} className="w-full text-sm text-destructive border border-destructive/30 rounded-lg py-2 hover:bg-destructive/10 transition-colors">
-          🗑️ Elimina evento
-        </button>
+      <div className="p-4 border-t space-y-2">
+        {isRecurring && deleteMode === 'ask' ? (
+          <div className="space-y-1.5">
+            <div className="text-xs font-medium text-muted-foreground mb-1">Elimina evento ricorrente:</div>
+            <button onClick={() => handleDeleteRecurring('this')} className="w-full text-sm text-left px-3 py-2 rounded-lg hover:bg-destructive/10 text-destructive border border-destructive/20">Solo questo evento</button>
+            <button onClick={() => handleDeleteRecurring('future')} className="w-full text-sm text-left px-3 py-2 rounded-lg hover:bg-destructive/10 text-destructive border border-destructive/20">Questo e i futuri</button>
+            <button onClick={() => handleDeleteRecurring('all')} className="w-full text-sm text-left px-3 py-2 rounded-lg hover:bg-destructive/10 text-destructive border border-destructive/20">Tutti gli eventi</button>
+            <button onClick={() => setDeleteMode(null)} className="w-full text-sm text-center text-muted-foreground py-1">Annulla</button>
+          </div>
+        ) : (
+          <button onClick={() => isRecurring ? setDeleteMode('ask') : onDelete()}
+            className="w-full text-sm text-destructive border border-destructive/30 rounded-lg py-2 hover:bg-destructive/10 transition-colors">
+            🗑️ Elimina evento
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1443,6 +1739,15 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Countdown timer - updates every 60s
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Filters
   const [categoryFilters, setCategoryFilters] = useState<Record<string, boolean>>({});
@@ -1453,6 +1758,8 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
 
   // Drag state
   const [dragEvId, setDragEvId] = useState<string | null>(null);
+  // Undo state
+  const [undoData, setUndoData] = useState<{ evId: string; oldDate: string; oldOra: string | null; taskId?: string } | null>(null);
 
   // Modal states
   const [dayMenu, setDayMenu] = useState<{ date: Date; x: number; y: number } | null>(null);
@@ -1461,6 +1768,7 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
   const [showSlotModal, setShowSlotModal] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarioEvent | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(oggi);
+  const [quickCreateData, setQuickCreateData] = useState<{ date: Date; startHour: number; endHour: number } | null>(null);
 
   // Mini calendar separate month tracking
   const [miniCalMonth, setMiniCalMonth] = useState(oggi.getMonth());
@@ -1511,7 +1819,6 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
           ev.persona === null
         );
 
-    // Log event count for data integrity verification
     console.log(`[Calendario] Loaded ${eventiFiltrati.length} events (total: ${tuttiEventi.length}), ${(mktRes.data || []).length} marketing events`);
 
     setEventi(eventiFiltrati);
@@ -1522,10 +1829,52 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // ── Realtime subscription ──────────────────────────────────────────────────
+  useEffect(() => {
+    const channel = supabase
+      .channel('calendario-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'calendario' }, (payload) => {
+        const newEv = payload.new as CalendarioEvent;
+        setEventi(prev => {
+          if (prev.some(e => e.id === newEv.id)) return prev;
+          return [...prev, newEv];
+        });
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'calendario' }, (payload) => {
+        const updated = payload.new as CalendarioEvent;
+        setEventi(prev => prev.map(e => e.id === updated.id ? updated : e));
+        setSelectedEvent(prev => prev?.id === updated.id ? updated : prev);
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'calendario' }, (payload) => {
+        const deleted = payload.old as any;
+        setEventi(prev => prev.filter(e => e.id !== deleted.id));
+        setSelectedEvent(prev => prev?.id === deleted.id ? null : prev);
+      })
+      .subscribe();
+
+    // Also listen for task changes (trigger creates calendar events)
+    const taskChannel = supabase
+      .channel('task-calendario-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'task' }, () => {
+        // Reload data when tasks change to pick up trigger-generated calendar events
+        setTimeout(() => loadData(), 1000);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+      supabase.removeChannel(taskChannel);
+    };
+  }, [loadData]);
+
   // ── Apply filters to events ────────────────────────────────────────────────
-  const filteredEventi = eventi.filter(ev => {
+  const filteredEventi = useMemo(() => eventi.filter(ev => {
     // Category filter
     if (categoryFilters[ev.tipo] === false) return false;
+    // Workflow sub-category filter
+    if (ev.tipo === 'appuntamento' && ev.descrizione?.includes('[TASK:') && ev.tipo_contenuto) {
+      if (categoryFilters[`wf_${ev.tipo_contenuto}`] === false) return false;
+    }
     // Operator filter
     if (ev.persona && operatorFilters[ev.persona] === false) return false;
     // Search filter
@@ -1538,9 +1887,26 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
       if (!match) return false;
     }
     return true;
-  });
+  }), [eventi, categoryFilters, operatorFilters, searchQuery]);
 
   const filteredMarketing = marketing.filter(() => categoryFilters['marketing'] !== false);
+
+  // ── Search with debounce ───────────────────────────────────────────────────
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    searchTimeoutRef.current = setTimeout(() => {
+      setShowSearchDropdown(val.length >= 2);
+    }, 300);
+  };
+
+  const handleSearchSelect = (ev: CalendarioEvent) => {
+    setCurrentDate(parseLocalDate(ev.data));
+    setSelectedEvent(ev);
+    setShowSearchDropdown(false);
+    setSearchQuery('');
+    setShowSearch(false);
+  };
 
   // ── Navigation (PRESERVED) ────────────────────────────────────────────────
   const navigate = (dir: -1 | 1) => {
@@ -1606,12 +1972,33 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
     setDayMenu({ date, x: window.innerWidth / 2 - 100, y: window.innerHeight / 2 - 80 });
   };
 
-  // ── Drag-drop evento (PRESERVED + enhanced for hour) ──────────────────────
+  // ── Quick create from click+drag ──────────────────────────────────────────
+  const handleQuickCreate = (date: Date, startHour: number, endHour: number) => {
+    setSelectedDate(date);
+    setQuickCreateData({ date, startHour, endHour });
+    setShowTaskModal(true);
+  };
+
+  // ── Resize event ──────────────────────────────────────────────────────────
+  const handleResize = async (evId: string, newEndTime: string) => {
+    setEventi(prev => prev.map(e => e.id === evId ? { ...e, ora_fine: newEndTime } : e));
+    const { error } = await supabase.from('calendario').update({ ora_fine: newEndTime }).eq('id', evId);
+    if (error) {
+      addToast('Errore nel resize', 'error');
+      loadData();
+    } else {
+      addToast(`⏱️ Durata aggiornata → fine ${newEndTime.slice(0, 5)}`, 'success');
+    }
+  };
+
+  // ── Drag-drop evento (PRESERVED + enhanced with undo) ─────────────────────
   const handleEventDrop = async (evId: string, newDateStr: string, newHour?: number) => {
     const ev = eventi.find(e => e.id === evId);
     if (!ev) return;
     if (ev.data === newDateStr && newHour === undefined) return;
 
+    const oldDate = ev.data;
+    const oldOra = ev.ora;
     const newOra = newHour !== undefined ? `${newHour.toString().padStart(2, '0')}:00` : undefined;
 
     // Optimistic update
@@ -1627,17 +2014,54 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
       addToast('Errore nello spostamento dell\'evento', 'error');
       loadData();
     } else {
-      if (ev.tipo === 'appuntamento') {
-        const taskUpdate: any = { scadenza: newDateStr };
-        if (newOra) taskUpdate.ora = newOra;
-        await supabase.from('task').update(taskUpdate)
-          .like('descrizione', `%${ev.descrizione.replace(/ \[TASK:.*\]/, '').trim()}%`)
-          .eq('scadenza', ev.data);
+      // Sync with task if linked
+      let taskId: string | undefined;
+      if (ev.tipo === 'appuntamento' && ev.descrizione?.includes('[TASK:')) {
+        const taskIdMatch = ev.descrizione.match(/\[TASK:([^\]]+)\]/);
+        if (taskIdMatch) {
+          taskId = taskIdMatch[1];
+          const taskUpdate: any = { scadenza: newDateStr };
+          if (newOra) taskUpdate.ora = newOra;
+          await supabase.from('task').update(taskUpdate).eq('id', taskId);
+        }
       }
+      // Sync with contenuti if linked
+      if (ev.contenuto_id) {
+        await supabase.from('contenuti').update({ data_pubblicazione: newDateStr }).eq('id', ev.contenuto_id);
+      }
+
+      // Set undo data
+      setUndoData({ evId, oldDate, oldOra, taskId });
+
       const d = parseLocalDate(newDateStr);
+      // Show toast with undo - auto-dismiss after 5s
       addToast(`📅 Evento spostato al ${d.toLocaleDateString('it-IT', { day: 'numeric', month: 'long' })}${newOra ? ` alle ${newOra}` : ''}`, 'success');
     }
   };
+
+  // ── Undo last drag ────────────────────────────────────────────────────────
+  const handleUndo = async () => {
+    if (!undoData) return;
+    const { evId, oldDate, oldOra, taskId } = undoData;
+    const updatePayload: any = { data: oldDate };
+    if (oldOra) updatePayload.ora = oldOra;
+    await supabase.from('calendario').update(updatePayload).eq('id', evId);
+    if (taskId) {
+      const taskUpdate: any = { scadenza: oldDate };
+      if (oldOra) taskUpdate.ora = oldOra;
+      await supabase.from('task').update(taskUpdate).eq('id', taskId);
+    }
+    setEventi(prev => prev.map(e => e.id === evId ? { ...e, data: oldDate, ...(oldOra ? { ora: oldOra } : {}) } : e));
+    setUndoData(null);
+    addToast('↩️ Spostamento annullato', 'info');
+  };
+
+  // Auto-clear undo after 5 seconds
+  useEffect(() => {
+    if (!undoData) return;
+    const timer = setTimeout(() => setUndoData(null), 5000);
+    return () => clearTimeout(timer);
+  }, [undoData]);
 
   // ── Create CLP event (PRESERVED) ──────────────────────────────────────────
   const handleSaveCLP = async (contenuto: Contenuto, ora: string) => {
@@ -1707,7 +2131,7 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
   // ── Create task from calendar (PRESERVED) ─────────────────────────────────
   const handleTaskCreated = async (task: Task) => {
     if (task.scadenza) {
-      const payload = {
+      const payload: any = {
         tipo: 'appuntamento' as const,
         descrizione: task.descrizione,
         data: task.scadenza,
@@ -1716,11 +2140,17 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
         cliente_nome: task.cliente_nome || '',
         persona: task.assegnato_a,
       };
+      // Add quick create end time if available
+      if (quickCreateData && !task.ora) {
+        payload.ora = `${quickCreateData.startHour.toString().padStart(2, '0')}:00`;
+        payload.ora_fine = `${quickCreateData.endHour.toString().padStart(2, '0')}:00`;
+      }
       const { data } = await supabase.from('calendario').insert(payload).select().single();
       if (data) setEventi(prev => [...prev, data as CalendarioEvent]);
     }
     addToast(`✅ Task ${task.id_display} creato`, 'success');
     setShowTaskModal(false);
+    setQuickCreateData(null);
   };
 
   // ── Delete event (PRESERVED) ──────────────────────────────────────────────
@@ -1762,13 +2192,14 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
           </div>
         ) : (
           <>
-            {mobileVista === 'agenda' && <AgendaView eventi={filteredEventi} marketing={filteredMarketing} oggi={oggi} onEventClick={setSelectedEvent} />}
-            {mobileVista === 'giorno' && <MobileDayView date={currentDate} eventi={filteredEventi} marketing={filteredMarketing} oggi={oggi} onEventClick={setSelectedEvent} />}
-            {mobileVista === '3giorni' && <Mobile3DayView centerDate={currentDate} eventi={filteredEventi} marketing={filteredMarketing} oggi={oggi} onEventClick={setSelectedEvent} />}
+            {mobileVista === 'agenda' && <AgendaView eventi={filteredEventi} marketing={filteredMarketing} oggi={oggi} onEventClick={setSelectedEvent} now={now} />}
+            {mobileVista === 'giorno' && <MobileDayView date={currentDate} eventi={filteredEventi} marketing={filteredMarketing} oggi={oggi} onEventClick={setSelectedEvent} now={now} />}
+            {mobileVista === '3giorni' && <Mobile3DayView centerDate={currentDate} eventi={filteredEventi} marketing={filteredMarketing} oggi={oggi} onEventClick={setSelectedEvent} now={now} />}
             {mobileVista === 'settimana' && (
               <div className="flex-1 overflow-x-auto overflow-y-auto pb-24">
                 <DesktopWeekTimelineView weekStart={startOfWeekMon(currentDate)} eventi={filteredEventi} marketing={filteredMarketing} oggi={oggi}
-                  onEventClick={setSelectedEvent} onSlotClick={handleSlotClick} onEventDrop={handleEventDrop} dragEvId={dragEvId} setDragEvId={setDragEvId} />
+                  onEventClick={setSelectedEvent} onSlotClick={handleSlotClick} onEventDrop={handleEventDrop} dragEvId={dragEvId} setDragEvId={setDragEvId}
+                  now={now} onQuickCreate={handleQuickCreate} onResize={handleResize} />
               </div>
             )}
             {mobileVista === 'mese' && (
@@ -1784,11 +2215,11 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
 
         {selectedEvent && (
           <div className="fixed inset-0 z-50 flex flex-col bg-white animate-slide-up">
-            <EventDetail ev={selectedEvent} team={team} clienti={clienti} onClose={() => setSelectedEvent(null)} onDelete={handleDeleteEvent} onUpdate={handleUpdateEvent} />
+            <EventDetail ev={selectedEvent} team={team} clienti={clienti} onClose={() => setSelectedEvent(null)} onDelete={handleDeleteEvent} onUpdate={handleUpdateEvent} now={now} />
           </div>
         )}
 
-        {showTaskModal && <NuovoTaskModal team={team} clienti={clienti} utente={utente} onClose={() => setShowTaskModal(false)} onCreated={handleTaskCreated} dataPrecompilata={toDateStr(selectedDate)} />}
+        {showTaskModal && <NuovoTaskModal team={team} clienti={clienti} utente={utente} onClose={() => { setShowTaskModal(false); setQuickCreateData(null); }} onCreated={handleTaskCreated} dataPrecompilata={toDateStr(selectedDate)} />}
         {showCLPPicker && <CLPPicker contenuti={contenuti} selectedDate={selectedDate} onSave={handleSaveCLP} onClose={() => setShowCLPPicker(false)} />}
         {showSlotModal && <SlotModal selectedDate={selectedDate} team={team} onSave={handleSaveSlot} onClose={() => setShowSlotModal(false)} />}
       </div>
@@ -1811,19 +2242,25 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
         <div className="flex items-center gap-2">
           {/* Search */}
           {showSearch ? (
-            <div className="flex items-center gap-1 border rounded-lg px-2 py-1">
-              <span className="text-muted-foreground text-sm">🔍</span>
-              <input
-                type="text"
-                placeholder="Cerca evento…"
-                className="text-sm border-none outline-none bg-transparent w-40"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                autoFocus
-                onBlur={() => { if (!searchQuery) setShowSearch(false); }}
-              />
-              {searchQuery && (
-                <button onClick={() => { setSearchQuery(''); setShowSearch(false); }} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
+            <div className="relative">
+              <div className="flex items-center gap-1 border rounded-lg px-2 py-1">
+                <span className="text-muted-foreground text-sm">🔍</span>
+                <input
+                  type="text"
+                  placeholder="Cerca evento…"
+                  className="text-sm border-none outline-none bg-transparent w-48"
+                  value={searchQuery}
+                  onChange={e => handleSearchChange(e.target.value)}
+                  autoFocus
+                  onKeyDown={e => { if (e.key === 'Escape') { setSearchQuery(''); setShowSearch(false); setShowSearchDropdown(false); } }}
+                  onBlur={() => { setTimeout(() => { if (!searchQuery) { setShowSearch(false); setShowSearchDropdown(false); } }, 200); }}
+                />
+                {searchQuery && (
+                  <button onClick={() => { setSearchQuery(''); setShowSearchDropdown(false); }} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
+                )}
+              </div>
+              {showSearchDropdown && (
+                <SearchDropdown query={searchQuery} eventi={eventi} onSelect={handleSearchSelect} onClose={() => setShowSearchDropdown(false)} />
               )}
             </div>
           ) : (
@@ -1866,9 +2303,13 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
               onDateSelect={(d) => {
                 setCurrentDate(d);
                 if (vista === 'mese') {
-                  // Stay in month view but navigate to that month
+                  // Navigate month view to that month
+                  setCurrentDate(d);
+                } else if (vista === 'settimana') {
+                  setCurrentDate(d);
                 } else {
                   setVista('giorno');
+                  setCurrentDate(d);
                 }
               }}
               onMonthChange={(dir) => {
@@ -1902,6 +2343,7 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
                   eventi={filteredEventi} marketing={filteredMarketing} oggi={oggi}
                   onDayClick={handleDayClick} onEventClick={setSelectedEvent}
                   onEventDrop={handleEventDrop} dragEvId={dragEvId} setDragEvId={setDragEvId}
+                  now={now}
                 />
               )}
               {vista === 'settimana' && (
@@ -1910,6 +2352,7 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
                   eventi={filteredEventi} marketing={filteredMarketing} oggi={oggi}
                   onEventClick={setSelectedEvent} onSlotClick={handleSlotClick}
                   onEventDrop={handleEventDrop} dragEvId={dragEvId} setDragEvId={setDragEvId}
+                  now={now} onQuickCreate={handleQuickCreate} onResize={handleResize}
                 />
               )}
               {vista === 'giorno' && (
@@ -1918,18 +2361,28 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
                   eventi={filteredEventi} marketing={filteredMarketing} oggi={oggi}
                   onEventClick={setSelectedEvent} onSlotClick={handleSlotClick}
                   onEventDrop={handleEventDrop} dragEvId={dragEvId} setDragEvId={setDragEvId}
+                  now={now} onQuickCreate={handleQuickCreate} onResize={handleResize}
                 />
               )}
               {vista === 'agenda' && (
                 <DesktopAgendaView
                   eventi={filteredEventi} marketing={filteredMarketing} oggi={oggi}
                   onEventClick={setSelectedEvent}
+                  now={now}
                 />
               )}
             </>
           )}
         </div>
       </div>
+
+      {/* ── Undo toast ───────────────────────────────────────────────────────── */}
+      {undoData && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-foreground text-background px-4 py-2.5 rounded-lg shadow-xl flex items-center gap-3 animate-slide-up">
+          <span className="text-sm">📅 Evento spostato</span>
+          <button onClick={handleUndo} className="text-sm font-semibold underline hover:no-underline">Annulla</button>
+        </div>
+      )}
 
       {/* ── Context menu ─────────────────────────────────────────────────────── */}
       {dayMenu && (
@@ -1939,14 +2392,13 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
       )}
 
       {/* ── Modals ───────────────────────────────────────────────────────────── */}
-      {showTaskModal && <NuovoTaskModal team={team} clienti={clienti} utente={utente} onClose={() => setShowTaskModal(false)} onCreated={handleTaskCreated} dataPrecompilata={toDateStr(selectedDate)} />}
+      {showTaskModal && <NuovoTaskModal team={team} clienti={clienti} utente={utente} onClose={() => { setShowTaskModal(false); setQuickCreateData(null); }} onCreated={handleTaskCreated} dataPrecompilata={toDateStr(selectedDate)} />}
       {showCLPPicker && <CLPPicker contenuti={contenuti} selectedDate={selectedDate} onSave={handleSaveCLP} onClose={() => setShowCLPPicker(false)} />}
       {showSlotModal && <SlotModal selectedDate={selectedDate} team={team} onSave={handleSaveSlot} onClose={() => setShowSlotModal(false)} />}
 
-      {/* ── Event detail panel ───────────────────────────────────────────────── */}
+      {/* ── Event Detail Panel ─────────────────────────────────────────────── */}
       {selectedEvent && (
-        <EventDetail ev={selectedEvent} team={team} clienti={clienti}
-          onClose={() => setSelectedEvent(null)} onDelete={handleDeleteEvent} onUpdate={handleUpdateEvent} />
+        <EventDetail ev={selectedEvent} team={team} clienti={clienti} onClose={() => setSelectedEvent(null)} onDelete={handleDeleteEvent} onUpdate={handleUpdateEvent} now={now} />
       )}
     </div>
   );

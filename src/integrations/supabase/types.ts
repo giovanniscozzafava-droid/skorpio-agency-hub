@@ -102,6 +102,11 @@ export type Database = {
           ora: string | null
           ora_fine: string | null
           persona: string | null
+          ricorrenza_fine: string | null
+          ricorrenza_giorni: string[] | null
+          ricorrenza_intervallo: number | null
+          ricorrenza_parent_id: string | null
+          ricorrenza_tipo: string | null
           stato: string | null
           tipo: string
           tipo_contenuto: string | null
@@ -119,6 +124,11 @@ export type Database = {
           ora?: string | null
           ora_fine?: string | null
           persona?: string | null
+          ricorrenza_fine?: string | null
+          ricorrenza_giorni?: string[] | null
+          ricorrenza_intervallo?: number | null
+          ricorrenza_parent_id?: string | null
+          ricorrenza_tipo?: string | null
           stato?: string | null
           tipo: string
           tipo_contenuto?: string | null
@@ -136,6 +146,11 @@ export type Database = {
           ora?: string | null
           ora_fine?: string | null
           persona?: string | null
+          ricorrenza_fine?: string | null
+          ricorrenza_giorni?: string[] | null
+          ricorrenza_intervallo?: number | null
+          ricorrenza_parent_id?: string | null
+          ricorrenza_tipo?: string | null
           stato?: string | null
           tipo?: string
           tipo_contenuto?: string | null
@@ -153,6 +168,13 @@ export type Database = {
             columns: ["contenuto_id"]
             isOneToOne: false
             referencedRelation: "contenuti"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendario_ricorrenza_parent_id_fkey"
+            columns: ["ricorrenza_parent_id"]
+            isOneToOne: false
+            referencedRelation: "calendario"
             referencedColumns: ["id"]
           },
         ]
