@@ -41,10 +41,10 @@ async function getValidAccessToken(teamId: string): Promise<string> {
   if (!activeMember.google_drive_refresh_token) throw new Error('Refresh token mancante');
 
   const nowMs = Date.now();
-  const expiryMs = member.google_drive_token_expiry ?? 0;
+  const expiryMs = activeMember.google_drive_token_expiry ?? 0;
 
-  if (member.google_drive_access_token && expiryMs - nowMs > 3 * 60 * 1000) {
-    return member.google_drive_access_token;
+  if (activeMember.google_drive_access_token && expiryMs - nowMs > 3 * 60 * 1000) {
+    return activeMember.google_drive_access_token;
   }
 
   const res = await fetch('https://oauth2.googleapis.com/token', {
