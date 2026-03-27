@@ -1225,14 +1225,18 @@ interface CalendarioTabProps {
 
 export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
   const { utente, addToast } = useApp();
+  const isMobile = useIsMobile();
+  const isTablet = !isMobile && typeof window !== 'undefined' && window.innerWidth < 1024;
   const oggi = new Date(); oggi.setHours(0, 0, 0, 0);
 
   const [vista, setVista] = useState<'mese' | 'settimana'>('mese');
+  const [mobileVista, setMobileVista] = useState<MobileVista>('agenda');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [eventi, setEventi] = useState<CalendarioEvent[]>([]);
   const [marketing, setMarketing] = useState<MarketingEvent[]>([]);
   const [contenuti, setContenuti] = useState<Contenuto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showLegend, setShowLegend] = useState(false);
 
   // Drag state for events
   const [dragEvId, setDragEvId] = useState<string | null>(null);
@@ -1251,7 +1255,12 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
     setLoading(true);
     let rangeStart: string, rangeEnd: string;
 
-    if (vista === 'mese') {
+    if (isMobile) {
+      // Load wider range for agenda
+      const y = currentDate.getFullYear(), m = currentDate.getMonth();
+      rangeStart = toDateStr(new Date(y, m - 1, 1));
+      rangeEnd = toDateStr(new Date(y, m + 2, 0));
+    } else if (vista === 'mese') {
       const y = currentDate.getFullYear(), m = currentDate.getMonth();
       rangeStart = toDateStr(new Date(y, m - 1, 1));
       rangeEnd = toDateStr(new Date(y, m + 2, 0));
@@ -1284,14 +1293,19 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
     setMarketing((mktRes.data as MarketingEvent[]) || []);
     setContenuti((contRes.data as any[]) || []);
     setLoading(false);
-  }, [vista, currentDate, utente]);
+  }, [vista, currentDate, utente, isMobile]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
   // ── Navigation ─────────────────────────────────────────────────────────────
   const navigate = (dir: -1 | 1) => {
     const d = new Date(currentDate);
-    if (vista === 'mese') {
+    if (isMobile) {
+      if (mobileVista === 'mese') d.setMonth(d.getMonth() + dir);
+      else if (mobileVista === 'settimana') d.setDate(d.getDate() + dir * 7);
+      else if (mobileVista === '3giorni') d.setDate(d.getDate() + dir * 3);
+      else d.setDate(d.getDate() + dir);
+    } else if (vista === 'mese') {
       d.setMonth(d.getMonth() + dir);
     } else {
       d.setDate(d.getDate() + dir * 7);
@@ -1302,18 +1316,38 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
   const goToday = () => setCurrentDate(new Date());
 
   // ── Title ──────────────────────────────────────────────────────────────────
-  const title = vista === 'mese'
-    ? `${MESI[currentDate.getMonth()]} ${currentDate.getFullYear()}`
-    : (() => {
+  const getTitle = () => {
+    if (isMobile) {
+      if (mobileVista === 'mese') return `${MESI[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
+      if (mobileVista === 'agenda') return `${MESI[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
+      if (mobileVista === 'giorno') {
+        return `${currentDate.getDate()} ${MESI[currentDate.getMonth()].slice(0, 3)}`;
+      }
+      if (mobileVista === '3giorni') {
+        const end = addDays(currentDate, 2);
+        return `${currentDate.getDate()}–${end.getDate()} ${MESI[end.getMonth()].slice(0, 3)}`;
+      }
       const ws = startOfWeekMon(currentDate);
       const we = addDays(ws, 6);
-      return `${ws.getDate()} – ${we.getDate()} ${MESI[we.getMonth()]} ${we.getFullYear()}`;
-    })();
+      return `${ws.getDate()}–${we.getDate()} ${MESI[we.getMonth()].slice(0, 3)}`;
+    }
+    return vista === 'mese'
+      ? `${MESI[currentDate.getMonth()]} ${currentDate.getFullYear()}`
+      : (() => {
+        const ws = startOfWeekMon(currentDate);
+        const we = addDays(ws, 6);
+        return `${ws.getDate()} – ${we.getDate()} ${MESI[we.getMonth()]} ${we.getFullYear()}`;
+      })();
+  };
+
+  const title = getTitle();
 
   // ── Day click ──────────────────────────────────────────────────────────────
   const handleDayClick = (date: Date, x: number, y: number) => {
     setSelectedDate(date);
-    setDayMenu({ date, x, y });
+    if (!isMobile) {
+      setDayMenu({ date, x, y });
+    }
   };
 
   // ── Drag-drop evento: sposta data ──────────────────────────────────────────
@@ -1334,7 +1368,6 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
       addToast('Errore nello spostamento dell\'evento', 'error');
       loadData();
     } else {
-      // Se è un appuntamento task, aggiorna anche il task nel Kanban
       if (ev.tipo === 'appuntamento') {
         await supabase
           .from('task')
@@ -1465,6 +1498,114 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
 
   if (!utente) return null;
 
+  // ── MOBILE LAYOUT ─────────────────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <div className="flex flex-col h-full overflow-hidden relative">
+        {/* Mobile Toolbar */}
+        <div className="flex items-center justify-between px-3 py-2 border-b bg-white flex-shrink-0">
+          <div className="flex items-center gap-1">
+            <button onClick={() => navigate(-1)} className="sk-btn-ghost text-sm px-2 py-1 min-h-[44px] min-w-[44px]">◀</button>
+            <button onClick={goToday} className="sk-btn-ghost text-xs px-2 py-1 min-h-[44px]">Oggi</button>
+            <button onClick={() => navigate(1)} className="sk-btn-ghost text-sm px-2 py-1 min-h-[44px] min-w-[44px]">▶</button>
+          </div>
+          <h2 className="font-semibold text-sm">{title}</h2>
+          <button
+            onClick={() => setShowLegend(true)}
+            className="sk-btn-ghost text-xs px-2 py-1 min-h-[44px]"
+          >
+            🎨
+          </button>
+        </div>
+
+        {/* Mobile View Switcher */}
+        <MobileViewSwitcher vista={mobileVista} onChange={setMobileVista} />
+
+        {/* Mobile Views */}
+        {loading ? (
+          <div className="flex-1 flex items-center justify-center text-muted-foreground">
+            <span className="animate-spin mr-2">⏳</span> Caricamento…
+          </div>
+        ) : (
+          <>
+            {mobileVista === 'agenda' && (
+              <AgendaView eventi={eventi} marketing={marketing} oggi={oggi} onEventClick={setSelectedEvent} />
+            )}
+            {mobileVista === 'giorno' && (
+              <MobileDayView date={currentDate} eventi={eventi} marketing={marketing} oggi={oggi} onEventClick={setSelectedEvent} />
+            )}
+            {mobileVista === '3giorni' && (
+              <Mobile3DayView centerDate={currentDate} eventi={eventi} marketing={marketing} oggi={oggi} onEventClick={setSelectedEvent} />
+            )}
+            {mobileVista === 'settimana' && (
+              <div className="flex-1 overflow-x-auto overflow-y-auto pb-24">
+                <WeekView
+                  weekStart={startOfWeekMon(currentDate)}
+                  eventi={eventi}
+                  marketing={marketing}
+                  oggi={oggi}
+                  utente={utente}
+                  onDayClick={handleDayClick}
+                  onEventClick={setSelectedEvent}
+                  onEventDrop={handleEventDrop}
+                  dragEvId={dragEvId}
+                  setDragEvId={setDragEvId}
+                />
+              </div>
+            )}
+            {mobileVista === 'mese' && (
+              <MobileMonthView
+                year={currentDate.getFullYear()}
+                month={currentDate.getMonth()}
+                eventi={eventi}
+                marketing={marketing}
+                oggi={oggi}
+                onDaySelect={(d) => setSelectedDate(d)}
+              />
+            )}
+          </>
+        )}
+
+        {/* FAB */}
+        <button
+          onClick={() => { setSelectedDate(oggi); setShowTaskModal(true); }}
+          className="fixed bottom-6 right-4 z-40 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center text-2xl active:scale-95 transition-transform"
+        >
+          +
+        </button>
+
+        {/* Legend Bottom Sheet */}
+        <LegendaBottomSheet open={showLegend} onClose={() => setShowLegend(false)} />
+
+        {/* Event detail - full screen bottom sheet on mobile */}
+        {selectedEvent && (
+          <div className="fixed inset-0 z-50 flex flex-col bg-white animate-slide-up">
+            <EventDetail
+              ev={selectedEvent}
+              team={team}
+              clienti={clienti}
+              onClose={() => setSelectedEvent(null)}
+              onDelete={handleDeleteEvent}
+              onUpdate={handleUpdateEvent}
+            />
+          </div>
+        )}
+
+        {/* Modals */}
+        {showTaskModal && (
+          <NuovoTaskModal team={team} clienti={clienti} utente={utente} onClose={() => setShowTaskModal(false)} onCreated={handleTaskCreated} dataPrecompilata={toDateStr(selectedDate)} />
+        )}
+        {showCLPPicker && (
+          <CLPPicker contenuti={contenuti} selectedDate={selectedDate} onSave={handleSaveCLP} onClose={() => setShowCLPPicker(false)} />
+        )}
+        {showSlotModal && (
+          <SlotModal selectedDate={selectedDate} team={team} onSave={handleSaveSlot} onClose={() => setShowSlotModal(false)} />
+        )}
+      </div>
+    );
+  }
+
+  // ── DESKTOP / TABLET LAYOUT (unchanged) ───────────────────────────────────
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
@@ -1477,7 +1618,17 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
         </div>
 
         <div className="flex items-center gap-3">
-          <Legenda />
+          {isTablet ? (
+            <div className="flex overflow-x-auto gap-1.5 no-scrollbar">
+              {Object.entries(TIPO_STYLE).map(([k, v]) => (
+                <span key={k} className="shrink-0 flex items-center gap-1 text-[10px] px-2 py-1 rounded-full border" style={{ background: v.bg, borderColor: v.border + '40' }}>
+                  {v.icon} {v.label}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <Legenda />
+          )}
           <div className="flex border rounded-lg overflow-hidden">
             <button
               onClick={() => setVista('mese')}
