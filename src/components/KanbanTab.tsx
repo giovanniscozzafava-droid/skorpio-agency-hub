@@ -368,15 +368,28 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   };
 
   // ── Task standard (senza CLP) ───────────────────────────────────────────────
+  const matchesSearch = (t: Task) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      t.descrizione.toLowerCase().includes(q) ||
+      (t.cliente_nome || '').toLowerCase().includes(q) ||
+      (t.id_display || '').toLowerCase().includes(q) ||
+      (t.id_contenuto || '').toLowerCase().includes(q) ||
+      (t.assegnato_a || '').toLowerCase().includes(q) ||
+      (t.tipo || '').toLowerCase().includes(q)
+    );
+  };
+
   const filteredStandard = (stato: string) => {
     const now = Date.now();
     const in24h = now + 24 * 3600000;
     const filtered = tasks.filter(t => {
       if (t.stato !== stato) return false;
-      // Task CLP vanno nella board CLP
       if (t.id_contenuto && t.id_contenuto.trim() !== '') return false;
       if (personaView && t.assegnato_a !== personaView) return false;
       if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
+      if (!matchesSearch(t)) return false;
       if (filtraOggi) {
         if (!t.scadenza) return false;
         const ms = getTargetDate(t.scadenza, t.ora).getTime();
