@@ -682,6 +682,23 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
 
           <hr style={{ borderColor: 'hsl(var(--border))' }} />
 
+          {/* ─── ANTEPRIMA VIDEO ESPORTATO (qualsiasi task CLP con file) ──── */}
+          {exportedFileId && utente?.id && !isRevisioneTask && (
+            <div className="mb-4">
+              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                📹 ANTEPRIMA FILE ESPORTATO
+              </p>
+              <video
+                controls
+                className="w-full rounded-lg border border-border"
+                style={{ maxHeight: 220 }}
+                src={`${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${exportedFileId}&teamId=${utente.id}`}
+              >
+                Il tuo browser non supporta il player video.
+              </video>
+            </div>
+          )}
+
           {/* ─── PROGRAMMAZIONE DATE PICKER (task Programmazione) ───────────── */}
           {isProgrammazioneTask && !taskCompletato && (
             <div>
