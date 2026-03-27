@@ -290,6 +290,8 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   const [showNuovoTask, setShowNuovoTask] = useState(false);
   const [dragItem, setDragItem] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
+  const [dragOverPos, setDragOverPos] = useState<'above' | 'below' | null>(null);
   const [liveActive, setLiveActive] = useState(false);
   const [newTaskIds, setNewTaskIds] = useState<Set<string>>(new Set());
   const [filtraOggi, setFiltraOggi] = useState(false);
