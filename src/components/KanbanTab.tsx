@@ -451,13 +451,19 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       }
       return true;
     });
-    const score = (t: Task) => {
-      if (!t.scadenza) return 2_000_000_000_000;
-      const ms = getTargetDate(t.scadenza, t.ora).getTime();
-      if (ms < Date.now()) return 3_000_000_000_000 + (Date.now() - ms);
-      return ms;
-    };
-    return filtered.sort((a, b) => score(a) - score(b));
+    return filtered.sort((a, b) => {
+      const pa = (a as any).posizione ?? 0;
+      const pb = (b as any).posizione ?? 0;
+      if (pa !== pb) return pa - pb;
+      // fallback: scadenza
+      const score = (t: Task) => {
+        if (!t.scadenza) return 2_000_000_000_000;
+        const ms = getTargetDate(t.scadenza, t.ora).getTime();
+        if (ms < Date.now()) return 3_000_000_000_000 + (Date.now() - ms);
+        return ms;
+      };
+      return score(a) - score(b);
+    });
   };
 
   // ── Task CLP: mappa fase CLP → tipo task attivo ─────────────────────────────
