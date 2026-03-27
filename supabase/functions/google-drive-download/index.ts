@@ -53,7 +53,7 @@ async function getValidAccessToken(teamId: string): Promise<string> {
     body: new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID,
       client_secret: GOOGLE_CLIENT_SECRET,
-      refresh_token: member.google_drive_refresh_token,
+      refresh_token: activeMember.google_drive_refresh_token,
       grant_type: 'refresh_token',
     }),
   });
