@@ -1,0 +1,1 @@
+UPDATE public.team SET ruolo = 'Admin' WHERE nome = 'Elisa';
