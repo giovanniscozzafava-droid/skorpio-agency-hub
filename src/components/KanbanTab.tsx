@@ -281,6 +281,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   const [boardMode, setBoardMode] = useState<'standard' | 'clp' | 'both'>('both');
   const [searchQuery, setSearchQuery] = useState('');
   const [clpFasi, setClpFasi] = useState<Record<string, string>>({});
+  const [clpPubDates, setClpPubDates] = useState<Record<string, { data: string | null; ora: string | null }>>({});
 
   const pendingEventsRef = useRef<RealtimeEvent[]>([]);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
