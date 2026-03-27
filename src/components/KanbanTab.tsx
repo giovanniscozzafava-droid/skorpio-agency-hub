@@ -452,8 +452,8 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       return true;
     });
     return filtered.sort((a, b) => {
-      const pa = (a as any).posizione ?? 0;
-      const pb = (b as any).posizione ?? 0;
+      const pa = a.posizione ?? 0;
+      const pb = b.posizione ?? 0;
       if (pa !== pb) return pa - pb;
       // fallback: scadenza
       const score = (t: Task) => {
