@@ -471,6 +471,74 @@ export async function creaTaskCleanup(contenuto: Contenuto, team: any[]): Promis
 }
 
 /**
+ * Sync: trova CLPs in fasi workflow che non hanno il task corrispondente e li crea.
+ * Chiamato all'avvio per recuperare CLPs entrati nel workflow prima dell'automazione.
+ */
+export async function syncMissingWorkflowTasks(): Promise<number> {
+  const FASE_TO_TIPO: Record<string, { tipo: string; keyword: string; emoji: string }> = {
+    'Girato': { tipo: 'Premontaggio', keyword: 'Luca', emoji: '🎬' },
+    'Pre montato': { tipo: 'Montaggio', keyword: 'Alessandro', emoji: '✂️' },
+    'Montato': { tipo: 'Revisione montaggio', keyword: 'Elisa', emoji: '👁️' },
+    'Revisionato': { tipo: 'Programmazione', keyword: 'Elisa', emoji: '📅' },
+  };
+
+  const { data: teamData } = await supabase.from('team').select('*');
+  const team = (teamData || []) as TeamMember[];
+
+  let created = 0;
+
+  for (const [fase, info] of Object.entries(FASE_TO_TIPO)) {
+    const { data: clps } = await supabase
+      .from('contenuti')
+      .select('*')
+      .eq('fase', fase);
+
+    if (!clps || clps.length === 0) continue;
+
+    for (const clp of clps) {
+      // Check if task already exists
+      const { data: existing } = await supabase
+        .from('task')
+        .select('id')
+        .eq('id_contenuto', clp.id)
+        .eq('tipo', info.tipo)
+        .neq('stato', 'Completato')
+        .neq('stato', 'Archiviato');
+
+      if (existing && existing.length > 0) continue;
+
+      // Check if there's a completed task of this type (user may have already done it)
+      const { data: completed } = await supabase
+        .from('task')
+        .select('id')
+        .eq('id_contenuto', clp.id)
+        .eq('tipo', info.tipo)
+        .eq('stato', 'Completato');
+
+      if (completed && completed.length > 0) continue;
+
+      const assegnatoA = findMembro(team, info.keyword);
+      const labelMap: Record<string, string> = {
+        'Premontaggio': 'Pre montaggio',
+        'Montaggio': 'Montaggio',
+        'Revisione montaggio': 'Revisione',
+        'Programmazione': 'Programmazione',
+      };
+      await creaTaskWorkflow(
+        clp as Contenuto,
+        assegnatoA,
+        info.tipo,
+        `${info.emoji} ${labelMap[info.tipo] || info.tipo} ${clp.id_display} – ${clp.titolo}${clp.cliente_nome ? ` (${clp.cliente_nome})` : ''}`,
+        'Da fare',
+      );
+      created++;
+    }
+  }
+
+  return created;
+}
+
+/**
  * Recupera i task workflow per un CLP (per la timeline nella tab Riprese)
  */
 export async function getWorkflowTasks(contenutoId: string): Promise<Array<{

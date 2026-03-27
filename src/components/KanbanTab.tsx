@@ -274,8 +274,8 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   const [liveActive, setLiveActive] = useState(false);
   const [newTaskIds, setNewTaskIds] = useState<Set<string>>(new Set());
   const [filtraOggi, setFiltraOggi] = useState(false);
-  // Quale board mostrare: 'standard' | 'clp' | 'both'
   const [boardMode, setBoardMode] = useState<'standard' | 'clp' | 'both'>('both');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const pendingEventsRef = useRef<RealtimeEvent[]>([]);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -368,15 +368,28 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   };
 
   // ── Task standard (senza CLP) ───────────────────────────────────────────────
+  const matchesSearch = (t: Task) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      t.descrizione.toLowerCase().includes(q) ||
+      (t.cliente_nome || '').toLowerCase().includes(q) ||
+      (t.id_display || '').toLowerCase().includes(q) ||
+      (t.id_contenuto || '').toLowerCase().includes(q) ||
+      (t.assegnato_a || '').toLowerCase().includes(q) ||
+      (t.tipo || '').toLowerCase().includes(q)
+    );
+  };
+
   const filteredStandard = (stato: string) => {
     const now = Date.now();
     const in24h = now + 24 * 3600000;
     const filtered = tasks.filter(t => {
       if (t.stato !== stato) return false;
-      // Task CLP vanno nella board CLP
       if (t.id_contenuto && t.id_contenuto.trim() !== '') return false;
       if (personaView && t.assegnato_a !== personaView) return false;
       if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
+      if (!matchesSearch(t)) return false;
       if (filtraOggi) {
         if (!t.scadenza) return false;
         const ms = getTargetDate(t.scadenza, t.ora).getTime();
@@ -397,15 +410,14 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   // Un task CLP si mostra nella colonna corrispondente alla sua fase corrente.
   // I task con stato 'Completato' li mettiamo nell'ultima colonna completata.
   const filteredCLP = (faseCLP: string) => {
-    const tipoColonna = TIPO_PER_FASE[faseCLP]; // es. 'Premontaggio' per colonna 'Girato'
+    const tipoColonna = TIPO_PER_FASE[faseCLP];
     return tasks.filter(t => {
       if (!t.id_contenuto || t.id_contenuto.trim() === '') return false;
       if (personaView && t.assegnato_a !== personaView) return false;
       if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
-      // Colonne Programmato/Pubblicato: task senza tipo successivo (ultimo step)
+      if (!matchesSearch(t)) return false;
       if (faseCLP === 'Programmato') return t.tipo === 'Programmazione' && t.stato !== 'Completato';
       if (faseCLP === 'Pubblicato') return t.tipo === 'Cleanup' || (t.stato === 'Completato' && t.tipo === 'Programmazione');
-      // Colonne intermedie: task con il tipo corrispondente, non ancora completato
       return tipoColonna && t.tipo === tipoColonna && t.stato !== 'Completato';
     });
   };
@@ -520,6 +532,29 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
           </button>
         </div>
         <div className="flex items-center gap-2">
+          {/* Search */}
+          <div className="relative">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs" style={{ color: 'hsl(var(--muted-foreground))' }}>🔍</span>
+            <input
+              type="text"
+              placeholder="Cerca task..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="pl-8 pr-3 py-1.5 rounded-lg text-xs border outline-none transition-colors w-44"
+              style={{
+                background: 'hsl(var(--background))',
+                borderColor: searchQuery ? 'hsl(var(--primary))' : 'hsl(var(--border))',
+                color: 'hsl(var(--foreground))',
+              }}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-xs"
+                style={{ color: 'hsl(var(--muted-foreground))' }}
+              >✕</button>
+            )}
+          </div>
           {/* Selector board */}
           <div className="flex rounded-lg overflow-hidden border border-border text-xs">
             {(['both', 'standard', 'clp'] as const).map(mode => (
