@@ -864,6 +864,59 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
             </div>
           )}
 
+          {/* ─── UPLOAD VERSIONE MODIFICATA (task Montaggio dopo revisione) ──── */}
+          {isMontaggioConModifiche && !taskCompletato && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                📤 CARICA VERSIONE MODIFICATA
+              </p>
+              <div className="rounded-xl p-3 space-y-3"
+                style={{ background: 'hsl(214 80% 55% / 0.06)', border: '1px solid hsl(214 80% 55% / 0.25)' }}>
+                <p className="text-xs leading-relaxed" style={{ color: 'hsl(214 70% 40%)' }}>
+                  Carica la versione corretta. Il CLP tornerà a <strong>Uploadato</strong> e verrà creato un nuovo task di <strong>Revisione</strong> per Elisa.
+                </p>
+
+                {uploadProgress ? (
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-[11px]" style={{ color: 'hsl(214 70% 40%)' }}>
+                      <span>📁 {uploadProgress.fileName}</span>
+                      <span className="font-mono font-bold">{uploadProgress.percent}%</span>
+                    </div>
+                    <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: 'hsl(214 80% 55% / 0.15)' }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-300"
+                        style={{ width: `${uploadProgress.percent}%`, background: 'hsl(214 80% 55%)' }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">Caricamento in corso… non chiudere il pannello.</p>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      ref={montaggioUploadRef}
+                      type="file"
+                      accept="video/*,.mp4,.mov,.avi,.mkv,.webm"
+                      onChange={handleUploadModificato}
+                      className="hidden"
+                    />
+                    <button
+                      onClick={() => montaggioUploadRef.current?.click()}
+                      disabled={uploading}
+                      className="w-full py-3 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2"
+                      style={{
+                        background: 'hsl(214 80% 55%)',
+                        color: 'white',
+                        opacity: uploading ? 0.6 : 1,
+                      }}
+                    >
+                      📤 Carica versione corretta
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
           <hr style={{ borderColor: 'hsl(var(--border))' }} />
 
           {/* ─── ANTEPRIMA VIDEO ESPORTATO (qualsiasi task CLP con file) ──── */}
