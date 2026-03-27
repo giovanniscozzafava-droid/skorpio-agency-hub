@@ -154,9 +154,11 @@ interface TaskCardProps {
   onClick: () => void;
   /** Se true, mostra il badge fase CLP (solo board standard) */
   showFaseBadge?: boolean;
+  /** Data di pubblicazione (per countdown Programmato) */
+  pubDate?: { data: string | null; ora: string | null } | null;
 }
 
-function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true }: TaskCardProps) {
+function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate }: TaskCardProps) {
   const scad = scadenzaInfo(task);
   const isScaduto = scad?.label.includes('SCADUTO');
   const member = team.find(m => m.nome === task.assegnato_a);
@@ -238,7 +240,14 @@ function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEn
         </p>
       )}
 
-      {task.scadenza ? (
+      {pubDate?.data ? (
+        <div className="mt-1.5">
+          <p className="text-[9px] font-bold uppercase tracking-wider mb-0.5" style={{ color: '#7C3AED', opacity: 0.7 }}>
+            📡 Pubblicazione
+          </p>
+          <LiveClock scadenza={pubDate.data} ora={pubDate.ora} />
+        </div>
+      ) : task.scadenza ? (
         <LiveClock scadenza={task.scadenza} ora={task.ora} />
       ) : scad ? (
         <div
@@ -281,6 +290,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   const [boardMode, setBoardMode] = useState<'standard' | 'clp' | 'both'>('both');
   const [searchQuery, setSearchQuery] = useState('');
   const [clpFasi, setClpFasi] = useState<Record<string, string>>({});
+  const [clpPubDates, setClpPubDates] = useState<Record<string, { data: string | null; ora: string | null }>>({});
 
   const pendingEventsRef = useRef<RealtimeEvent[]>([]);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -329,14 +339,17 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
         .order('created_at', { ascending: false }),
       supabase
         .from('contenuti')
-        .select('id, fase'),
+        .select('id, fase, data_pubblicazione, ora_pubblicazione'),
     ]);
 
     const nextTasks = taskData || [];
     setTasks(nextTasks);
     tasksRef.current = nextTasks;
     setClpFasi(
-      Object.fromEntries((contenutiData || []).map(contenuto => [contenuto.id, contenuto.fase || '']))
+      Object.fromEntries((contenutiData || []).map(c => [c.id, c.fase || '']))
+    );
+    setClpPubDates(
+      Object.fromEntries((contenutiData || []).map(c => [c.id, { data: c.data_pubblicazione, ora: c.ora_pubblicazione }]))
     );
     setLoading(false);
 
@@ -444,20 +457,23 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
     const tipoColonna = TIPO_PER_FASE[faseCLP];
     return tasks.filter(t => {
       if (!t.id_contenuto || t.id_contenuto.trim() === '') return false;
-      if (personaView && t.assegnato_a !== personaView) return false;
-      if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
       if (!matchesSearch(t)) return false;
 
       const faseReale = clpFasi[t.id_contenuto];
       if (!faseReale) return false;
 
+      // Programmato e Pubblicato: visibili a TUTTI (nessun filtro persona)
       if (faseCLP === 'Programmato') {
-        return faseReale === 'Programmato' && t.tipo === 'Programmazione' && t.stato !== 'Completato';
+        return faseReale === 'Programmato' && t.tipo === 'Programmazione';
       }
 
       if (faseCLP === 'Pubblicato') {
         return faseReale === 'Pubblicato' && (t.tipo === 'Cleanup' || (t.stato === 'Completato' && t.tipo === 'Programmazione'));
       }
+
+      // Per le altre colonne, filtra per persona
+      if (personaView && t.assegnato_a !== personaView) return false;
+      if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
 
       return faseReale === faseCLP && tipoColonna === t.tipo && t.stato !== 'Completato';
     });
@@ -653,20 +669,25 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                     </span>
                   </div>
                   <div className="kanban-col-body">
-                    {colTasks.map(task => (
-                      <TaskCard
-                        key={task.id}
-                        task={task}
-                        team={team}
-                        utente={utente}
-                        isNew={newTaskIds.has(task.id)}
-                        draggingId={dragItem}
-                        onDragStart={() => setDragItem(task.id)}
-                        onDragEnd={() => setDragItem(null)}
-                        onClick={() => setSelectedTask(task)}
-                        showFaseBadge={false}
-                      />
-                    ))}
+                    {colTasks.map(task => {
+                      const isProgrammato = col.stato === 'Programmato' || col.stato === 'Pubblicato';
+                      const pub = isProgrammato && task.id_contenuto ? clpPubDates[task.id_contenuto] : null;
+                      return (
+                        <TaskCard
+                          key={task.id}
+                          task={task}
+                          team={team}
+                          utente={utente}
+                          isNew={newTaskIds.has(task.id)}
+                          draggingId={dragItem}
+                          onDragStart={() => setDragItem(task.id)}
+                          onDragEnd={() => setDragItem(null)}
+                          onClick={() => setSelectedTask(task)}
+                          showFaseBadge={false}
+                          pubDate={pub}
+                        />
+                      );
+                    })}
                     {colTasks.length === 0 && (
                       <div className="flex items-center justify-center h-12 text-xs rounded-lg"
                         style={{ color: 'hsl(var(--muted-foreground))', border: `1px dashed ${col.border}40` }}>
