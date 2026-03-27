@@ -161,6 +161,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   const [savingProg, setSavingProg] = useState(false);
   const isProgrammazioneTask = task.tipo === 'Programmazione';
   const isUploadTask = task.tipo === 'Upload esportato';
+  const isMontaggioTask = task.tipo === 'Montaggio';
 
   // ── Upload esportato state ─────────────────────────────────────────────────
   const [uploadProgress, setUploadProgress] = useState<{ percent: number; fileName: string } | null>(null);
@@ -677,6 +678,40 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
             <div className="rounded-lg p-3 text-xs whitespace-pre-wrap leading-relaxed"
               style={{ background: 'hsl(210 40% 96%)', color: 'hsl(var(--skorpio-text-secondary))' }}>
               {task.note}
+            </div>
+          )}
+
+          {/* ─── NOTE REVISIONE (task Montaggio con modifiche richieste) ──── */}
+          {isMontaggioTask && contenutoRevisione?.note_revisione && (
+            <div className="rounded-xl p-3.5 space-y-2"
+              style={{ background: 'hsl(38 92% 50% / 0.08)', border: '1px solid hsl(38 92% 50% / 0.30)' }}>
+              <div className="flex items-center gap-1.5">
+                <span style={{ fontSize: 16 }}>📝</span>
+                <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(32 95% 35%)' }}>
+                  Modifiche richieste da Elisa
+                </p>
+              </div>
+              <p className="text-sm leading-relaxed whitespace-pre-wrap"
+                style={{ color: 'hsl(32 80% 25%)' }}>
+                {contenutoRevisione.note_revisione}
+              </p>
+            </div>
+          )}
+
+          {/* ─── ANTEPRIMA VIDEO per task Montaggio (per vedere cosa modificare) ── */}
+          {isMontaggioTask && exportedFileId && utente?.id && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                🎬 VIDEO DA MODIFICARE
+              </p>
+              <video
+                controls
+                className="w-full rounded-lg border border-border"
+                style={{ maxHeight: 220 }}
+                src={`${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${exportedFileId}&teamId=${utente.id}`}
+              >
+                Il tuo browser non supporta il player video.
+              </video>
             </div>
           )}
 
