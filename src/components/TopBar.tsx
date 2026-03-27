@@ -195,8 +195,8 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
         </button>
       </div>
 
-      {/* Tab bar */}
-      <div className="skorpio-tabbar">
+      {/* Tab bar — hidden on mobile, replaced by drawer */}
+      <div className="skorpio-tabbar hidden lg:flex">
         {tabs.map(t => (
           <button
             key={t.id}
@@ -207,6 +207,13 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
           </button>
         ))}
       </div>
+
+      {/* Mobile Drawer */}
+      <MobileDrawer
+        open={showDrawer}
+        onClose={() => setShowDrawer(false)}
+        onOpenImpostazioni={() => setShowImpostazioni(true)}
+      />
 
       {/* Pannello Impostazioni */}
       {showImpostazioni && (
