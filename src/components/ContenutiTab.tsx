@@ -6,7 +6,7 @@ import { parseLocalDate } from '../lib/dateUtils';
 import { CLPDetailPanel } from './CLPDetailPanel';
 import { NuovoCLPModal } from './NuovoCLPModal';
 
-const FASI: FaseCLP[] = ['Idea', 'Script', 'Girato', 'Pre montato', 'Montato', 'Caricato', 'Revisionato', 'Programmato', 'Pubblicato', 'Scartata'];
+const FASI: FaseCLP[] = ['Idea', 'Script', 'Girato', 'Pre montato', 'Montato', 'Uploadato', 'Revisionato', 'Programmato', 'Pubblicato', 'Scartata'];
 
 export const FASE_CONFIG: Record<FaseCLP, { bg: string; text: string; border: string }> = {
   'Idea':        { bg: '#F1F5F9', text: '#64748B', border: '#CBD5E1' },
@@ -14,7 +14,7 @@ export const FASE_CONFIG: Record<FaseCLP, { bg: string; text: string; border: st
   'Girato':      { bg: '#DCFCE7', text: '#16A34A', border: '#BBF7D0' },
   'Pre montato': { bg: '#CFFAFE', text: '#0E7490', border: '#A5F3FC' },
   'Montato':     { bg: '#EDE9FE', text: '#7C3AED', border: '#DDD6FE' },
-  'Caricato':    { bg: '#FEF9C3', text: '#A16207', border: '#FDE047' },
+  'Uploadato':   { bg: '#FEF9C3', text: '#A16207', border: '#FDE047' },
   'Revisionato': { bg: '#FCE7F3', text: '#BE185D', border: '#FBCFE8' },
   'Programmato': { bg: '#EDE9FE', text: '#6D28D9', border: '#C4B5FD' },
   'Pubblicato':  { bg: '#DBEAFE', text: '#1D4ED8', border: '#BFDBFE' },

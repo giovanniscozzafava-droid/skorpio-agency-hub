@@ -91,7 +91,7 @@ const COLONNE_CLP = [
   { stato: 'Girato',      tipo: 'Premontaggio',        colore: '#8B5CF6', bg: 'hsl(270 60% 97%)', border: '#8B5CF6', icona: '🎬', label: 'Girato — Premontaggio' },
   { stato: 'Pre montato', tipo: 'Montaggio',            colore: '#3B82F6', bg: 'hsl(214 80% 97%)', border: '#3B82F6', icona: '✂️', label: 'Pre montato — Montaggio' },
   { stato: 'Montato',     tipo: 'Upload esportato',     colore: '#F59E0B', bg: 'hsl(38 92% 97%)',  border: '#F59E0B', icona: '📤', label: 'Montato — Upload' },
-  { stato: 'Caricato',    tipo: 'Revisione montaggio',  colore: '#EC4899', bg: 'hsl(328 80% 97%)', border: '#EC4899', icona: '🔍', label: 'Caricato — Revisione' },
+  { stato: 'Uploadato',   tipo: 'Revisione montaggio',  colore: '#EC4899', bg: 'hsl(328 80% 97%)', border: '#EC4899', icona: '🔍', label: 'Uploadato — Revisione' },
   { stato: 'Revisionato', tipo: 'Programmazione',       colore: '#7C3AED', bg: 'hsl(263 70% 97%)', border: '#7C3AED', icona: '📅', label: 'Revisionato — Programmazione' },
   { stato: 'Programmato', tipo: '',                     colore: '#6D28D9', bg: 'hsl(263 60% 97%)', border: '#6D28D9', icona: '📡', label: 'Programmato' },
   { stato: 'Pubblicato',  tipo: '',                     colore: '#22C55E', bg: 'hsl(142 76% 97%)', border: '#22C55E', icona: '✅', label: 'Pubblicato' },
@@ -108,7 +108,7 @@ const TIPO_TO_FASE: Record<string, { label: string; bg: string; color: string; b
   'Premontaggio':        { label: '🎬 Girato',       bg: 'hsl(270 60% 55% / 0.10)', color: 'hsl(270 50% 45%)', border: 'hsl(270 60% 55% / 0.30)' },
   'Montaggio':           { label: '✂️ Pre montato',   bg: 'hsl(214 80% 55% / 0.10)', color: 'hsl(214 70% 44%)', border: 'hsl(214 80% 55% / 0.28)' },
   'Upload esportato':    { label: '📤 Montato',       bg: 'hsl(38 92% 55% / 0.10)',  color: 'hsl(38 80% 35%)',  border: 'hsl(38 92% 55% / 0.28)' },
-  'Revisione montaggio': { label: '🔍 Caricato',      bg: 'hsl(328 80% 55% / 0.10)', color: 'hsl(328 65% 40%)', border: 'hsl(328 80% 55% / 0.28)' },
+  'Revisione montaggio': { label: '🔍 Uploadato',     bg: 'hsl(328 80% 55% / 0.10)', color: 'hsl(328 65% 40%)', border: 'hsl(328 80% 55% / 0.28)' },
   'Programmazione':      { label: '📅 Revisionato',   bg: 'hsl(263 70% 55% / 0.10)', color: 'hsl(263 55% 40%)', border: 'hsl(263 70% 55% / 0.28)' },
 };
 
@@ -116,8 +116,8 @@ const TIPO_TO_FASE: Record<string, { label: string; bg: string; color: string; b
 const FASE_NEXT: Record<string, string> = {
   'Girato':      'Pre montato',
   'Pre montato': 'Montato',
-  'Montato':     'Caricato',
-  'Caricato':    'Revisionato',
+  'Montato':     'Uploadato',
+  'Uploadato':   'Revisionato',
   'Revisionato': 'Programmato',
   'Programmato': 'Pubblicato',
 };
@@ -127,7 +127,7 @@ const TIPO_PER_FASE: Record<string, string> = {
   'Girato':      'Premontaggio',
   'Pre montato': 'Montaggio',
   'Montato':     'Upload esportato',
-  'Caricato':    'Revisione montaggio',
+  'Uploadato':   'Revisione montaggio',
   'Revisionato': 'Programmazione',
 };
 

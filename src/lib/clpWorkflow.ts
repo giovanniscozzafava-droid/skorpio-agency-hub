@@ -105,14 +105,14 @@ export const WORKFLOW_MAP: Record<string, WorkflowStep> = {
   },
   'Upload esportato': {
     faseCurrent: 'Montato',
-    faseNext: 'Caricato',
+    faseNext: 'Uploadato',
     tipoNext: 'Revisione montaggio',
     assegnatoKeyword: 'Elisa',
     emojiNext: '👁️',
     descrizioneNext: c => `👁️ Revisione ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
   },
   'Revisione montaggio': {
-    faseCurrent: 'Caricato',
+    faseCurrent: 'Uploadato',
     faseNext: 'Revisionato',
     tipoNext: 'Programmazione',
     assegnatoKeyword: 'Elisa',
@@ -134,7 +134,7 @@ export const WORKFLOW_STEPS_ORDER = [
   { fase: 'Girato', tipo: 'Premontaggio', label: 'Pre montaggio', emoji: '🎬', assegnato: 'Luca' },
   { fase: 'Pre montato', tipo: 'Montaggio', label: 'Montaggio', emoji: '✂️', assegnato: 'Alessandro' },
   { fase: 'Montato', tipo: 'Upload esportato', label: 'Upload esportato', emoji: '📤', assegnato: 'Alessandro' },
-  { fase: 'Caricato', tipo: 'Revisione montaggio', label: 'Revisione', emoji: '👁️', assegnato: 'Elisa' },
+  { fase: 'Uploadato', tipo: 'Revisione montaggio', label: 'Revisione', emoji: '👁️', assegnato: 'Elisa' },
   { fase: 'Revisionato', tipo: 'Programmazione', label: 'Programmazione', emoji: '📅', assegnato: 'Elisa' },
   { fase: 'Programmato', tipo: '', label: 'Pubblicazione', emoji: '📤', assegnato: 'Elisa' },
   { fase: 'Pubblicato', tipo: 'Cleanup', label: 'Pubblicato', emoji: '✅', assegnato: '' },
@@ -330,9 +330,11 @@ export async function avanzaFaseDaTask(
     );
     // Se è Upload esportato, aggiungi nota con percorso Drive
     if (step.tipoNext === 'Upload esportato' && newTask) {
+      const slug = (contenuto as Contenuto).titolo.replace(/\s+/g, '-').slice(0, 40);
+      const folderPath = `SKORPIO_Clip/${(contenuto as Contenuto).cliente_nome}/${(contenuto as Contenuto).id_display}_${slug}/file_esportato/`;
       const driveNote = contenuto.link_drive
-        ? `Carica il file esportato nella cartella "file_esportato/" su Google Drive:\n${contenuto.link_drive}`
-        : `Carica il file esportato nella sezione Riprese del CLP ${contenuto.id_display}, nella zona "File esportato".`;
+        ? `📂 Carica il file esportato nella cartella "file_esportato/" su Google Drive:\n${contenuto.link_drive}\n\nPercorso: ${folderPath}`
+        : `📂 Carica il file esportato nella sezione Riprese del CLP ${(contenuto as Contenuto).id_display}, zona "File esportato".\n\nPercorso Drive: ${folderPath}`;
       await supabase.from('task').update({ note: driveNote }).eq('id', newTask.id);
     }
   }
@@ -417,9 +419,11 @@ export async function completaTaskEAvanzaFase(
     );
     // Se è Upload esportato, aggiungi nota con percorso Drive
     if (step.tipoNext === 'Upload esportato' && newTask) {
+      const slug = contenuto.titolo.replace(/\s+/g, '-').slice(0, 40);
+      const folderPath = `SKORPIO_Clip/${contenuto.cliente_nome}/${contenuto.id_display}_${slug}/file_esportato/`;
       const driveNote = contenuto.link_drive
-        ? `Carica il file esportato nella cartella "file_esportato/" su Google Drive:\n${contenuto.link_drive}`
-        : `Carica il file esportato nella sezione Riprese del CLP ${contenuto.id_display}, nella zona "File esportato".`;
+        ? `📂 Carica il file esportato nella cartella "file_esportato/" su Google Drive:\n${contenuto.link_drive}\n\nPercorso: ${folderPath}`
+        : `📂 Carica il file esportato nella sezione Riprese del CLP ${contenuto.id_display}, zona "File esportato".\n\nPercorso Drive: ${folderPath}`;
       await supabase.from('task').update({ note: driveNote }).eq('id', newTask.id);
     }
   }
@@ -558,20 +562,19 @@ export async function creaTaskCleanup(contenuto: Contenuto, team: any[]): Promis
  * Chiamato all'avvio per recuperare CLPs entrati nel workflow prima dell'automazione.
  */
 export async function syncMissingWorkflowTasks(): Promise<number> {
-  const FASE_ORDER = ['Girato', 'Pre montato', 'Montato', 'Caricato', 'Revisionato', 'Programmato', 'Pubblicato'];
+  const FASE_ORDER = ['Girato', 'Pre montato', 'Montato', 'Uploadato', 'Revisionato', 'Programmato', 'Pubblicato'];
   const FASE_TO_TIPO: Record<string, { tipo: string; keyword: string; emoji: string }> = {
     'Girato': { tipo: 'Premontaggio', keyword: 'Luca', emoji: '🎬' },
     'Pre montato': { tipo: 'Montaggio', keyword: 'Alessandro', emoji: '✂️' },
     'Montato': { tipo: 'Upload esportato', keyword: 'Alessandro', emoji: '📤' },
-    'Caricato': { tipo: 'Revisione montaggio', keyword: 'Elisa', emoji: '👁️' },
+    'Uploadato': { tipo: 'Revisione montaggio', keyword: 'Elisa', emoji: '👁️' },
     'Revisionato': { tipo: 'Programmazione', keyword: 'Elisa', emoji: '📅' },
   };
-  // Mappa fase → tipo task di quella fase (per completare task di fasi precedenti)
   const FASE_TIPO_MAP: Record<string, string> = {
     'Girato': 'Premontaggio',
     'Pre montato': 'Montaggio',
     'Montato': 'Upload esportato',
-    'Caricato': 'Revisione montaggio',
+    'Uploadato': 'Revisione montaggio',
     'Revisionato': 'Programmazione',
   };
 

@@ -56,7 +56,7 @@ export type Task = {
   updated_at: string;
 };
 
-export type FaseCLP = 'Idea' | 'Script' | 'Girato' | 'Pre montato' | 'Montato' | 'Caricato' | 'Revisionato' | 'Programmato' | 'Pubblicato' | 'Scartata';
+export type FaseCLP = 'Idea' | 'Script' | 'Girato' | 'Pre montato' | 'Montato' | 'Uploadato' | 'Revisionato' | 'Programmato' | 'Pubblicato' | 'Scartata';
 
 export type Contenuto = {
   id: string;

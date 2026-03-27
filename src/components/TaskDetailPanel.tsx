@@ -107,12 +107,13 @@ const PRIORITA_COLORS: Record<string, { dot: string; bg: string; text: string }>
   '🟢 Bassa': { dot: '#22C55E', bg: '#DCFCE7', text: '#16A34A' },
 };
 
-const FASI_PIPELINE: FaseCLP[] = ['Girato', 'Pre montato', 'Montato', 'Revisionato', 'Programmato', 'Pubblicato'];
+const FASI_PIPELINE: FaseCLP[] = ['Girato', 'Pre montato', 'Montato', 'Uploadato', 'Revisionato', 'Programmato', 'Pubblicato'];
 
 const FASE_STYLE: Record<string, { bg: string; text: string; border: string }> = {
   'Girato':      { bg: 'hsl(271 80% 55% / 0.12)', text: 'hsl(271 60% 40%)',  border: 'hsl(271 80% 55% / 0.35)' },
   'Pre montato': { bg: 'hsl(214 80% 55% / 0.12)', text: 'hsl(214 70% 40%)',  border: 'hsl(214 80% 55% / 0.35)' },
   'Montato':     { bg: 'hsl(25 90% 55% / 0.12)',  text: 'hsl(25 70% 40%)',   border: 'hsl(25 90% 55% / 0.35)' },
+  'Uploadato':   { bg: 'hsl(45 90% 50% / 0.12)',  text: 'hsl(45 80% 30%)',   border: 'hsl(45 90% 50% / 0.35)' },
   'Revisionato': { bg: 'hsl(328 80% 55% / 0.12)', text: 'hsl(328 65% 40%)',  border: 'hsl(328 80% 55% / 0.35)' },
   'Programmato': { bg: 'hsl(142 70% 45% / 0.12)', text: 'hsl(142 60% 35%)',  border: 'hsl(142 70% 45% / 0.35)' },
   'Pubblicato':  { bg: 'hsl(142 70% 45% / 0.20)', text: 'hsl(142 60% 30%)',  border: 'hsl(142 70% 45% / 0.50)' },
