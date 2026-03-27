@@ -235,6 +235,8 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
       fase: form.fase,
       tipo: form.tipo,
       canale: form.canale,
+      stile: form.stile,
+      link_ispirazione: form.link_ispirazione,
       hook: form.hook,
       assegnato_riprese: form.assegnato_riprese,
       assegnato_montaggio: form.assegnato_montaggio,
