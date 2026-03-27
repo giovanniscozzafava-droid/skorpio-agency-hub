@@ -485,10 +485,6 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
     setDropTarget(null);
     const task = tasks.find(t => t.id === dragItem);
     if (!task || task.stato === nuovoStato) return;
-    if (utente?.ruolo !== 'Admin' && task.assegnato_a !== utente?.nome) {
-      addToast('Non hai il permesso di spostare questo task', 'error');
-      return;
-    }
     isMyAction.current = true;
     setTasks(prev => prev.map(t => t.id === dragItem ? { ...t, stato: nuovoStato as Task['stato'] } : t));
     const { error } = await supabase.from('task').update({ stato: nuovoStato }).eq('id', dragItem);
