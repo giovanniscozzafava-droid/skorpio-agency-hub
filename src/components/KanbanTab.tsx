@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import { sounds } from '../lib/sounds';
@@ -284,6 +285,7 @@ interface RealtimeEvent {
 // ─── Main component ───────────────────────────────────────────────────────────
 export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   const { utente, addToast } = useApp();
+  const isMobile = useIsMobile();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -299,6 +301,9 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [clpFasi, setClpFasi] = useState<Record<string, string>>({});
   const [clpPubDates, setClpPubDates] = useState<Record<string, { data: string | null; ora: string | null }>>({});
+  // Mobile: which column to show
+  const [mobileCol, setMobileCol] = useState('Da fare');
+  const [mobileCLPCol, setMobileCLPCol] = useState('Girato');
 
   const pendingEventsRef = useRef<RealtimeEvent[]>([]);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -641,9 +646,9 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   const showCLP = boardMode === 'clp' || boardMode === 'both';
 
   return (
-    <div className="p-4">
+    <div className="p-4 max-w-full overflow-x-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-2">
         <div className="flex items-center gap-2 flex-wrap">
           <h2 className="font-bold text-lg" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
             Kanban Board
@@ -663,19 +668,19 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
               ? { background: '#FEE2E2', color: '#DC2626', border: '1px solid rgba(220,38,38,0.4)' }
               : { background: '#F1F5F9', color: '#64748B', border: '1px solid #E2E8F0' }}
           >
-            ⏰ In scadenza oggi {filtraOggi && '×'}
+            ⏰ {isMobile ? '' : 'In scadenza oggi '}{filtraOggi && '×'}
           </button>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           {/* Search */}
-          <div className="relative">
+          <div className="relative flex-1 sm:flex-none">
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs" style={{ color: 'hsl(var(--muted-foreground))' }}>🔍</span>
             <input
               type="text"
               placeholder="Cerca task..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="pl-8 pr-3 py-1.5 rounded-lg text-xs border outline-none transition-colors w-44"
+              className="pl-8 pr-3 py-1.5 rounded-lg text-xs border outline-none transition-colors w-full sm:w-44"
               style={{
                 background: 'hsl(var(--background))',
                 borderColor: searchQuery ? 'hsl(var(--primary))' : 'hsl(var(--border))',
@@ -691,7 +696,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
             )}
           </div>
           {/* Selector board */}
-          <div className="flex rounded-lg overflow-hidden border border-border text-xs">
+          <div className="flex rounded-lg overflow-hidden border border-border text-xs flex-shrink-0">
             {(['both', 'standard', 'clp'] as const).map(mode => (
               <button
                 key={mode}
@@ -705,7 +710,8 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
               </button>
             ))}
           </div>
-          <button onClick={() => setShowNuovoTask(true)} className="sk-btn-primary text-sm">
+          {/* New task button — hidden on mobile (FAB instead) */}
+          <button onClick={() => setShowNuovoTask(true)} className="sk-btn-primary text-sm hidden sm:inline-flex">
             + Nuovo Task
           </button>
         </div>
@@ -714,24 +720,48 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       {/* Board CLP */}
       {showCLP && (
         <div className="mb-6">
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
             <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(var(--muted-foreground))' }}>
               🎬 Workflow Produzione CLP
             </span>
-            <div className="flex-1 h-px" style={{ background: 'hsl(var(--border))' }} />
-            <span className="text-[10px] text-muted-foreground italic">
+            <div className="flex-1 h-px hidden sm:block" style={{ background: 'hsl(var(--border))' }} />
+            <span className="text-[10px] text-muted-foreground italic hidden sm:inline">
               Trascina sulla colonna successiva per completare lo step
             </span>
           </div>
-          <div className="flex gap-3 overflow-x-auto pb-2">
-            {COLONNE_CLP.map(col => {
+
+          {/* Mobile: column tabs */}
+          {isMobile && (
+            <div className="flex gap-1 overflow-x-auto pb-2 mb-2 -mx-1 px-1" style={{ WebkitOverflowScrolling: 'touch' }}>
+              {COLONNE_CLP.map(col => {
+                const count = filteredCLP(col.stato).length;
+                return (
+                  <button
+                    key={col.stato}
+                    onClick={() => setMobileCLPCol(col.stato)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex-shrink-0 transition-all min-h-[36px]"
+                    style={{
+                      background: mobileCLPCol === col.stato ? col.colore : `${col.colore}15`,
+                      color: mobileCLPCol === col.stato ? '#fff' : col.colore,
+                      border: `1px solid ${col.colore}${mobileCLPCol === col.stato ? '' : '40'}`,
+                    }}
+                  >
+                    {col.icona} {col.stato} <span className="opacity-70">({count})</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div className={isMobile ? '' : 'flex gap-3 overflow-x-auto pb-2'}>
+            {COLONNE_CLP.filter(col => !isMobile || col.stato === mobileCLPCol).map(col => {
               const colTasks = filteredCLP(col.stato);
               const isDrop = dropTarget === `clp__${col.stato}`;
               return (
                 <div
                   key={col.stato}
                   className={`kanban-col ${isDrop ? 'kanban-drop-target' : ''}`}
-                  style={{ background: col.bg, border: `1px solid ${col.border}30`, minWidth: 180 }}
+                  style={{ background: col.bg, border: `1px solid ${col.border}30`, minWidth: isMobile ? '100%' : 180 }}
                   onDragOver={e => { e.preventDefault(); setDropTarget(`clp__${col.stato}`); }}
                   onDragLeave={() => { setDropTarget(null); setDragOverTaskId(null); setDragOverPos(null); }}
                   onDrop={() => {
@@ -799,14 +829,38 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
               <div className="flex-1 h-px" style={{ background: 'hsl(var(--border))' }} />
             </div>
           )}
-          <div className="flex gap-4 overflow-x-auto pb-4">
-            {COLONNE.map(col => {
+
+          {/* Mobile: column tabs */}
+          {isMobile && (
+            <div className="flex gap-1 overflow-x-auto pb-2 mb-2 -mx-1 px-1" style={{ WebkitOverflowScrolling: 'touch' }}>
+              {COLONNE.map(col => {
+                const count = filteredStandard(col.stato).length;
+                return (
+                  <button
+                    key={col.stato}
+                    onClick={() => setMobileCol(col.stato)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex-shrink-0 transition-all min-h-[36px]"
+                    style={{
+                      background: mobileCol === col.stato ? col.colore : `${col.colore}15`,
+                      color: mobileCol === col.stato ? '#fff' : col.colore,
+                      border: `1px solid ${col.colore}${mobileCol === col.stato ? '' : '40'}`,
+                    }}
+                  >
+                    {col.icona} {col.stato} <span className="opacity-70">({count})</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div className={isMobile ? '' : 'flex gap-4 overflow-x-auto pb-4'}>
+            {COLONNE.filter(col => !isMobile || col.stato === mobileCol).map(col => {
               const colTasks = filteredStandard(col.stato);
               return (
                 <div
                   key={col.stato}
                   className={`kanban-col ${dropTarget === col.stato ? 'kanban-drop-target' : ''}`}
-                  style={{ background: col.bg, border: `1px solid ${col.border}30` }}
+                  style={{ background: col.bg, border: `1px solid ${col.border}30`, minWidth: isMobile ? '100%' : undefined }}
                   onDragOver={e => { e.preventDefault(); setDropTarget(col.stato); }}
                   onDragLeave={() => { setDropTarget(null); setDragOverTaskId(null); setDragOverPos(null); }}
                   onDrop={() => {
@@ -856,6 +910,17 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
             })}
           </div>
         </div>
+      )}
+
+      {/* Mobile FAB */}
+      {isMobile && (
+        <button
+          onClick={() => setShowNuovoTask(true)}
+          className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-2xl text-white"
+          style={{ background: 'hsl(var(--primary))' }}
+        >
+          +
+        </button>
       )}
 
       {/* Detail Panel */}

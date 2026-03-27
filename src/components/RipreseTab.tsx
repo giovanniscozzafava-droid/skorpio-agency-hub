@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import { useUpload } from '../context/UploadContext';
@@ -1356,6 +1357,7 @@ interface RipreseTabProps {
 
 export function RipreseTab({ clienti, team }: RipreseTabProps) {
   const { addToast, utente } = useApp();
+  const isMobile = useIsMobile();
   const [clips, setClips] = useState<LogRipresa[]>([]);
   const [contenuti, setContenuti] = useState<Record<string, Contenuto>>({});
   const [loading, setLoading] = useState(true);
@@ -1608,52 +1610,54 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
 
       {/* Toolbar */}
       <div className="flex-shrink-0 border-b border-border bg-card">
-        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
-          <select
-            className="border border-border rounded-md px-2.5 py-1.5 text-xs bg-background text-foreground focus:outline-none"
-            value={filtroStato}
-            onChange={e => setFiltroStato(e.target.value)}
-          >
-            <option value="">Tutti gli stati</option>
-            {STATI.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
+        <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 px-4 py-2.5">
+          <div className="flex flex-wrap gap-2">
+            <select
+              className="border border-border rounded-md px-2.5 py-1.5 text-xs bg-background text-foreground focus:outline-none flex-1 sm:flex-none min-w-0"
+              value={filtroStato}
+              onChange={e => setFiltroStato(e.target.value)}
+            >
+              <option value="">Tutti gli stati</option>
+              {STATI.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
 
-          <select
-            className="border border-border rounded-md px-2.5 py-1.5 text-xs bg-background text-foreground focus:outline-none max-w-[190px]"
-            value={filtroCliente}
-            onChange={e => setFiltroCliente(e.target.value)}
-          >
-            <option value="">Tutti i clienti</option>
-            {clienti.map(c => {
-              const count = clips.filter(cl => cl.cliente_id === c.id || cl.cliente_nome === c.nome).length;
-              return (
-                <option key={c.id} value={c.nome}>
-                  {c.nome}{count > 0 ? ` (${count})` : ''}
-                </option>
-              );
-            })}
-          </select>
-
-          <select
-            className="border border-border rounded-md px-2.5 py-1.5 text-xs bg-background text-foreground focus:outline-none max-w-[150px]"
-            value={filtroOperatore}
-            onChange={e => setFiltroOperatore(e.target.value)}
-          >
-            <option value="">Tutti gli operatori</option>
-            {team
-              .filter(t => clips.some(cl => cl.operatore === t.nome))
-              .map(t => {
-                const count = clips.filter(cl => cl.operatore === t.nome).length;
+            <select
+              className="border border-border rounded-md px-2.5 py-1.5 text-xs bg-background text-foreground focus:outline-none flex-1 sm:flex-none min-w-0 max-w-full sm:max-w-[190px]"
+              value={filtroCliente}
+              onChange={e => setFiltroCliente(e.target.value)}
+            >
+              <option value="">Tutti i clienti</option>
+              {clienti.map(c => {
+                const count = clips.filter(cl => cl.cliente_id === c.id || cl.cliente_nome === c.nome).length;
                 return (
-                  <option key={t.id} value={t.nome}>
-                    {t.nome} ({count})
+                  <option key={c.id} value={c.nome}>
+                    {c.nome}{count > 0 ? ` (${count})` : ''}
                   </option>
                 );
               })}
-          </select>
+            </select>
+
+            <select
+              className="border border-border rounded-md px-2.5 py-1.5 text-xs bg-background text-foreground focus:outline-none flex-1 sm:flex-none min-w-0 max-w-full sm:max-w-[150px]"
+              value={filtroOperatore}
+              onChange={e => setFiltroOperatore(e.target.value)}
+            >
+              <option value="">Tutti gli operatori</option>
+              {team
+                .filter(t => clips.some(cl => cl.operatore === t.nome))
+                .map(t => {
+                  const count = clips.filter(cl => cl.operatore === t.nome).length;
+                  return (
+                    <option key={t.id} value={t.nome}>
+                      {t.nome} ({count})
+                    </option>
+                  );
+                })}
+            </select>
+          </div>
 
           <input
-            className="border border-border rounded-md px-2.5 py-1.5 text-xs bg-background text-foreground focus:outline-none w-36"
+            className="border border-border rounded-md px-2.5 py-1.5 text-xs bg-background text-foreground focus:outline-none w-full sm:w-36"
             placeholder="🔍 Cerca clip…"
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -1663,7 +1667,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
             {groupedRows.length} CLP · {filtered.length} / {clips.length} clip
           </span>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="flex items-center gap-2 sm:ml-auto">
             <button
               onClick={() => setShowReport(v => !v)}
               className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-all ${showReport ? 'bg-[hsl(var(--clr-blue))] text-white border-[hsl(var(--clr-blue))]' : 'border-border hover:bg-muted text-foreground'}`}
@@ -1672,14 +1676,14 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
             </button>
             <button
               onClick={() => setShowBulkUpload(true)}
-              className="px-3 py-1.5 rounded-md border border-border hover:bg-muted text-foreground text-xs font-medium transition-colors"
+              className="px-3 py-1.5 rounded-md border border-border hover:bg-muted text-foreground text-xs font-medium transition-colors hidden sm:inline-flex"
               title="Upload clip multiple da Google Drive"
             >
               ☁️ Upload Clip
             </button>
             <button
               onClick={() => setShowNuova(true)}
-              className="px-4 py-1.5 rounded-md bg-[hsl(var(--clr-blue))] text-white text-xs font-semibold hover:opacity-90 transition-opacity"
+              className="px-4 py-1.5 rounded-md bg-[hsl(var(--clr-blue))] text-white text-xs font-semibold hover:opacity-90 transition-opacity hidden sm:inline-flex"
             >
               + Nuova Clip
             </button>
@@ -1806,7 +1810,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
         </button>
       </div>
 
-      {/* Table */}
+      {/* Table / Card List */}
       <div className="flex-1 overflow-auto">
         {loading ? (
           <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
@@ -1816,6 +1820,86 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
           <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
             <div className="text-4xl mb-2">🎬</div>
             <p className="text-sm">Nessuna clip trovata</p>
+          </div>
+        ) : isMobile ? (
+          /* ── MOBILE: Card List ── */
+          <div className="space-y-3 p-3">
+            {groupedRows.map(group => {
+              const { key, clp, clips: groupClips } = group;
+              const firstClip = groupClips[0];
+              const codes = groupClips.map(c => c.id_clip);
+              const statoCounts = groupClips.reduce((acc, c) => {
+                acc[c.stato] = (acc[c.stato] || 0) + 1;
+                return acc;
+              }, {} as Record<string, number>);
+              const operatori = [...new Set(groupClips.map(c => c.operatore).filter(Boolean))];
+
+              return (
+                <div
+                  key={key}
+                  className="sk-card p-3 active:bg-muted/40"
+                  onClick={() => setDetailClip(firstClip)}
+                >
+                  {/* Header: CLP + Cliente */}
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {clp && (
+                        <span className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded flex-shrink-0">
+                          {clp.id_display}
+                        </span>
+                      )}
+                      <span className="text-xs font-medium truncate" style={{ color: 'hsl(var(--skorpio-text-secondary))' }}>
+                        {firstClip.cliente_nome || '—'}
+                      </span>
+                    </div>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        setDetailClip(firstClip);
+                      }}
+                      className="text-muted-foreground text-lg min-w-[44px] min-h-[44px] flex items-center justify-center"
+                    >
+                      ⋮
+                    </button>
+                  </div>
+
+                  {/* Title */}
+                  <p className="text-sm font-medium mb-2 leading-snug" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
+                    {clp?.titolo || firstClip.titolo || '—'}
+                  </p>
+
+                  {/* Stato + Fase */}
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {Object.entries(statoCounts).map(([stato, cnt]) => {
+                      const cfg = STATO_CFG[stato] || STATO_CFG['Grezza'];
+                      return (
+                        <span key={stato}
+                          className="inline-flex items-center gap-0.5 px-2 py-1 rounded-full text-xs font-semibold border min-h-[32px]"
+                          style={{ background: cfg.bg, color: cfg.text, borderColor: cfg.border }}>
+                          {cnt > 1 && <span>{cnt}×</span>} {stato}
+                        </span>
+                      );
+                    })}
+                    {clp && <FaseBadge fase={clp.fase} />}
+                  </div>
+
+                  {/* Bottom row: operatore + clips count */}
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>👤 {operatori.join(', ') || '—'}</span>
+                    <span className="font-mono">{codes.length} clip · {codes.slice(0, 3).join('-')}{codes.length > 3 ? '…' : ''}</span>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Mobile FAB */}
+            <button
+              onClick={() => setShowNuova(true)}
+              className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-2xl text-white"
+              style={{ background: 'hsl(var(--clr-blue))' }}
+            >
+              +
+            </button>
           </div>
         ) : (
           <table className="w-full border-collapse">
