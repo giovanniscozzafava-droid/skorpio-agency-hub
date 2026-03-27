@@ -202,6 +202,8 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
     fase: 'Idea' as FaseCLP,
     tipo: '',
     canale: '',
+    stile: '',
+    link_ispirazione: '',
     hook: '',
     assegnato_riprese: '',
     assegnato_montaggio: '',
