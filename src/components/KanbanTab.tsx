@@ -107,8 +107,9 @@ const PRIORITA_COLOR: Record<string, string> = {
 const TIPO_TO_FASE: Record<string, { label: string; bg: string; color: string; border: string }> = {
   'Premontaggio':        { label: '🎬 Girato',       bg: 'hsl(270 60% 55% / 0.10)', color: 'hsl(270 50% 45%)', border: 'hsl(270 60% 55% / 0.30)' },
   'Montaggio':           { label: '✂️ Pre montato',   bg: 'hsl(214 80% 55% / 0.10)', color: 'hsl(214 70% 44%)', border: 'hsl(214 80% 55% / 0.28)' },
-  'Revisione montaggio': { label: '🔍 Montato',       bg: 'hsl(25 90% 55% / 0.10)',  color: 'hsl(25 70% 40%)',  border: 'hsl(25 90% 55% / 0.28)'  },
-  'Programmazione':      { label: '📅 Revisionato',   bg: 'hsl(328 80% 55% / 0.10)', color: 'hsl(328 65% 40%)', border: 'hsl(328 80% 55% / 0.28)' },
+  'Upload esportato':    { label: '📤 Montato',       bg: 'hsl(38 92% 55% / 0.10)',  color: 'hsl(38 80% 35%)',  border: 'hsl(38 92% 55% / 0.28)' },
+  'Revisione montaggio': { label: '🔍 Caricato',      bg: 'hsl(328 80% 55% / 0.10)', color: 'hsl(328 65% 40%)', border: 'hsl(328 80% 55% / 0.28)' },
+  'Programmazione':      { label: '📅 Revisionato',   bg: 'hsl(263 70% 55% / 0.10)', color: 'hsl(263 55% 40%)', border: 'hsl(263 70% 55% / 0.28)' },
 };
 
 // Fase successiva per il drag CLP
