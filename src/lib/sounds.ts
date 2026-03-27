@@ -107,6 +107,7 @@ function noise(start: number, duration: number, vol = 0.08) {
     gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
     src.start(t0);
     src.stop(t0 + duration + 0.05);
+    activeNodes.push(src);
   } catch (_) {}
 }
 
