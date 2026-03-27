@@ -141,6 +141,14 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   const [deletingCleanup, setDeletingCleanup] = useState(false);
   const isCleanupTask = task.tipo === 'Cleanup';
 
+  // ── Revisione state ────────────────────────────────────────────────────────
+  const [showModificheForm, setShowModificheForm] = useState(false);
+  const [noteModifiche, setNoteModifiche] = useState('');
+  const [savingRevisione, setSavingRevisione] = useState(false);
+  const [contenutoRevisione, setContenutoRevisione] = useState<Contenuto | null>(null);
+  const isRevisioneTask = task.tipo === 'Revisione montaggio';
+  const isAutoTask = task.assegnato_da?.includes('Sistema') || task.assegnato_da?.includes('⚡');
+
   // ── Programmazione date picker ─────────────────────────────────────────────
   const [dataPub, setDataPub] = useState<Date | undefined>(
     task.scadenza ? parseLocalDate(task.scadenza) : undefined
