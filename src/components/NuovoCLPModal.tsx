@@ -350,7 +350,27 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
             </div>
           </div>
 
-          {/* Hook */}
+          {/* Stile + Link ispirazione */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="sk-label">🎬 Stile</label>
+              <select className="sk-select w-full" value={form.stile} onChange={e => set('stile', e.target.value)}>
+                <option value="">— Seleziona —</option>
+                {STILI.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="sk-label">🔗 Link ispirazione</label>
+              <input
+                type="url"
+                className="sk-input w-full"
+                value={form.link_ispirazione}
+                onChange={e => set('link_ispirazione', e.target.value)}
+                placeholder="https://instagram.com/reel/..."
+              />
+            </div>
+          </div>
+
           <div>
             <label className="sk-label">🎣 Hook (opzionale)</label>
             <input
