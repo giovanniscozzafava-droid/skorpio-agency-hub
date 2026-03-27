@@ -646,9 +646,9 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   const showCLP = boardMode === 'clp' || boardMode === 'both';
 
   return (
-    <div className="p-4">
+    <div className="p-4 max-w-full overflow-x-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-2">
         <div className="flex items-center gap-2 flex-wrap">
           <h2 className="font-bold text-lg" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
             Kanban Board
@@ -668,19 +668,19 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
               ? { background: '#FEE2E2', color: '#DC2626', border: '1px solid rgba(220,38,38,0.4)' }
               : { background: '#F1F5F9', color: '#64748B', border: '1px solid #E2E8F0' }}
           >
-            ⏰ In scadenza oggi {filtraOggi && '×'}
+            ⏰ {isMobile ? '' : 'In scadenza oggi '}{filtraOggi && '×'}
           </button>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           {/* Search */}
-          <div className="relative">
+          <div className="relative flex-1 sm:flex-none">
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs" style={{ color: 'hsl(var(--muted-foreground))' }}>🔍</span>
             <input
               type="text"
               placeholder="Cerca task..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="pl-8 pr-3 py-1.5 rounded-lg text-xs border outline-none transition-colors w-44"
+              className="pl-8 pr-3 py-1.5 rounded-lg text-xs border outline-none transition-colors w-full sm:w-44"
               style={{
                 background: 'hsl(var(--background))',
                 borderColor: searchQuery ? 'hsl(var(--primary))' : 'hsl(var(--border))',
@@ -696,7 +696,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
             )}
           </div>
           {/* Selector board */}
-          <div className="flex rounded-lg overflow-hidden border border-border text-xs">
+          <div className="flex rounded-lg overflow-hidden border border-border text-xs flex-shrink-0">
             {(['both', 'standard', 'clp'] as const).map(mode => (
               <button
                 key={mode}
@@ -710,7 +710,8 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
               </button>
             ))}
           </div>
-          <button onClick={() => setShowNuovoTask(true)} className="sk-btn-primary text-sm">
+          {/* New task button — hidden on mobile (FAB instead) */}
+          <button onClick={() => setShowNuovoTask(true)} className="sk-btn-primary text-sm hidden sm:inline-flex">
             + Nuovo Task
           </button>
         </div>
