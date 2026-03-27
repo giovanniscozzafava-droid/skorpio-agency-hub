@@ -1072,14 +1072,30 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
                 Conta i record nelle tabelle principali e salva uno snapshot per confronto futuro. Usa dopo ogni modifica critica.
               </div>
               {snapshotResult && (
-                <div className="grid grid-cols-2 gap-2">
-                  {Object.entries(snapshotResult).map(([table, count]) => (
-                    <div key={table} className="rounded-lg p-2.5 text-center"
-                      style={{ background: 'hsl(var(--muted))', border: '1px solid hsl(var(--border))' }}>
-                      <p className="text-xs font-bold" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>{count}</p>
-                      <p className="text-[10px] mt-0.5" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>{table}</p>
-                    </div>
-                  ))}
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    {Object.entries(snapshotResult).map(([table, count]) => (
+                      <div key={table} className="rounded-lg p-2.5"
+                        style={{ background: 'hsl(var(--muted))', border: '1px solid hsl(var(--border))' }}>
+                        <div className="flex items-baseline justify-between">
+                          <p className="text-xs font-bold" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>{count}</p>
+                          <p className="text-[10px]" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>{table}</p>
+                        </div>
+                        {snapshotBreakdowns?.[table] && (
+                          <div className="mt-1.5 pt-1.5 space-y-0.5" style={{ borderTop: '1px solid hsl(var(--border))' }}>
+                            {Object.entries(snapshotBreakdowns[table])
+                              .sort(([, a], [, b]) => b - a)
+                              .map(([stato, n]) => (
+                                <div key={stato} className="flex justify-between text-[10px]">
+                                  <span style={{ color: 'hsl(var(--skorpio-text-secondary))' }}>{stato}</span>
+                                  <span className="font-semibold" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>{n}</span>
+                                </div>
+                              ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
