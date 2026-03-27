@@ -1884,6 +1884,11 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
                         {clp ? <FaseBadge fase={clp.fase} /> : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
 
+                      {/* Workflow */}
+                      <td className={tdCls} onClick={e => e.stopPropagation()}>
+                        {clp ? <WorkflowCompact fase={clp.fase} clpId={clp.id} dataPub={clp.data_pubblicazione} /> : <span className="text-xs text-muted-foreground">—</span>}
+                      </td>
+
                       {/* Operatore */}
                       <td className={tdCls}>
                         <span className="text-xs text-muted-foreground">{operatori.join(', ') || '—'}</span>
