@@ -68,6 +68,7 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
       const data = await res.json();
       if (data.success) {
         setSnapshotResult(data.counts);
+        setSnapshotBreakdowns(data.breakdowns || null);
         addToast('📸 Snapshot salvato!', 'success');
       } else {
         addToast('Errore snapshot', 'error');
