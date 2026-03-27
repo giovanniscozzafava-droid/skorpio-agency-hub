@@ -1357,6 +1357,7 @@ interface RipreseTabProps {
 
 export function RipreseTab({ clienti, team }: RipreseTabProps) {
   const { addToast, utente } = useApp();
+  const isMobile = useIsMobile();
   const [clips, setClips] = useState<LogRipresa[]>([]);
   const [contenuti, setContenuti] = useState<Record<string, Contenuto>>({});
   const [loading, setLoading] = useState(true);
