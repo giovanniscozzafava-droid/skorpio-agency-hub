@@ -532,6 +532,29 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
           </button>
         </div>
         <div className="flex items-center gap-2">
+          {/* Search */}
+          <div className="relative">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs" style={{ color: 'hsl(var(--muted-foreground))' }}>🔍</span>
+            <input
+              type="text"
+              placeholder="Cerca task..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="pl-8 pr-3 py-1.5 rounded-lg text-xs border outline-none transition-colors w-44"
+              style={{
+                background: 'hsl(var(--background))',
+                borderColor: searchQuery ? 'hsl(var(--primary))' : 'hsl(var(--border))',
+                color: 'hsl(var(--foreground))',
+              }}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-xs"
+                style={{ color: 'hsl(var(--muted-foreground))' }}
+              >✕</button>
+            )}
+          </div>
           {/* Selector board */}
           <div className="flex rounded-lg overflow-hidden border border-border text-xs">
             {(['both', 'standard', 'clp'] as const).map(mode => (
