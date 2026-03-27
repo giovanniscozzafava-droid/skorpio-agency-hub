@@ -509,10 +509,6 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
     setDropTarget(null);
     const task = tasks.find(t => t.id === dragItem);
     if (!task) return;
-    if (utente?.ruolo !== 'Admin' && task.assegnato_a !== utente?.nome) {
-      addToast('Non hai il permesso di spostare questo task', 'error');
-      return;
-    }
     // La colonna di destinazione deve essere la fase successiva
     const faseCorrente = Object.entries(TIPO_PER_FASE).find(([, tipo]) => tipo === task.tipo)?.[0];
     const fasePrevista = faseCorrente ? FASE_NEXT[faseCorrente] : null;
