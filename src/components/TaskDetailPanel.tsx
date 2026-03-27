@@ -814,6 +814,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
           )}
 
 
+          {!isCLPTask && (
           <div>
             <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>CAMBIA STATO TASK</p>
             <div className="flex flex-wrap gap-1.5">
@@ -835,6 +836,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
               ))}
             </div>
           </div>
+          )}
 
           {/* ─── SPOSTA A ────────────────────────────────────────────────────── */}
           {(utente?.ruolo === 'Admin' || task.assegnato_a === utente?.nome) && (
