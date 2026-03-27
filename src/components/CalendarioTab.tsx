@@ -1805,10 +1805,38 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
     const [evResAll, mktRes, contRes] = await Promise.all([
       supabase.from('calendario').select('*').gte('data', rangeStart).lte('data', rangeEnd).order('ora', { nullsFirst: true }),
       supabase.from('marketing_calendar').select('*').gte('data', rangeStart).lte('data', rangeEnd),
-      supabase.from('contenuti').select('id, id_display, titolo, cliente_nome, tipo, canale, fase, data_pubblicazione').neq('fase', 'Pubblicato').neq('fase', 'Scartata'),
+      supabase.from('contenuti').select('id, id_display, titolo, cliente_nome, tipo, canale, fase, data_pubblicazione, ora_pubblicazione, assegnato_montaggio').not('data_pubblicazione', 'is', null).neq('fase', 'Scartata'),
     ]);
 
-    const tuttiEventi = (evResAll.data as CalendarioEvent[]) || [];
+    const eventiDB = (evResAll.data as CalendarioEvent[]) || [];
+    const contenutiData = (contRes.data as any[]) || [];
+
+    // Synthesize publication events from contenuti with data_pubblicazione
+    // Only add if not already present in calendario as tipo='pubblicazione'
+    const existingPubContenutoIds = new Set(
+      eventiDB.filter(e => e.tipo === 'pubblicazione' && e.contenuto_id).map(e => e.contenuto_id)
+    );
+    const syntheticPubs: CalendarioEvent[] = contenutiData
+      .filter(c => c.data_pubblicazione && !existingPubContenutoIds.has(c.id) && c.data_pubblicazione >= rangeStart && c.data_pubblicazione <= rangeEnd)
+      .map(c => ({
+        id: `synth-pub-${c.id}`,
+        tipo: 'pubblicazione' as const,
+        descrizione: c.titolo || 'Pubblicazione',
+        data: c.data_pubblicazione,
+        ora: c.ora_pubblicazione || null,
+        ora_fine: null,
+        cliente_id: null,
+        cliente_nome: c.cliente_nome || '',
+        contenuto_id: c.id,
+        id_contenuto_display: c.id_display || '',
+        canale: c.canale || '',
+        tipo_contenuto: c.tipo || '',
+        persona: c.assegnato_montaggio || '',
+        stato: c.fase || '',
+        created_at: '',
+      } as CalendarioEvent));
+
+    const tuttiEventi = [...eventiDB, ...syntheticPubs];
 
     const eventiFiltrati = isAdmin
       ? tuttiEventi
@@ -1819,7 +1847,7 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
           ev.persona === null
         );
 
-    console.log(`[Calendario] Loaded ${eventiFiltrati.length} events (total: ${tuttiEventi.length}), ${(mktRes.data || []).length} marketing events`);
+    console.log(`[Calendario] Loaded ${eventiFiltrati.length} events (total: ${tuttiEventi.length}, synth: ${syntheticPubs.length}), ${(mktRes.data || []).length} marketing events`);
 
     setEventi(eventiFiltrati);
     setMarketing((mktRes.data as MarketingEvent[]) || []);
