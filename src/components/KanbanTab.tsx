@@ -723,8 +723,14 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                   className={`kanban-col ${isDrop ? 'kanban-drop-target' : ''}`}
                   style={{ background: col.bg, border: `1px solid ${col.border}30`, minWidth: 180 }}
                   onDragOver={e => { e.preventDefault(); setDropTarget(`clp__${col.stato}`); }}
-                  onDragLeave={() => setDropTarget(null)}
-                  onDrop={() => handleDropCLP(col.stato)}
+                  onDragLeave={() => { setDropTarget(null); setDragOverTaskId(null); setDragOverPos(null); }}
+                  onDrop={() => {
+                    if (dragOverTaskId && colTasks.some(t => t.id === dragOverTaskId)) {
+                      handleDropOnTask(dragOverTaskId, colTasks);
+                    } else {
+                      handleDropCLP(col.stato);
+                    }
+                  }}
                 >
                   <div className="kanban-col-header" style={{ borderBottom: `2px solid ${col.border}40` }}>
                     <div className="flex items-center gap-1.5">
