@@ -5,6 +5,7 @@ import type { Contenuto, FaseCLP, TeamMember, Cliente } from '../types';
 const FASI: FaseCLP[] = ['Idea', 'Script', 'Girato', 'Pre montato', 'Montato', 'Revisionato', 'Programmato', 'Pubblicato', 'Scartata'];
 const CANALI = ['Instagram', 'Facebook', 'Instagram/Facebook', 'TikTok', 'LinkedIn', 'YouTube', 'Altro'];
 const TIPI = ['Reel', 'Post', 'Carosello', 'Story', 'Video', 'Short', 'Altro'];
+const STILI = ['Commedia', 'Storytelling', 'Trend', 'Ispirazione', 'Divulgativo', 'Tutorial', 'Behind the scenes', 'Talking head', 'Testimonial', 'Before/After', 'Unboxing', 'ASMR', 'Vlog', 'Altro'];
 
 interface NuovoCLPModalProps {
   team: TeamMember[];
@@ -201,6 +202,8 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
     fase: 'Idea' as FaseCLP,
     tipo: '',
     canale: '',
+    stile: '',
+    link_ispirazione: '',
     hook: '',
     assegnato_riprese: '',
     assegnato_montaggio: '',
@@ -232,6 +235,8 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
       fase: form.fase,
       tipo: form.tipo,
       canale: form.canale,
+      stile: form.stile,
+      link_ispirazione: form.link_ispirazione,
       hook: form.hook,
       assegnato_riprese: form.assegnato_riprese,
       assegnato_montaggio: form.assegnato_montaggio,
@@ -345,7 +350,27 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
             </div>
           </div>
 
-          {/* Hook */}
+          {/* Stile + Link ispirazione */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="sk-label">🎬 Stile</label>
+              <select className="sk-select w-full" value={form.stile} onChange={e => set('stile', e.target.value)}>
+                <option value="">— Seleziona —</option>
+                {STILI.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="sk-label">🔗 Link ispirazione</label>
+              <input
+                type="url"
+                className="sk-input w-full"
+                value={form.link_ispirazione}
+                onChange={e => set('link_ispirazione', e.target.value)}
+                placeholder="https://instagram.com/reel/..."
+              />
+            </div>
+          </div>
+
           <div>
             <label className="sk-label">🎣 Hook (opzionale)</label>
             <input

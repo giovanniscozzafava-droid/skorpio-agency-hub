@@ -83,6 +83,8 @@ export type Contenuto = {
   ora_pubblicazione: string | null;
   note: string;
   note_revisione: string;
+  stile: string;
+  link_ispirazione: string;
   link_drive: string;
   drive_clip_folder_id?: string | null;
   drive_export_folder_id?: string | null;

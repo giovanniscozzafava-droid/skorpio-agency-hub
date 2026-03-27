@@ -526,6 +526,10 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
             <LabelSelect label="Tipo" field="tipo" options={['Reel', 'Post', 'Carosello', 'Story', 'Video', 'Short', 'Altro']} />
             <LabelSelect label="Canale" field="canale" options={['Instagram', 'Facebook', 'Instagram/Facebook', 'TikTok', 'LinkedIn', 'YouTube', 'Altro']} />
           </div>
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <LabelSelect label="🎬 Stile" field="stile" options={['Commedia', 'Storytelling', 'Trend', 'Ispirazione', 'Divulgativo', 'Tutorial', 'Behind the scenes', 'Talking head', 'Testimonial', 'Before/After', 'Unboxing', 'ASMR', 'Vlog', 'Altro']} />
+            <LabelInput label="🔗 Link ispirazione" field="link_ispirazione" placeholder="https://instagram.com/reel/..." />
+          </div>
 
           {/* ─── CREATIVITÀ ─── */}
           <Section title="CREATIVITÀ" />
