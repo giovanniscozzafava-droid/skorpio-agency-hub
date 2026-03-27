@@ -453,7 +453,15 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
-          <span className="text-xs font-mono text-muted-foreground">{task.id_display}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono text-muted-foreground">{task.id_display}</span>
+            {isAutoTask && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                style={{ background: 'hsl(38 92% 50% / 0.15)', color: 'hsl(32 95% 40%)', border: '1px solid hsl(38 92% 50% / 0.35)' }}>
+                ⚡ Auto
+              </span>
+            )}
+          </div>
           <button onClick={onClose} className="sk-btn-ghost text-lg px-2 py-1">✕</button>
         </div>
 
