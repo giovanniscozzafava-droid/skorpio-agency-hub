@@ -544,18 +544,20 @@ export async function creaTaskCleanup(contenuto: Contenuto, team: any[]): Promis
  * Chiamato all'avvio per recuperare CLPs entrati nel workflow prima dell'automazione.
  */
 export async function syncMissingWorkflowTasks(): Promise<number> {
-  const FASE_ORDER = ['Girato', 'Pre montato', 'Montato', 'Revisionato', 'Programmato', 'Pubblicato'];
+  const FASE_ORDER = ['Girato', 'Pre montato', 'Montato', 'Caricato', 'Revisionato', 'Programmato', 'Pubblicato'];
   const FASE_TO_TIPO: Record<string, { tipo: string; keyword: string; emoji: string }> = {
     'Girato': { tipo: 'Premontaggio', keyword: 'Luca', emoji: '🎬' },
     'Pre montato': { tipo: 'Montaggio', keyword: 'Alessandro', emoji: '✂️' },
-    'Montato': { tipo: 'Revisione montaggio', keyword: 'Elisa', emoji: '👁️' },
+    'Montato': { tipo: 'Upload esportato', keyword: 'Alessandro', emoji: '📤' },
+    'Caricato': { tipo: 'Revisione montaggio', keyword: 'Elisa', emoji: '👁️' },
     'Revisionato': { tipo: 'Programmazione', keyword: 'Elisa', emoji: '📅' },
   };
   // Mappa fase → tipo task di quella fase (per completare task di fasi precedenti)
   const FASE_TIPO_MAP: Record<string, string> = {
     'Girato': 'Premontaggio',
     'Pre montato': 'Montaggio',
-    'Montato': 'Revisione montaggio',
+    'Montato': 'Upload esportato',
+    'Caricato': 'Revisione montaggio',
     'Revisionato': 'Programmazione',
   };
 
