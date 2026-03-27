@@ -334,6 +334,8 @@ export async function completaTaskEAvanzaFase(
   team: TeamMember[],
   teamId?: string
 ): Promise<FaseCLP | null> {
+  // Completa TUTTI i task aperti di questo tipo per questo contenuto
+  await completaTaskPerContenuto(contenutoId, taskTipo);
   const step = WORKFLOW_MAP[taskTipo];
   if (!step) return null;
 
