@@ -276,10 +276,12 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   const [filtraOggi, setFiltraOggi] = useState(false);
   const [boardMode, setBoardMode] = useState<'standard' | 'clp' | 'both'>('both');
   const [searchQuery, setSearchQuery] = useState('');
+  const [clpFasi, setClpFasi] = useState<Record<string, string>>({});
 
   const pendingEventsRef = useRef<RealtimeEvent[]>([]);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMyAction = useRef(false);
+  const tasksRef = useRef<Task[]>([]);
 
   const flushNotifications = useCallback(() => {
     const events = pendingEventsRef.current;
@@ -314,6 +316,35 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
     flushTimerRef.current = setTimeout(flushNotifications, 1500);
   }, [flushNotifications]);
 
+  const loadTasks = useCallback(async () => {
+    const [{ data: taskData }, { data: contenutiData }] = await Promise.all([
+      supabase
+        .from('task')
+        .select('*')
+        .neq('stato', 'Archiviato')
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('contenuti')
+        .select('id, fase'),
+    ]);
+
+    const nextTasks = taskData || [];
+    setTasks(nextTasks);
+    tasksRef.current = nextTasks;
+    setClpFasi(
+      Object.fromEntries((contenutiData || []).map(contenuto => [contenuto.id, contenuto.fase || '']))
+    );
+    setLoading(false);
+
+    const oggi = new Date(); oggi.setHours(0, 0, 0, 0);
+    const scaduti = nextTasks.filter(t => {
+      if (!t.scadenza) return false;
+      const s = parseLocalDate(t.scadenza);
+      return s < oggi && t.stato !== 'Completato';
+    });
+    if (scaduti.length > 0) sounds.alert();
+  }, []);
+
   useEffect(() => {
     loadTasks();
     const channel = supabase
@@ -323,15 +354,24 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
         setTimeout(() => setLiveActive(false), 800);
         if (payload.eventType === 'INSERT') {
           const newTask = payload.new as Task;
-          setTasks(prev => prev.some(t => t.id === newTask.id) ? prev : [newTask, ...prev]);
+          setTasks(prev => {
+            const next = prev.some(t => t.id === newTask.id) ? prev : [newTask, ...prev];
+            tasksRef.current = next;
+            return next;
+          });
           setNewTaskIds(prev => new Set(prev).add(newTask.id));
           setTimeout(() => setNewTaskIds(prev => { const next = new Set(prev); next.delete(newTask.id); return next; }), 3000);
           pendingEventsRef.current.push({ tipo: 'nuovo', task: newTask });
           scheduleFlush();
+          void loadTasks();
         } else if (payload.eventType === 'UPDATE') {
           const updatedTask = payload.new as Task;
-          const prevTask = tasks.find(t => t.id === updatedTask.id);
-          setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
+          const prevTask = tasksRef.current.find(t => t.id === updatedTask.id);
+          setTasks(prev => {
+            const next = prev.map(t => t.id === updatedTask.id ? updatedTask : t);
+            tasksRef.current = next;
+            return next;
+          });
           setSelectedTask(prev => prev?.id === updatedTask.id ? updatedTask : prev);
           if (updatedTask.stato === 'Completato' && prevTask?.stato !== 'Completato') {
             pendingEventsRef.current.push({ tipo: 'completato', task: updatedTask, fromStato: prevTask?.stato });
@@ -339,8 +379,14 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
             pendingEventsRef.current.push({ tipo: 'spostato', task: updatedTask, fromStato: prevTask.stato });
           }
           scheduleFlush();
+          void loadTasks();
         } else if (payload.eventType === 'DELETE') {
-          setTasks(prev => prev.filter(t => t.id !== (payload.old as Task).id));
+          setTasks(prev => {
+            const next = prev.filter(t => t.id !== (payload.old as Task).id);
+            tasksRef.current = next;
+            return next;
+          });
+          void loadTasks();
         }
       })
       .subscribe();
@@ -348,24 +394,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       supabase.removeChannel(channel);
       if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
     };
-  }, []);
-
-  const loadTasks = async () => {
-    const { data } = await supabase
-      .from('task')
-      .select('*')
-      .neq('stato', 'Archiviato')
-      .order('created_at', { ascending: false });
-    setTasks(data || []);
-    setLoading(false);
-    const oggi = new Date(); oggi.setHours(0,0,0,0);
-    const scaduti = (data || []).filter(t => {
-      if (!t.scadenza) return false;
-      const s = parseLocalDate(t.scadenza);
-      return s < oggi && t.stato !== 'Completato';
-    });
-    if (scaduti.length > 0) sounds.alert();
-  };
+  }, [loadTasks, scheduleFlush]);
 
   // ── Task standard (senza CLP) ───────────────────────────────────────────────
   const matchesSearch = (t: Task) => {
@@ -407,8 +436,6 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   };
 
   // ── Task CLP: mappa fase CLP → tipo task attivo ─────────────────────────────
-  // Un task CLP si mostra nella colonna corrispondente alla sua fase corrente.
-  // I task con stato 'Completato' li mettiamo nell'ultima colonna completata.
   const filteredCLP = (faseCLP: string) => {
     const tipoColonna = TIPO_PER_FASE[faseCLP];
     return tasks.filter(t => {
@@ -416,9 +443,19 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       if (personaView && t.assegnato_a !== personaView) return false;
       if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
       if (!matchesSearch(t)) return false;
-      if (faseCLP === 'Programmato') return t.tipo === 'Programmazione' && t.stato !== 'Completato';
-      if (faseCLP === 'Pubblicato') return t.tipo === 'Cleanup' || (t.stato === 'Completato' && t.tipo === 'Programmazione');
-      return tipoColonna && t.tipo === tipoColonna && t.stato !== 'Completato';
+
+      const faseReale = clpFasi[t.id_contenuto];
+      if (!faseReale) return false;
+
+      if (faseCLP === 'Programmato') {
+        return faseReale === 'Programmato' && t.tipo === 'Programmazione' && t.stato !== 'Completato';
+      }
+
+      if (faseCLP === 'Pubblicato') {
+        return faseReale === 'Pubblicato' && (t.tipo === 'Cleanup' || (t.stato === 'Completato' && t.tipo === 'Programmazione'));
+      }
+
+      return faseReale === faseCLP && tipoColonna === t.tipo && t.stato !== 'Completato';
     });
   };
 
