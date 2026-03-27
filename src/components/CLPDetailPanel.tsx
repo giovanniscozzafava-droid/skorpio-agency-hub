@@ -261,9 +261,15 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
     const dataStr = pubDate ? format(pubDate, 'yyyy-MM-dd') : null;
     const oraStr = pubOra || null;
 
+    // [OLD] await supabase.from('contenuti').update({ fase: nuovaFase, data_pubblicazione: dataStr, ora_pubblicazione: oraStr }).eq('id', contenuto.id).select().single();
+    // [NEW - FaseService + data separati]
+    const { cambiaFaseCLP } = await import('../services/faseService');
+    console.log('[Step2c] CLPDetailPanel handleProgramma via FaseService', { id: contenuto.id, nuovaFase });
+    await cambiaFaseCLP({ contenutoId: contenuto.id, nuovaFase, source: 'contenuti', userId: 'detail-panel' });
+    // Aggiorna data/ora separatamente
     const { data, error } = await supabase
       .from('contenuti')
-      .update({ fase: nuovaFase, data_pubblicazione: dataStr, ora_pubblicazione: oraStr })
+      .update({ data_pubblicazione: dataStr, ora_pubblicazione: oraStr })
       .eq('id', contenuto.id)
       .select()
       .single();
