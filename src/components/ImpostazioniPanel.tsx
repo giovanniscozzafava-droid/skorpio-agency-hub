@@ -49,6 +49,7 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
   // ── Snapshot dati ──────────────────────────────────────────────────────────
   const [snapshotRunning, setSnapshotRunning] = useState(false);
   const [snapshotResult, setSnapshotResult] = useState<Record<string, number> | null>(null);
+  const [snapshotBreakdowns, setSnapshotBreakdowns] = useState<Record<string, Record<string, number>> | null>(null);
 
   const runSnapshot = async () => {
     setSnapshotRunning(true);
