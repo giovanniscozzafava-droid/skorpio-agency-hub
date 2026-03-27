@@ -125,6 +125,11 @@
     box-sizing: border-box;
   }
 
+  html, body, #root {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
   html {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   }
