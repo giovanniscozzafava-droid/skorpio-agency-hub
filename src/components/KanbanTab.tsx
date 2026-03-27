@@ -755,10 +755,12 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                           isNew={newTaskIds.has(task.id)}
                           draggingId={dragItem}
                           onDragStart={() => setDragItem(task.id)}
-                          onDragEnd={() => setDragItem(null)}
+                          onDragEnd={() => { setDragItem(null); setDragOverTaskId(null); setDragOverPos(null); }}
                           onClick={() => setSelectedTask(task)}
                           showFaseBadge={false}
                           pubDate={pub}
+                          onDragOverTask={(e) => handleDragOverTask(e, task.id)}
+                          dropIndicator={dragOverTaskId === task.id ? dragOverPos : null}
                         />
                       );
                     })}
