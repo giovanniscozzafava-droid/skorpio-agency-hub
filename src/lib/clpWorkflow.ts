@@ -341,8 +341,10 @@ export async function avanzaFaseDaTask(
     }
   }
 
-  // 1. Aggiorna sempre la fase del CLP
-  await supabase.from('contenuti').update({ fase: nuovaFase }).eq('id', contenutoId);
+  // [OLD] await supabase.from('contenuti').update({ fase: nuovaFase }).eq('id', contenutoId);
+  const { cambiaFaseCLP: cambiaFaseAF } = await import('../services/faseService');
+  console.log('[Step2c] avanzaFaseDaTask via FaseService', { contenutoId, nuovaFase });
+  await cambiaFaseAF({ contenutoId, nuovaFase, source: 'kanban', userId: teamId || 'workflow' });
 
   // Se stiamo andando INDIETRO, non completare il task corrente
   if (!isForward) {
