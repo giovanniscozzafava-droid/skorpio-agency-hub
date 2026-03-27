@@ -8,6 +8,8 @@ import { NotificheDropdown } from './NotificheDropdown';
 import { useNotifiche } from '@/hooks/useNotifiche';
 import { DriveStorageIndicator } from './DriveStorageIndicator';
 import { UploadIndicator } from './UploadIndicator';
+import { MobileDrawer } from './MobileDrawer';
+import { Menu } from 'lucide-react';
 
 interface TopBarProps {
   team: TeamMember[];
@@ -22,6 +24,7 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
   const [orologio, setOrologio] = useState(new Date());
   const [showImpostazioni, setShowImpostazioni] = useState(false);
   const [showNotifiche, setShowNotifiche] = useState(false);
+  const [showDrawer, setShowDrawer] = useState(false);
   const { nonLette } = useNotifiche(utente?.nome ?? null);
 
   useEffect(() => {
@@ -44,6 +47,15 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
     <>
       {/* Top bar */}
       <div className="skorpio-topbar">
+        {/* Hamburger — mobile only */}
+        <button
+          onClick={() => setShowDrawer(true)}
+          className="lg:hidden p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0"
+          aria-label="Menu"
+        >
+          <Menu size={22} />
+        </button>
+
         {/* Logo */}
         <div className="flex items-center gap-2 mr-4 flex-shrink-0">
           <span className="text-xl">🦂</span>
@@ -55,24 +67,42 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
           <img src={fuyueLogo} alt="Fuyue" className="hidden lg:block h-4 w-auto opacity-50 hover:opacity-80 transition-opacity" />
         </div>
 
-        {/* Contatori */}
+        {/* Contatori — desktop: full text, mobile: compact numbers */}
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <span className="stat-pill text-xs" style={{ background: 'rgba(245,158,11,0.2)', color: '#FCD34D' }}>
+          {/* Desktop counters */}
+          <span className="stat-pill text-xs hidden md:inline-flex" style={{ background: 'rgba(245,158,11,0.2)', color: '#FCD34D' }}>
             📋 {taskCounts.daFare} da fare
           </span>
           {taskCounts.urgenti > 0 && (
-            <span className="stat-pill text-xs" style={{ background: 'rgba(239,68,68,0.2)', color: '#FCA5A5' }}>
+            <span className="stat-pill text-xs hidden md:inline-flex" style={{ background: 'rgba(239,68,68,0.2)', color: '#FCA5A5' }}>
               🔴 {taskCounts.urgenti} urgenti
             </span>
           )}
           {taskCounts.scaduti > 0 && (
-            <span className="stat-pill text-xs" style={{ background: 'rgba(239,68,68,0.3)', color: '#F87171' }}>
+            <span className="stat-pill text-xs hidden md:inline-flex" style={{ background: 'rgba(239,68,68,0.3)', color: '#F87171' }}>
               ⚠️ {taskCounts.scaduti} scaduti
             </span>
           )}
 
+          {/* Mobile compact counters — just numbers */}
+          <span className="stat-pill text-xs md:hidden" style={{ background: 'rgba(245,158,11,0.2)', color: '#FCD34D' }}>
+            {taskCounts.daFare}
+          </span>
+          {taskCounts.urgenti > 0 && (
+            <span className="stat-pill text-xs md:hidden" style={{ background: 'rgba(239,68,68,0.2)', color: '#FCA5A5' }}>
+              {taskCounts.urgenti}
+            </span>
+          )}
+          {taskCounts.scaduti > 0 && (
+            <span className="stat-pill text-xs md:hidden" style={{ background: 'rgba(239,68,68,0.3)', color: '#F87171' }}>
+              {taskCounts.scaduti}
+            </span>
+          )}
+
           {/* Google Drive storage indicator */}
-          <DriveStorageIndicator />
+          <div className="hidden md:block">
+            <DriveStorageIndicator />
+          </div>
         </div>
 
         {/* Admin: avatar team per filtrare kanban */}
@@ -165,8 +195,8 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
         </button>
       </div>
 
-      {/* Tab bar */}
-      <div className="skorpio-tabbar">
+      {/* Tab bar — hidden on mobile, replaced by drawer */}
+      <div className="skorpio-tabbar hidden lg:flex">
         {tabs.map(t => (
           <button
             key={t.id}
@@ -177,6 +207,13 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
           </button>
         ))}
       </div>
+
+      {/* Mobile Drawer */}
+      <MobileDrawer
+        open={showDrawer}
+        onClose={() => setShowDrawer(false)}
+        onOpenImpostazioni={() => setShowImpostazioni(true)}
+      />
 
       {/* Pannello Impostazioni */}
       {showImpostazioni && (
