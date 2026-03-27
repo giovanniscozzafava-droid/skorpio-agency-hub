@@ -330,14 +330,17 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
         .order('created_at', { ascending: false }),
       supabase
         .from('contenuti')
-        .select('id, fase'),
+        .select('id, fase, data_pubblicazione, ora_pubblicazione'),
     ]);
 
     const nextTasks = taskData || [];
     setTasks(nextTasks);
     tasksRef.current = nextTasks;
     setClpFasi(
-      Object.fromEntries((contenutiData || []).map(contenuto => [contenuto.id, contenuto.fase || '']))
+      Object.fromEntries((contenutiData || []).map(c => [c.id, c.fase || '']))
+    );
+    setClpPubDates(
+      Object.fromEntries((contenutiData || []).map(c => [c.id, { data: c.data_pubblicazione, ora: c.ora_pubblicazione }]))
     );
     setLoading(false);
 
