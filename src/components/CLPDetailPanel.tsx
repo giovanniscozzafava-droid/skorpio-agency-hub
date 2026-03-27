@@ -14,6 +14,7 @@ import {
   completaTaskPerContenuto,
   creaTaskWorkflow,
   creaTaskCleanup,
+  ricalcolaScadenzeTask,
 } from '../lib/clpWorkflow';
 import { ArubaUpload } from './ArubaUpload';
 
@@ -230,6 +231,30 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
     }
   };
 
+  // ─── SALVA DATA PUBBLICAZIONE (senza cambiare fase) ────────────────────────
+  const handleSalvaDataPub = async () => {
+    if (!pubDate) return;
+    setSavingPub(true);
+    const dataStr = format(pubDate, 'yyyy-MM-dd');
+    const oraStr = pubOra || null;
+
+    const { data, error } = await supabase
+      .from('contenuti')
+      .update({ data_pubblicazione: dataStr, ora_pubblicazione: oraStr })
+      .eq('id', contenuto.id)
+      .select()
+      .single();
+
+    if (!error && data) {
+      onUpdate(data as Contenuto);
+      setForm(data as Contenuto);
+      // Ricalcola scadenze di TUTTI i task aperti collegati
+      const count = await ricalcolaScadenzeTask(contenuto.id, dataStr, oraStr);
+      addToast(`📅 Data salvata — ${count} scadenze task ricalcolate a ritroso`, 'success');
+    }
+    setSavingPub(false);
+  };
+
   // ─── PROGRAMMA / PUBBLICA (Elisa) ─────────────────────────────────────────
   const handleProgramma = async (nuovaFase: 'Programmato' | 'Pubblicato') => {
     setSavingPub(true);
@@ -250,21 +275,9 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
       const vecchiaFase = prevFaseRef.current;
       prevFaseRef.current = nuovaFase;
 
-      // Aggiorna scadenza sul task Pubblicazione attivo (per il countdown in Kanban)
+      // Ricalcola scadenze di tutti i task aperti collegati
       if (dataStr) {
-        const { data: pubTasks } = await supabase
-          .from('task')
-          .select('id')
-          .eq('id_contenuto', contenuto.id)
-          .eq('tipo', 'Pubblicazione')
-          .neq('stato', 'Completato')
-          .neq('stato', 'Archiviato');
-        if (pubTasks && pubTasks.length > 0) {
-          await supabase
-            .from('task')
-            .update({ scadenza: dataStr, ora: oraStr })
-            .in('id', pubTasks.map(t => t.id));
-        }
+        await ricalcolaScadenzeTask(contenuto.id, dataStr, oraStr);
       }
 
       // Completa task pubblicazione di Elisa (solo se Pubblicato, non Programmato)
@@ -281,7 +294,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
           tipo: 'pubblicazione',
           data: dataStr,
           ora: oraStr,
-          descrizione: `${contenuto.id_display} – ${contenuto.titolo}`,
+          descrizione: `📱 Pubblica ${contenuto.id_display} – ${contenuto.titolo}`,
           cliente_id: contenuto.cliente_id,
           cliente_nome: contenuto.cliente_nome || '',
           contenuto_id: contenuto.id,
@@ -597,8 +610,8 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
             <LabelInput label="⏰ Scadenza" field="data_scadenza" type="date" />
           </div>
 
-          {/* ─── PUBBLICAZIONE (Elisa) ─── */}
-          {['Montato', 'Revisione', 'Programmato', 'Pubblicato'].includes(form.fase) && (
+          {/* ─── PUBBLICAZIONE (Elisa può impostare data in qualsiasi fase) ─── */}
+          {form.fase !== 'Scartata' && (
             <>
               <Section title="📱 PUBBLICAZIONE" />
               <div className="rounded-lg border p-3 space-y-3" style={{ background: 'hsl(271 80% 97%)', borderColor: 'hsl(271 60% 80%)' }}>
@@ -667,28 +680,50 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
                 </div>
 
                 {/* Bottoni azione */}
-                <div className="flex gap-2 pt-1">
-                  <button
-                    onClick={() => handleProgramma('Programmato')}
-                    disabled={savingPub || !pubDate || !pubOra}
-                    className="flex-1 text-xs px-3 py-2 rounded-lg font-semibold transition-all disabled:opacity-40"
-                    style={{ background: 'hsl(271 60% 55%)', color: 'white' }}
-                    title={!pubOra ? 'Inserisci anche l\'ora di pubblicazione' : ''}
-                  >
-                    {savingPub ? '⏳…' : '📅 Programma'}
-                  </button>
-                  <button
-                    onClick={() => handleProgramma('Pubblicato')}
-                    disabled={savingPub}
-                    className="flex-1 text-xs px-3 py-2 rounded-lg font-semibold transition-all disabled:opacity-40"
-                    style={{ background: 'hsl(142 60% 45%)', color: 'white' }}
-                  >
-                    {savingPub ? '⏳…' : '🚀 Pubblica ora'}
-                  </button>
+                <div className="flex gap-2 pt-1 flex-wrap">
+                  {/* Salva data (disponibile PRIMA della programmazione) */}
+                  {!['Programmato', 'Pubblicato'].includes(form.fase) && (
+                    <button
+                      onClick={handleSalvaDataPub}
+                      disabled={savingPub || !pubDate}
+                      className="flex-1 text-xs px-3 py-2 rounded-lg font-semibold transition-all disabled:opacity-40"
+                      style={{ background: 'hsl(214 80% 55%)', color: 'white' }}
+                    >
+                      {savingPub ? '⏳…' : '💾 Salva data'}
+                    </button>
+                  )}
+                  {/* Programma (richiede fase Revisionato o superiore) */}
+                  {['Revisionato', 'Montato'].includes(form.fase) && (
+                    <button
+                      onClick={() => handleProgramma('Programmato')}
+                      disabled={savingPub || !pubDate || !pubOra}
+                      className="flex-1 text-xs px-3 py-2 rounded-lg font-semibold transition-all disabled:opacity-40"
+                      style={{ background: 'hsl(271 60% 55%)', color: 'white' }}
+                      title={!pubOra ? 'Inserisci anche l\'ora di pubblicazione' : ''}
+                    >
+                      {savingPub ? '⏳…' : '📅 Programma'}
+                    </button>
+                  )}
+                  {/* Pubblica ora */}
+                  {!['Pubblicato'].includes(form.fase) && (
+                    <button
+                      onClick={() => handleProgramma('Pubblicato')}
+                      disabled={savingPub}
+                      className="flex-1 text-xs px-3 py-2 rounded-lg font-semibold transition-all disabled:opacity-40"
+                      style={{ background: 'hsl(142 60% 45%)', color: 'white' }}
+                    >
+                      {savingPub ? '⏳…' : '🚀 Pubblica ora'}
+                    </button>
+                  )}
                 </div>
-                {!pubOra && pubDate && (
+                {!pubOra && pubDate && !['Programmato', 'Pubblicato'].includes(form.fase) && (
                   <p className="text-xs mt-1" style={{ color: 'hsl(45 90% 50%)' }}>
                     ⚠️ Per programmare devi impostare anche l'ora di pubblicazione
+                  </p>
+                )}
+                {pubDate && !['Programmato', 'Pubblicato'].includes(form.fase) && (
+                  <p className="text-xs mt-1" style={{ color: 'hsl(214 70% 50%)' }}>
+                    💡 Salvando la data, le scadenze dei task verranno ricalcolate automaticamente
                   </p>
                 )}
               </div>
