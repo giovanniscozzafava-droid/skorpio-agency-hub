@@ -1751,6 +1751,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
                 <th className={thCls}>Titolo</th>
                 <th className={thCls}>Stato Clip</th>
                 <th className={thCls}>Fase CLP</th>
+                <th className={thCls}>Workflow</th>
                 <th className={thCls}>Operatore</th>
                 <th className={`${thCls} w-12 text-center`}>FILE</th>
                 <th className={`${thCls} w-8 text-center`}>🗑️</th>
