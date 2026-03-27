@@ -38,6 +38,43 @@ export function calcolaDeadlineARitroso(dataPubblicazione: string | null, tipoTa
   return toDateStr(deadline);
 }
 
+/**
+ * Ricalcola le scadenze di tutti i task aperti collegati a un CLP
+ * in base alla nuova data di pubblicazione e ai lead times.
+ */
+export async function ricalcolaScadenzeTask(contenutoId: string, dataPubblicazione: string, oraPubblicazione: string | null): Promise<number> {
+  const leadTimes = getLeadTimes();
+
+  const { data: openTasks } = await supabase
+    .from('task')
+    .select('id, tipo')
+    .eq('id_contenuto', contenutoId)
+    .neq('stato', 'Completato')
+    .neq('stato', 'Archiviato');
+
+  if (!openTasks || openTasks.length === 0) return 0;
+
+  let updated = 0;
+  for (const task of openTasks) {
+    const giorni = leadTimes[task.tipo];
+    if (giorni === undefined) continue;
+
+    const deadline = giorni === 0
+      ? dataPubblicazione
+      : toDateStr(addDays(new Date(dataPubblicazione + 'T00:00:00'), -giorni));
+
+    const ora = giorni === 0 ? oraPubblicazione : null;
+
+    await supabase
+      .from('task')
+      .update({ scadenza: deadline, ora: ora || null })
+      .eq('id', task.id);
+    updated++;
+  }
+
+  return updated;
+}
+
 // ── Workflow step definitions ────────────────────────────────────────────────
 export interface WorkflowStep {
   faseCurrent: FaseCLP;
