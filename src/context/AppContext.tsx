@@ -115,9 +115,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('message', handler);
   }, [utente]);
 
-  // ── Auto-pubblica CLPs programmati con data <= oggi (mount + ogni 5 min) ──
+  // ── Auto-pubblica CLPs + sync task mancanti (mount + ogni 5 min) ──
   useEffect(() => {
-    const run = () => checkAutoPubblica().then(n => {
+    const run = async () => {
+      const n = await checkAutoPubblica();
       if (n > 0) {
         const id = Math.random().toString(36).slice(2);
         setToasts(prev => [...prev, {
@@ -127,9 +128,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }]);
         setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 5000);
       }
-    });
+      // Sync missing workflow tasks for CLPs already in workflow phases
+      const synced = await syncMissingWorkflowTasks();
+      if (synced > 0) {
+        const id = Math.random().toString(36).slice(2);
+        setToasts(prev => [...prev, {
+          id,
+          msg: `⚡ ${synced} task workflow creati automaticamente per CLP esistenti`,
+          tipo: 'info'
+        }]);
+        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 5000);
+      }
+    };
     run();
-    const interval = setInterval(run, 5 * 60 * 1000); // ogni 5 minuti
+    const interval = setInterval(run, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
