@@ -14,6 +14,7 @@ import {
   completaTaskPerContenuto,
   creaTaskWorkflow,
   creaTaskCleanup,
+  ricalcolaScadenzeTask,
 } from '../lib/clpWorkflow';
 import { ArubaUpload } from './ArubaUpload';
 
