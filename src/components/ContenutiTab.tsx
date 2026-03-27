@@ -5,6 +5,7 @@ import type { Contenuto, FaseCLP, TeamMember, Cliente } from '../types';
 import { parseLocalDate } from '../lib/dateUtils';
 import { CLPDetailPanel } from './CLPDetailPanel';
 import { NuovoCLPModal } from './NuovoCLPModal';
+import { cambiaFaseCLP } from '../services/faseService';
 
 const FASI: FaseCLP[] = ['Idea', 'Script', 'Girato', 'Pre montato', 'Montato', 'Uploadato', 'Revisionato', 'Programmato', 'Pubblicato', 'Scartata'];
 
