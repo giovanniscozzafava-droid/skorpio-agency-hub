@@ -253,8 +253,12 @@ export async function richiestaModifiche(
   // Completa il task di revisione corrente
   await completaTaskPerContenuto(contenuto.id, 'Revisione montaggio');
 
-  // Riporta CLP a Pre montato
-  await supabase.from('contenuti').update({ fase: 'Pre montato', note_revisione: noteRevisione }).eq('id', contenuto.id);
+  // [OLD] await supabase.from('contenuti').update({ fase: 'Pre montato', note_revisione: noteRevisione }).eq('id', contenuto.id);
+  // [NEW - FaseService + note_revisione separato]
+  const { cambiaFaseCLP: cambiaFaseRM } = await import('../services/faseService');
+  console.log('[Step2c] richiestaModifiche via FaseService', { id: contenuto.id });
+  await cambiaFaseRM({ contenutoId: contenuto.id, nuovaFase: 'Pre montato', source: 'workflow', userId: 'revisione' });
+  await supabase.from('contenuti').update({ note_revisione: noteRevisione }).eq('id', contenuto.id);
 
   // Crea nuovo task di Montaggio per Alessandro
   const nomeAlessandro = findMembro(team, 'Alessandro');
@@ -279,8 +283,10 @@ export async function approvaRevisione(
   // Completa il task di revisione
   await completaTaskPerContenuto(contenuto.id, 'Revisione montaggio');
 
-  // Avanza a Revisionato
-  await supabase.from('contenuti').update({ fase: 'Revisionato' }).eq('id', contenuto.id);
+  // [OLD] await supabase.from('contenuti').update({ fase: 'Revisionato' }).eq('id', contenuto.id);
+  const { cambiaFaseCLP: cambiaFaseAR } = await import('../services/faseService');
+  console.log('[Step2c] approvaRevisione via FaseService', { id: contenuto.id });
+  await cambiaFaseAR({ contenutoId: contenuto.id, nuovaFase: 'Revisionato', source: 'workflow', userId: 'revisione' });
 
   // Crea task Programmazione per Elisa
   const nomeElisa = findMembro(team, 'Elisa');
@@ -335,8 +341,10 @@ export async function avanzaFaseDaTask(
     }
   }
 
-  // 1. Aggiorna sempre la fase del CLP
-  await supabase.from('contenuti').update({ fase: nuovaFase }).eq('id', contenutoId);
+  // [OLD] await supabase.from('contenuti').update({ fase: nuovaFase }).eq('id', contenutoId);
+  const { cambiaFaseCLP: cambiaFaseAF } = await import('../services/faseService');
+  console.log('[Step2c] avanzaFaseDaTask via FaseService', { contenutoId, nuovaFase });
+  await cambiaFaseAF({ contenutoId, nuovaFase, source: 'kanban', userId: teamId || 'workflow' });
 
   // Se stiamo andando INDIETRO, non completare il task corrente
   if (!isForward) {
@@ -450,7 +458,10 @@ export async function avanzaFaseDaTask(
   // 6. Se fase = Programmato e data+ora già passati → pubblica subito + cleanup
   if (nuovaFase === 'Programmato' && contenuto.data_pubblicazione && contenuto.ora_pubblicazione) {
     if (isProntoPerPubblicazione(contenuto.data_pubblicazione, contenuto.ora_pubblicazione)) {
-      await supabase.from('contenuti').update({ fase: 'Pubblicato' }).eq('id', contenutoId);
+      // [OLD] await supabase.from('contenuti').update({ fase: 'Pubblicato' }).eq('id', contenutoId);
+      const { cambiaFaseCLP: cambiaFase } = await import('../services/faseService');
+      console.log('[Step2c] auto-publish via FaseService', { contenutoId });
+      await cambiaFase({ contenutoId, nuovaFase: 'Pubblicato', source: 'workflow', userId: teamId || 'workflow' });
       await creaTaskCleanup(contenuto as Contenuto, team as any[]);
       return { completatoTask: true, taskCreato: !!newTask, driveTriggered };
     }
@@ -495,10 +506,20 @@ export async function completaTaskEAvanzaFase(
     await completaTaskPerContenuto(contenutoId, 'Upload esportato');
   }
 
-  await supabase
-    .from('contenuti')
-    .update({ fase: faseNext })
-    .eq('id', contenutoId);
+  // [OLD - replaced by FaseService]
+  // await supabase.from('contenuti').update({ fase: faseNext }).eq('id', contenutoId);
+
+  // [NEW - FaseService centralizzato]
+  const { cambiaFaseCLP } = await import('../services/faseService');
+  console.log('[Step2c] completaTaskEAvanzaFase via FaseService', { contenutoId, faseNext });
+  const faseResult = await cambiaFaseCLP({
+    contenutoId,
+    nuovaFase: faseNext,
+    source: 'kanban',
+    userId: teamId || 'workflow',
+    taskIdCompletato: undefined, // task già completato sopra
+  });
+  console.log('[Step2c] risultato:', faseResult);
 
   if (stepForNextTask.tipoNext) {
     const assegnatoA = findMembro(team, stepForNextTask.assegnatoKeyword);
@@ -549,7 +570,10 @@ export async function completaTaskEAvanzaFase(
   // Se faseNext = Programmato e data+ora già passati → pubblica subito + cleanup
   if (faseNext === 'Programmato' && contenuto.data_pubblicazione && contenuto.ora_pubblicazione) {
     if (isProntoPerPubblicazione(contenuto.data_pubblicazione, contenuto.ora_pubblicazione)) {
-      await supabase.from('contenuti').update({ fase: 'Pubblicato' }).eq('id', contenutoId);
+      // [OLD] await supabase.from('contenuti').update({ fase: 'Pubblicato' }).eq('id', contenutoId);
+      const { cambiaFaseCLP: cambiaFase2 } = await import('../services/faseService');
+      console.log('[Step2c] auto-publish via FaseService (completaTaskEAvanzaFase)', { contenutoId });
+      await cambiaFase2({ contenutoId, nuovaFase: 'Pubblicato', source: 'kanban', userId: teamId || 'workflow' });
       await creaTaskCleanup(contenuto as Contenuto, team as any[]);
       return 'Pubblicato' as FaseCLP;
     }
@@ -595,7 +619,13 @@ export async function checkAutoPubblica(): Promise<number> {
 
   const ids = daPublicare.map(c => c.id);
 
-  await supabase.from('contenuti').update({ fase: 'Pubblicato' }).in('id', ids);
+  // [OLD] await supabase.from('contenuti').update({ fase: 'Pubblicato' }).in('id', ids);
+  // [NEW - FaseService centralizzato]
+  const { cambiaFaseCLP } = await import('../services/faseService');
+  for (const id of ids) {
+    console.log('[Step2c] checkAutoPubblica via FaseService', { id });
+    await cambiaFaseCLP({ contenutoId: id, nuovaFase: 'Pubblicato', source: 'workflow', userId: 'auto-publish' });
+  }
 
   for (const { id } of daPublicare) {
     await completaTaskPerContenuto(id, 'Programmazione');
@@ -697,7 +727,10 @@ export async function syncMissingWorkflowTasks(): Promise<number> {
       // Self-healing: se il file esportato esiste già, il CLP non deve restare in Montato.
       if (fase === 'Montato' && await clpHasExportedFile(clp.id)) {
         await completaTaskPerContenuto(clp.id, 'Upload esportato');
-        await supabase.from('contenuti').update({ fase: 'Uploadato' }).eq('id', clp.id);
+        // [OLD] await supabase.from('contenuti').update({ fase: 'Uploadato' }).eq('id', clp.id);
+        const { cambiaFaseCLP: cambiaFaseSH } = await import('../services/faseService');
+        console.log('[Step2c] syncMissing self-heal via FaseService', { id: clp.id });
+        await cambiaFaseSH({ contenutoId: clp.id, nuovaFase: 'Uploadato', source: 'workflow', userId: 'sync-heal' });
         continue;
       }
 

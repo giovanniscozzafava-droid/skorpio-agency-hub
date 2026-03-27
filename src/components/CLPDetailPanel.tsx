@@ -261,9 +261,15 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
     const dataStr = pubDate ? format(pubDate, 'yyyy-MM-dd') : null;
     const oraStr = pubOra || null;
 
+    // [OLD] await supabase.from('contenuti').update({ fase: nuovaFase, data_pubblicazione: dataStr, ora_pubblicazione: oraStr }).eq('id', contenuto.id).select().single();
+    // [NEW - FaseService + data separati]
+    const { cambiaFaseCLP } = await import('../services/faseService');
+    console.log('[Step2c] CLPDetailPanel handleProgramma via FaseService', { id: contenuto.id, nuovaFase });
+    await cambiaFaseCLP({ contenutoId: contenuto.id, nuovaFase, source: 'contenuti', userId: 'detail-panel' });
+    // Aggiorna data/ora separatamente
     const { data, error } = await supabase
       .from('contenuti')
-      .update({ fase: nuovaFase, data_pubblicazione: dataStr, ora_pubblicazione: oraStr })
+      .update({ data_pubblicazione: dataStr, ora_pubblicazione: oraStr })
       .eq('id', contenuto.id)
       .select()
       .single();
@@ -352,7 +358,10 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
 
     // Porta il CLP a Girato se era in Idea o Script + triggera workflow task Luca
     if (['Idea', 'Script'].includes(form.fase)) {
-      await supabase.from('contenuti').update({ fase: 'Girato' }).eq('id', contenuto.id);
+      // [OLD] await supabase.from('contenuti').update({ fase: 'Girato' }).eq('id', contenuto.id);
+      const { cambiaFaseCLP: cambiaFaseClip } = await import('../services/faseService');
+      console.log('[Step2c] CLPDetailPanel auto-Girato via FaseService', { id: contenuto.id });
+      await cambiaFaseClip({ contenutoId: contenuto.id, nuovaFase: 'Girato', source: 'contenuti', userId: 'detail-panel' });
       const { data: fresh } = await supabase.from('contenuti').select('*').eq('id', contenuto.id).single();
       if (fresh) {
         onUpdate(fresh as Contenuto);
