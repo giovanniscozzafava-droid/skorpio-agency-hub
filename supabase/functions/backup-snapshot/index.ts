@@ -31,6 +31,32 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Task breakdown by stato
+    const taskBreakdown: Record<string, number> = {};
+    const { data: taskData, error: taskError } = await supabase
+      .from('task')
+      .select('stato');
+    
+    if (!taskError && taskData) {
+      for (const row of taskData) {
+        const stato = row.stato || '(nessuno stato)';
+        taskBreakdown[stato] = (taskBreakdown[stato] || 0) + 1;
+      }
+    }
+
+    // Contenuti breakdown by fase
+    const contenutoBreakdown: Record<string, number> = {};
+    const { data: contData, error: contError } = await supabase
+      .from('contenuti')
+      .select('fase');
+    
+    if (!contError && contData) {
+      for (const row of contData) {
+        const fase = row.fase || '(nessuna fase)';
+        contenutoBreakdown[fase] = (contenutoBreakdown[fase] || 0) + 1;
+      }
+    }
+
     // Parse optional note from body
     let note = '';
     try {
@@ -53,7 +79,14 @@ Deno.serve(async (req) => {
       console.error('[backup-snapshot] Insert error:', insertError);
     }
 
-    return new Response(JSON.stringify({ success: true, counts }), {
+    return new Response(JSON.stringify({ 
+      success: true, 
+      counts,
+      breakdowns: {
+        task: taskBreakdown,
+        contenuti: contenutoBreakdown,
+      }
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {
