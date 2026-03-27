@@ -507,6 +507,147 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
     if (uploadInputRef.current) uploadInputRef.current.value = '';
   };
 
+  // ── Upload versione modificata (task Montaggio dopo revisione) ─────────────
+  const handleUploadModificato = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !task.id_contenuto || !utente?.id || !contenutoRevisione) return;
+
+    setUploading(true);
+    setUploadProgress({ percent: 0, fileName: file.name });
+
+    try {
+      const ext = file.name.split('.').pop() || 'mp4';
+      const mimeType = file.type || 'video/mp4';
+      const slug = (contenutoRevisione.titolo || '').toLowerCase()
+        .replace(/[àáâ]/g,'a').replace(/[èéê]/g,'e').replace(/[ìí]/g,'i')
+        .replace(/[òó]/g,'o').replace(/[ùú]/g,'u')
+        .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+      const versionNum = allExportedFiles.length + 1;
+      const fileName = `${contenutoRevisione.id_display}_${slug}_export_v${versionNum}.${ext}`;
+
+      const initResult = await invokeEdge('google-drive-upload-init', {
+        fileName,
+        mimeType,
+        fileSize: file.size,
+        teamId: utente.id,
+        clientName: contenutoRevisione.cliente_nome || 'Generale',
+        zone: 'file_esportato',
+        contenutoId: task.id_contenuto,
+        idDisplay: contenutoRevisione.id_display,
+        titolo: contenutoRevisione.titolo,
+      });
+
+      const uploadUrl = initResult.uploadUrl;
+      const CHUNK = 4 * 1024 * 1024;
+      let uploaded = 0;
+      let fileId = '';
+
+      while (uploaded < file.size) {
+        const end = Math.min(uploaded + CHUNK, file.size);
+        const chunk = file.slice(uploaded, end);
+        const contentRange = `bytes ${uploaded}-${end - 1}/${file.size}`;
+
+        let result: any = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const proxyUrl = `${SUPABASE_URL}/functions/v1/google-drive-upload-chunk`;
+            const res = await fetch(proxyUrl, {
+              method: 'POST',
+              headers: {
+                'apikey': SUPABASE_KEY,
+                'Authorization': `Bearer ${SUPABASE_KEY}`,
+                'x-upload-url': uploadUrl,
+                'x-content-range': contentRange,
+                'x-content-type': mimeType,
+                'Content-Type': 'application/octet-stream',
+              },
+              body: chunk,
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+              throw new Error(err?.error || `Proxy error ${res.status}`);
+            }
+            result = await res.json();
+            break;
+          } catch (err) {
+            if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+            else throw err;
+          }
+        }
+
+        if (result.status === 308) {
+          uploaded = result.range ? parseInt(result.range.split('-')[1]) + 1 : end;
+        } else if (result.status === 200 || result.status === 201) {
+          fileId = result.fileId;
+          break;
+        }
+
+        setUploadProgress({
+          percent: Math.min(99, Math.round((uploaded / file.size) * 100)),
+          fileName: file.name,
+        });
+      }
+
+      if (!fileId) throw new Error('Upload completato senza fileId');
+
+      const fileUrl = `${SUPABASE_URL}/functions/v1/google-drive-download?fileId=${fileId}`;
+
+      // Create a NEW log_riprese record for the new version
+      const maxRiga = allExportedFiles.length + 1;
+      await supabase.from('log_riprese').insert({
+        id_clip: `${contenutoRevisione.id_display}_v${versionNum}`,
+        contenuto_id: task.id_contenuto,
+        cliente_id: contenutoRevisione.cliente_id,
+        cliente_nome: contenutoRevisione.cliente_nome,
+        id_contenuto_display: contenutoRevisione.id_display,
+        titolo: contenutoRevisione.titolo,
+        exported_file_id: fileId,
+        exported_file_url: fileUrl,
+        exported_file_name: fileName,
+        exported_file_size: file.size,
+        exported_file_uploaded_at: new Date().toISOString(),
+        exported_file_mime_type: mimeType,
+        operatore: utente.nome,
+        stato: 'Uploadato',
+        riga: maxRiga,
+      });
+
+      // Advance CLP to Uploadato and create Revisione task
+      await supabase.from('contenuti').update({ fase: 'Uploadato', note_revisione: '' }).eq('id', task.id_contenuto);
+      await supabase.from('task').update({ stato: 'Completato' }).eq('id', task.id);
+
+      // Create new Revisione task for Elisa
+      const elisa = team.find(m => m.ruolo === 'Admin' || m.nome === 'Elisa');
+      if (elisa) {
+        await supabase.from('task').insert({
+          tipo: 'Revisione montaggio',
+          descrizione: `Revisione v${versionNum}: ${contenutoRevisione.titolo}`,
+          assegnato_a: elisa.nome,
+          assegnato_da: '⚡ Sistema',
+          id_contenuto: task.id_contenuto,
+          cliente_id: contenutoRevisione.cliente_id,
+          cliente_nome: contenutoRevisione.cliente_nome,
+          stato: 'Da fare',
+          priorita: '🔴 Alta',
+          id_display: `TSK${Date.now().toString().slice(-3)}`,
+        });
+      }
+
+      setClpFase('Uploadato');
+      setTaskCompletato(true);
+      sounds.taskCompletato();
+      addToast(`✅ Versione v${versionNum} caricata — nuovo task Revisione creato per Elisa!`, 'success');
+
+      const { data: updated } = await supabase.from('task').select('*').eq('id', task.id).single();
+      if (updated) onUpdate(updated as Task);
+    } catch (err: any) {
+      addToast(`❌ Errore upload: ${err.message}`, 'error');
+    }
+    setUploading(false);
+    setUploadProgress(null);
+    if (montaggioUploadRef.current) montaggioUploadRef.current.value = '';
+  };
+
 
   // ── Cambia solo lo stato del task (senza toccare il CLP) ──────────────────
   const handleStatoChange = async (nuovoStato: Task['stato']) => {
