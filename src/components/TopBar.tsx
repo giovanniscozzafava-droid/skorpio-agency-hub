@@ -49,7 +49,7 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
           <span className="text-xl">🦂</span>
           <div className="hidden sm:flex items-baseline gap-1.5">
             <span className="font-bold text-white text-lg tracking-tight">SKORPIO</span>
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.1)' }}>v1.4.0</span>
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.1)' }}>v1.4.1</span>
           </div>
           <span className="hidden lg:block text-xs mx-1" style={{ color: 'rgba(255,255,255,0.2)' }}>by</span>
           <img src={fuyueLogo} alt="Fuyue" className="hidden lg:block h-4 w-auto opacity-50 hover:opacity-80 transition-opacity" />
