@@ -610,8 +610,8 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
             <LabelInput label="⏰ Scadenza" field="data_scadenza" type="date" />
           </div>
 
-          {/* ─── PUBBLICAZIONE (Elisa) ─── */}
-          {['Montato', 'Revisione', 'Programmato', 'Pubblicato'].includes(form.fase) && (
+          {/* ─── PUBBLICAZIONE (Elisa può impostare data in qualsiasi fase) ─── */}
+          {form.fase !== 'Scartata' && (
             <>
               <Section title="📱 PUBBLICAZIONE" />
               <div className="rounded-lg border p-3 space-y-3" style={{ background: 'hsl(271 80% 97%)', borderColor: 'hsl(271 60% 80%)' }}>
