@@ -186,7 +186,7 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
           style={{ background: showImpostazioni ? 'rgba(255,255,255,0.15)' : 'transparent' }}
           title="Impostazioni"
         >
-          <Avatar nome={utente?.nome || '?'} colore={utente?.colore || '#64748B'} size={28} />
+          <Avatar nome={utente?.nome || '?'} colore={utente?.colore || '#64748B'} size={28} avatarUrl={utente?.avatar_url} />
           <div className="text-left hidden sm:block">
             <p className="text-xs font-semibold text-white leading-none">{utente?.nome}</p>
             <p className="text-xs leading-none mt-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>{utente?.label}</p>
