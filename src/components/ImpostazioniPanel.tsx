@@ -1180,7 +1180,7 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
           <div className="rounded-2xl p-6 w-full max-w-sm mx-4 shadow-2xl"
             style={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}>
             <div className="flex items-center gap-3 mb-4">
-              <Avatar nome={deleteTarget.nome} colore={deleteTarget.colore} size={44} />
+              <Avatar nome={deleteTarget.nome} colore={deleteTarget.colore} size={44} avatarUrl={deleteTarget.avatar_url} />
               <div>
                 <h3 className="font-bold text-base" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
                   Rimuovi {deleteTarget.nome}
