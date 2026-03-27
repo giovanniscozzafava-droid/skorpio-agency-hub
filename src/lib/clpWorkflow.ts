@@ -330,9 +330,11 @@ export async function avanzaFaseDaTask(
     );
     // Se è Upload esportato, aggiungi nota con percorso Drive
     if (step.tipoNext === 'Upload esportato' && newTask) {
+      const slug = (contenuto as Contenuto).titolo.replace(/\s+/g, '-').slice(0, 40);
+      const folderPath = `SKORPIO_Clip/${(contenuto as Contenuto).cliente_nome}/${(contenuto as Contenuto).id_display}_${slug}/file_esportato/`;
       const driveNote = contenuto.link_drive
-        ? `Carica il file esportato nella cartella "file_esportato/" su Google Drive:\n${contenuto.link_drive}`
-        : `Carica il file esportato nella sezione Riprese del CLP ${contenuto.id_display}, nella zona "File esportato".`;
+        ? `📂 Carica il file esportato nella cartella "file_esportato/" su Google Drive:\n${contenuto.link_drive}\n\nPercorso: ${folderPath}`
+        : `📂 Carica il file esportato nella sezione Riprese del CLP ${(contenuto as Contenuto).id_display}, zona "File esportato".\n\nPercorso Drive: ${folderPath}`;
       await supabase.from('task').update({ note: driveNote }).eq('id', newTask.id);
     }
   }
