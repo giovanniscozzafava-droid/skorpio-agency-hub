@@ -5,7 +5,7 @@ import { useApp } from '../context/AppContext';
 import { sounds } from '../lib/sounds';
 import { avanzaFaseDaTask, completaTaskEAvanzaFase, WORKFLOW_MAP, richiestaModifiche, approvaRevisione } from '../lib/clpWorkflow';
 import type { Task, TeamMember, FaseCLP, Contenuto } from '../types';
-import { formatBytes } from './ClipFileUpload';
+
 import { Avatar } from './Avatar';
 import { Calendar } from './ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
