@@ -150,6 +150,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   const [savingRevisione, setSavingRevisione] = useState(false);
   const [contenutoRevisione, setContenutoRevisione] = useState<Contenuto | null>(null);
   const [exportedFileId, setExportedFileId] = useState<string | null>(null);
+  const [allExportedFiles, setAllExportedFiles] = useState<{ id: string; fileId: string; fileName: string; uploadedAt: string }[]>([]);
   const isRevisioneTask = task.tipo === 'Revisione montaggio';
   const isAutoTask = task.assegnato_da?.includes('Sistema') || task.assegnato_da?.includes('⚡');
 
@@ -162,11 +163,13 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   const isProgrammazioneTask = task.tipo === 'Programmazione';
   const isUploadTask = task.tipo === 'Upload esportato';
   const isMontaggioTask = task.tipo === 'Montaggio';
+  const isMontaggioConModifiche = isMontaggioTask && !!contenutoRevisione?.note_revisione;
 
-  // ── Upload esportato state ─────────────────────────────────────────────────
+  // ── Upload esportato state (shared by Upload and Montaggio re-upload) ──────
   const [uploadProgress, setUploadProgress] = useState<{ percent: number; fileName: string } | null>(null);
   const [uploading, setUploading] = useState(false);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const montaggioUploadRef = useRef<HTMLInputElement>(null);
   
 
   const isCLPTask = !!(task.id_contenuto && WORKFLOW_MAP[task.tipo]);
@@ -226,17 +229,22 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
       .then(({ data }) => {
         if (data) setContenutoRevisione(data as Contenuto);
       });
-    // Load exported file ID from log_riprese for video preview
+    // Load ALL exported files from log_riprese for version history
     supabase
       .from('log_riprese')
-      .select('exported_file_id')
+      .select('id, exported_file_id, exported_file_name, exported_file_uploaded_at')
       .eq('contenuto_id', task.id_contenuto)
       .not('exported_file_id', 'is', null)
-      .order('riga', { ascending: true })
-      .limit(1)
+      .order('exported_file_uploaded_at', { ascending: true })
       .then(({ data }) => {
-        if (data && data.length > 0 && data[0].exported_file_id) {
-          setExportedFileId(data[0].exported_file_id);
+        if (data && data.length > 0) {
+          setExportedFileId(data[data.length - 1].exported_file_id);
+          setAllExportedFiles(data.map(d => ({
+            id: d.id,
+            fileId: d.exported_file_id!,
+            fileName: d.exported_file_name || 'export',
+            uploadedAt: d.exported_file_uploaded_at || '',
+          })));
         }
       });
   }, [task.id_contenuto]);
@@ -499,6 +507,147 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
     if (uploadInputRef.current) uploadInputRef.current.value = '';
   };
 
+  // ── Upload versione modificata (task Montaggio dopo revisione) ─────────────
+  const handleUploadModificato = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !task.id_contenuto || !utente?.id || !contenutoRevisione) return;
+
+    setUploading(true);
+    setUploadProgress({ percent: 0, fileName: file.name });
+
+    try {
+      const ext = file.name.split('.').pop() || 'mp4';
+      const mimeType = file.type || 'video/mp4';
+      const slug = (contenutoRevisione.titolo || '').toLowerCase()
+        .replace(/[àáâ]/g,'a').replace(/[èéê]/g,'e').replace(/[ìí]/g,'i')
+        .replace(/[òó]/g,'o').replace(/[ùú]/g,'u')
+        .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+      const versionNum = allExportedFiles.length + 1;
+      const fileName = `${contenutoRevisione.id_display}_${slug}_export_v${versionNum}.${ext}`;
+
+      const initResult = await invokeEdge('google-drive-upload-init', {
+        fileName,
+        mimeType,
+        fileSize: file.size,
+        teamId: utente.id,
+        clientName: contenutoRevisione.cliente_nome || 'Generale',
+        zone: 'file_esportato',
+        contenutoId: task.id_contenuto,
+        idDisplay: contenutoRevisione.id_display,
+        titolo: contenutoRevisione.titolo,
+      });
+
+      const uploadUrl = initResult.uploadUrl;
+      const CHUNK = 4 * 1024 * 1024;
+      let uploaded = 0;
+      let fileId = '';
+
+      while (uploaded < file.size) {
+        const end = Math.min(uploaded + CHUNK, file.size);
+        const chunk = file.slice(uploaded, end);
+        const contentRange = `bytes ${uploaded}-${end - 1}/${file.size}`;
+
+        let result: any = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const proxyUrl = `${SUPABASE_URL}/functions/v1/google-drive-upload-chunk`;
+            const res = await fetch(proxyUrl, {
+              method: 'POST',
+              headers: {
+                'apikey': SUPABASE_KEY,
+                'Authorization': `Bearer ${SUPABASE_KEY}`,
+                'x-upload-url': uploadUrl,
+                'x-content-range': contentRange,
+                'x-content-type': mimeType,
+                'Content-Type': 'application/octet-stream',
+              },
+              body: chunk,
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+              throw new Error(err?.error || `Proxy error ${res.status}`);
+            }
+            result = await res.json();
+            break;
+          } catch (err) {
+            if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+            else throw err;
+          }
+        }
+
+        if (result.status === 308) {
+          uploaded = result.range ? parseInt(result.range.split('-')[1]) + 1 : end;
+        } else if (result.status === 200 || result.status === 201) {
+          fileId = result.fileId;
+          break;
+        }
+
+        setUploadProgress({
+          percent: Math.min(99, Math.round((uploaded / file.size) * 100)),
+          fileName: file.name,
+        });
+      }
+
+      if (!fileId) throw new Error('Upload completato senza fileId');
+
+      const fileUrl = `${SUPABASE_URL}/functions/v1/google-drive-download?fileId=${fileId}`;
+
+      // Create a NEW log_riprese record for the new version
+      const maxRiga = allExportedFiles.length + 1;
+      await supabase.from('log_riprese').insert({
+        id_clip: `${contenutoRevisione.id_display}_v${versionNum}`,
+        contenuto_id: task.id_contenuto,
+        cliente_id: contenutoRevisione.cliente_id,
+        cliente_nome: contenutoRevisione.cliente_nome,
+        id_contenuto_display: contenutoRevisione.id_display,
+        titolo: contenutoRevisione.titolo,
+        exported_file_id: fileId,
+        exported_file_url: fileUrl,
+        exported_file_name: fileName,
+        exported_file_size: file.size,
+        exported_file_uploaded_at: new Date().toISOString(),
+        exported_file_mime_type: mimeType,
+        operatore: utente.nome,
+        stato: 'Uploadato',
+        riga: maxRiga,
+      });
+
+      // Advance CLP to Uploadato and create Revisione task
+      await supabase.from('contenuti').update({ fase: 'Uploadato', note_revisione: '' }).eq('id', task.id_contenuto);
+      await supabase.from('task').update({ stato: 'Completato' }).eq('id', task.id);
+
+      // Create new Revisione task for Elisa
+      const elisa = team.find(m => m.ruolo === 'Admin' || m.nome === 'Elisa');
+      if (elisa) {
+        await supabase.from('task').insert({
+          tipo: 'Revisione montaggio',
+          descrizione: `Revisione v${versionNum}: ${contenutoRevisione.titolo}`,
+          assegnato_a: elisa.nome,
+          assegnato_da: '⚡ Sistema',
+          id_contenuto: task.id_contenuto,
+          cliente_id: contenutoRevisione.cliente_id,
+          cliente_nome: contenutoRevisione.cliente_nome,
+          stato: 'Da fare',
+          priorita: '🔴 Alta',
+          id_display: `TSK${Date.now().toString().slice(-3)}`,
+        });
+      }
+
+      setClpFase('Uploadato');
+      setTaskCompletato(true);
+      sounds.taskCompletato();
+      addToast(`✅ Versione v${versionNum} caricata — nuovo task Revisione creato per Elisa!`, 'success');
+
+      const { data: updated } = await supabase.from('task').select('*').eq('id', task.id).single();
+      if (updated) onUpdate(updated as Task);
+    } catch (err: any) {
+      addToast(`❌ Errore upload: ${err.message}`, 'error');
+    }
+    setUploading(false);
+    setUploadProgress(null);
+    if (montaggioUploadRef.current) montaggioUploadRef.current.value = '';
+  };
+
 
   // ── Cambia solo lo stato del task (senza toccare il CLP) ──────────────────
   const handleStatoChange = async (nuovoStato: Task['stato']) => {
@@ -712,6 +861,59 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
               >
                 Il tuo browser non supporta il player video.
               </video>
+            </div>
+          )}
+
+          {/* ─── UPLOAD VERSIONE MODIFICATA (task Montaggio dopo revisione) ──── */}
+          {isMontaggioConModifiche && !taskCompletato && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                📤 CARICA VERSIONE MODIFICATA
+              </p>
+              <div className="rounded-xl p-3 space-y-3"
+                style={{ background: 'hsl(214 80% 55% / 0.06)', border: '1px solid hsl(214 80% 55% / 0.25)' }}>
+                <p className="text-xs leading-relaxed" style={{ color: 'hsl(214 70% 40%)' }}>
+                  Carica la versione corretta. Il CLP tornerà a <strong>Uploadato</strong> e verrà creato un nuovo task di <strong>Revisione</strong> per Elisa.
+                </p>
+
+                {uploadProgress ? (
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-[11px]" style={{ color: 'hsl(214 70% 40%)' }}>
+                      <span>📁 {uploadProgress.fileName}</span>
+                      <span className="font-mono font-bold">{uploadProgress.percent}%</span>
+                    </div>
+                    <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: 'hsl(214 80% 55% / 0.15)' }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-300"
+                        style={{ width: `${uploadProgress.percent}%`, background: 'hsl(214 80% 55%)' }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">Caricamento in corso… non chiudere il pannello.</p>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      ref={montaggioUploadRef}
+                      type="file"
+                      accept="video/*,.mp4,.mov,.avi,.mkv,.webm"
+                      onChange={handleUploadModificato}
+                      className="hidden"
+                    />
+                    <button
+                      onClick={() => montaggioUploadRef.current?.click()}
+                      disabled={uploading}
+                      className="w-full py-3 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2"
+                      style={{
+                        background: 'hsl(214 80% 55%)',
+                        color: 'white',
+                        opacity: uploading ? 0.6 : 1,
+                      }}
+                    >
+                      📤 Carica versione corretta
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           )}
 
@@ -1011,18 +1213,39 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
                 👁️ AZIONI REVISIONE
               </p>
 
-              {/* Video preview del file esportato */}
-              {exportedFileId && utente?.id && (
-                <div className="mb-3">
-                  <p className="text-[11px] text-muted-foreground mb-1.5">📹 Anteprima file esportato</p>
-                  <video
-                    controls
-                    className="w-full rounded-lg border border-border"
-                    style={{ maxHeight: 200 }}
-                    src={`${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${exportedFileId}&teamId=${utente.id}`}
-                  >
-                    Il tuo browser non supporta il player video.
-                  </video>
+              {/* Video preview — all versions */}
+              {utente?.id && allExportedFiles.length > 0 && (
+                <div className="mb-3 space-y-3">
+                  {allExportedFiles.map((ef, idx) => {
+                    const isLatest = idx === allExportedFiles.length - 1;
+                    const vLabel = allExportedFiles.length > 1
+                      ? `v${idx + 1}${isLatest ? ' (ultima)' : ' (precedente)'}`
+                      : '';
+                    return (
+                      <div key={ef.id}>
+                        <p className="text-[11px] text-muted-foreground mb-1.5">
+                          {isLatest ? '📹' : '📼'} {vLabel ? `Versione ${vLabel}` : 'Anteprima file esportato'}
+                          {ef.uploadedAt && (
+                            <span className="ml-1 opacity-60">
+                              · {new Date(ef.uploadedAt).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          )}
+                        </p>
+                        <video
+                          controls
+                          className="w-full rounded-lg border"
+                          style={{
+                            maxHeight: isLatest ? 200 : 140,
+                            borderColor: isLatest ? 'hsl(214 80% 55% / 0.4)' : 'hsl(var(--border))',
+                            opacity: isLatest ? 1 : 0.75,
+                          }}
+                          src={`${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${ef.fileId}&teamId=${utente.id}`}
+                        >
+                          Il tuo browser non supporta il player video.
+                        </video>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
