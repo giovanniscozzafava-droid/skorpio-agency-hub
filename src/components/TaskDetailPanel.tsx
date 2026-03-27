@@ -612,8 +612,12 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
         riga: maxRiga,
       });
 
-      // Advance CLP to Uploadato and create Revisione task
-      await supabase.from('contenuti').update({ fase: 'Uploadato', note_revisione: '' }).eq('id', task.id_contenuto);
+      // [OLD] await supabase.from('contenuti').update({ fase: 'Uploadato', note_revisione: '' }).eq('id', task.id_contenuto);
+      // [NEW - FaseService centralizzato]
+      const { cambiaFaseCLP } = await import('../services/faseService');
+      console.log('[Step2c] TaskDetailPanel upload esportato via FaseService', { id: task.id_contenuto });
+      await cambiaFaseCLP({ contenutoId: task.id_contenuto, nuovaFase: 'Uploadato', source: 'workflow', userId: utente?.id || 'unknown' });
+      await supabase.from('contenuti').update({ note_revisione: '' }).eq('id', task.id_contenuto);
       await supabase.from('task').update({ stato: 'Completato' }).eq('id', task.id);
 
       // Create new Revisione task for Elisa

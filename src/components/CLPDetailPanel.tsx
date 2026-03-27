@@ -358,7 +358,10 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
 
     // Porta il CLP a Girato se era in Idea o Script + triggera workflow task Luca
     if (['Idea', 'Script'].includes(form.fase)) {
-      await supabase.from('contenuti').update({ fase: 'Girato' }).eq('id', contenuto.id);
+      // [OLD] await supabase.from('contenuti').update({ fase: 'Girato' }).eq('id', contenuto.id);
+      const { cambiaFaseCLP: cambiaFaseClip } = await import('../services/faseService');
+      console.log('[Step2c] CLPDetailPanel auto-Girato via FaseService', { id: contenuto.id });
+      await cambiaFaseClip({ contenutoId: contenuto.id, nuovaFase: 'Girato', source: 'contenuti', userId: 'detail-panel' });
       const { data: fresh } = await supabase.from('contenuti').select('*').eq('id', contenuto.id).single();
       if (fresh) {
         onUpdate(fresh as Contenuto);
