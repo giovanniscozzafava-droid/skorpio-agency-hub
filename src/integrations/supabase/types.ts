@@ -320,6 +320,7 @@ export type Database = {
           id: string
           id_display: string
           link_drive: string | null
+          link_ispirazione: string | null
           location: string | null
           musica: string | null
           note: string | null
@@ -327,6 +328,7 @@ export type Database = {
           ora_pubblicazione: string | null
           props: string | null
           script: string | null
+          stile: string | null
           tipo: string | null
           titolo: string
           updated_at: string | null
@@ -352,6 +354,7 @@ export type Database = {
           id?: string
           id_display?: string
           link_drive?: string | null
+          link_ispirazione?: string | null
           location?: string | null
           musica?: string | null
           note?: string | null
@@ -359,6 +362,7 @@ export type Database = {
           ora_pubblicazione?: string | null
           props?: string | null
           script?: string | null
+          stile?: string | null
           tipo?: string | null
           titolo: string
           updated_at?: string | null
@@ -384,6 +388,7 @@ export type Database = {
           id?: string
           id_display?: string
           link_drive?: string | null
+          link_ispirazione?: string | null
           location?: string | null
           musica?: string | null
           note?: string | null
@@ -391,6 +396,7 @@ export type Database = {
           ora_pubblicazione?: string | null
           props?: string | null
           script?: string | null
+          stile?: string | null
           tipo?: string | null
           titolo?: string
           updated_at?: string | null
