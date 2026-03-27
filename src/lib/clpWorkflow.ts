@@ -9,6 +9,7 @@ import type { Contenuto, FaseCLP, TeamMember } from '../types';
 export const DEFAULT_LEAD_TIMES: Record<string, number> = {
   'Premontaggio': 5,
   'Montaggio': 3,
+  'Upload esportato': 2,
   'Revisione montaggio': 2,
   'Programmazione': 1,
   'Pubblicazione': 0,
