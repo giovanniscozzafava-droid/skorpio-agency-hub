@@ -5,9 +5,11 @@ import { NuovoTaskModal } from './NuovoTaskModal';
 import { creaTaskWorkflow, completaTaskPerContenuto, findMembro } from '../lib/clpWorkflow';
 import type { CalendarioEvent, Contenuto, MarketingEvent, TeamMember, Cliente, Task } from '../types';
 import { parseLocalDate, toDateStr, isSameDay, addDays } from '../lib/dateUtils';
+import { useIsMobile } from '../hooks/use-mobile';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const GIORNI = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
+const GIORNI_FULL = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
 const MESI = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
   'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
 
@@ -31,6 +33,8 @@ const FASE_COLORS: Record<string, string> = {
   Pubblicato: '#3B82F6', Scartata: '#EF4444',
 };
 
+type MobileVista = 'agenda' | 'giorno' | '3giorni' | 'settimana' | 'mese';
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function startOfWeekMon(d: Date) {
   const day = d.getDay(); // 0=Sun
@@ -44,6 +48,11 @@ function startOfWeekMon(d: Date) {
 function formatTime(t: string | null) {
   if (!t) return '';
   return t.slice(0, 5);
+}
+
+function getDayIndex(d: Date) {
+  const day = d.getDay();
+  return day === 0 ? 6 : day - 1;
 }
 
 // ─── Legenda ─────────────────────────────────────────────────────────────────
@@ -64,6 +73,424 @@ function Legenda() {
   );
 }
 
+// ─── Mobile Legend Bottom Sheet ──────────────────────────────────────────────
+function LegendaBottomSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  if (!open) return null;
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/40 z-50" onClick={onClose} />
+      <div className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl z-50 p-5 pb-8 animate-slide-up">
+        <div className="w-10 h-1 bg-muted rounded-full mx-auto mb-4" />
+        <h3 className="font-semibold text-sm mb-3">Filtri Categoria</h3>
+        <div className="space-y-3">
+          {Object.entries(TIPO_STYLE).map(([k, v]) => (
+            <div key={k} className="flex items-center gap-3 py-2">
+              <span style={{ width: 14, height: 14, borderRadius: 3, background: v.bg, border: `2px solid ${v.border}`, display: 'inline-block' }} />
+              <span className="text-sm">{v.icon} {v.label}</span>
+            </div>
+          ))}
+          <div className="flex items-center gap-3 py-2">
+            <span style={{ width: 14, height: 14, borderRadius: 3, background: '#FFF7ED', border: '2px solid #F97316', display: 'inline-block' }} />
+            <span className="text-sm">📌 Marketing</span>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── Mobile Agenda View ─────────────────────────────────────────────────────
+function AgendaView({ eventi, marketing, oggi, onEventClick }: {
+  eventi: CalendarioEvent[];
+  marketing: MarketingEvent[];
+  oggi: Date;
+  onEventClick: (ev: CalendarioEvent) => void;
+}) {
+  // Group events by date, sorted
+  const allDates = new Set<string>();
+  eventi.forEach(e => allDates.add(e.data));
+  marketing.forEach(e => allDates.add(e.data));
+
+  const sortedDates = Array.from(allDates).sort();
+
+  // Show at least 30 days from today
+  const todayStr = toDateStr(oggi);
+  const futureDate = addDays(oggi, 30);
+  const futureDateStr = toDateStr(futureDate);
+
+  // Add today if not present
+  if (!allDates.has(todayStr)) sortedDates.push(todayStr);
+  sortedDates.sort();
+
+  // Filter to relevant range
+  const visibleDates = sortedDates.filter(d => d >= toDateStr(addDays(oggi, -7)) && d <= futureDateStr);
+
+  if (visibleDates.length === 0) {
+    return <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm p-8">Nessun evento in programma</div>;
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto pb-24">
+      {visibleDates.map(dateStr => {
+        const d = parseLocalDate(dateStr);
+        const isToday = isSameDay(d, oggi);
+        const dayEvents = eventi.filter(e => e.data === dateStr).sort((a, b) => (a.ora || '').localeCompare(b.ora || ''));
+        const dayMkt = marketing.filter(e => {
+          if (e.data === dateStr) return true;
+          if (e.data_fine && e.data <= dateStr && e.data_fine >= dateStr) return true;
+          return false;
+        });
+
+        if (dayEvents.length === 0 && dayMkt.length === 0) return null;
+
+        return (
+          <div key={dateStr}>
+            <div className={`sticky top-0 z-10 px-4 py-2 text-xs font-semibold border-b ${isToday ? 'bg-primary/10 text-primary' : 'bg-muted/50 text-muted-foreground'}`}>
+              {isToday && <span className="mr-1">●</span>}
+              {GIORNI_FULL[getDayIndex(d)]} {d.getDate()} {MESI[d.getMonth()]}
+            </div>
+            <div className="px-3 py-2 space-y-2">
+              {dayMkt.map(m => {
+                const color = MARKETING_COLOR[m.categoria] || '#F97316';
+                const icon = MARKETING_LABEL[m.categoria] || '📌';
+                return (
+                  <div key={m.id} className="rounded-xl p-3 border" style={{ background: '#FFF7ED', borderColor: color + '40' }}>
+                    <div className="flex items-center gap-2">
+                      <span>{icon}</span>
+                      <span className="font-medium text-sm" style={{ color }}>{m.titolo}</span>
+                    </div>
+                  </div>
+                );
+              })}
+              {dayEvents.map(ev => {
+                const s = TIPO_STYLE[ev.tipo] || TIPO_STYLE.appuntamento;
+                const scaduto = dateStr < todayStr && ev.stato !== 'Completato';
+                return (
+                  <div
+                    key={ev.id}
+                    onClick={() => onEventClick(ev)}
+                    className="rounded-xl p-3 border active:scale-[0.98] transition-transform cursor-pointer"
+                    style={{ background: s.bg, borderColor: s.border + '40', borderLeftWidth: 4, borderLeftColor: s.border }}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm leading-snug">{s.icon} {ev.descrizione}</div>
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                          {ev.cliente_nome && <span className="text-xs text-muted-foreground">{ev.cliente_nome}</span>}
+                          {ev.persona && <span className="text-xs text-muted-foreground">· {ev.persona}</span>}
+                          {ev.ora && (
+                            <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ background: s.border + '18', color: s.border }}>
+                              ⏰ {formatTime(ev.ora)}{ev.ora_fine ? `–${formatTime(ev.ora_fine)}` : ''}
+                            </span>
+                          )}
+                          {scaduto && <span className="text-xs font-semibold text-destructive">🔴 SCADUTO</span>}
+                        </div>
+                      </div>
+                      {ev.id_contenuto_display && (
+                        <span className="text-[10px] font-mono bg-white/60 px-1.5 py-0.5 rounded shrink-0">{ev.id_contenuto_display}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Mobile Day View (timeline) ─────────────────────────────────────────────
+function MobileDayView({ date, eventi, marketing, oggi, onEventClick }: {
+  date: Date;
+  eventi: CalendarioEvent[];
+  marketing: MarketingEvent[];
+  oggi: Date;
+  onEventClick: (ev: CalendarioEvent) => void;
+}) {
+  const dateStr = toDateStr(date);
+  const dayEvents = eventi.filter(e => e.data === dateStr);
+  const dayMkt = marketing.filter(e => {
+    if (e.data === dateStr) return true;
+    if (e.data_fine && e.data <= dateStr && e.data_fine >= dateStr) return true;
+    return false;
+  });
+
+  const hours = Array.from({ length: 14 }, (_, i) => i + 7); // 7:00 - 20:00
+
+  const eventsAtHour = (h: number) => dayEvents.filter(e => {
+    if (!e.ora) return false;
+    const hour = parseInt(e.ora.slice(0, 2));
+    return hour === h;
+  });
+
+  const noTimeEvents = dayEvents.filter(e => !e.ora);
+
+  return (
+    <div className="flex-1 overflow-y-auto pb-24">
+      {/* All-day / no-time events */}
+      {(noTimeEvents.length > 0 || dayMkt.length > 0) && (
+        <div className="px-3 py-2 border-b bg-muted/30">
+          <div className="text-[10px] text-muted-foreground mb-1 uppercase font-semibold">Tutto il giorno</div>
+          <div className="space-y-1">
+            {dayMkt.map(m => {
+              const color = MARKETING_COLOR[m.categoria] || '#F97316';
+              return (
+                <div key={m.id} className="text-xs rounded-lg px-2 py-1.5" style={{ background: '#FFF7ED', borderLeft: `3px solid ${color}`, color }}>
+                  {MARKETING_LABEL[m.categoria]} {m.titolo}
+                </div>
+              );
+            })}
+            {noTimeEvents.map(ev => {
+              const s = TIPO_STYLE[ev.tipo] || TIPO_STYLE.appuntamento;
+              return (
+                <div key={ev.id} onClick={() => onEventClick(ev)} className="text-xs rounded-lg px-2 py-1.5 cursor-pointer active:scale-[0.98]"
+                  style={{ background: s.bg, borderLeft: `3px solid ${s.border}` }}>
+                  {s.icon} {ev.descrizione}
+                  {ev.cliente_nome && <span className="text-muted-foreground ml-1">· {ev.cliente_nome}</span>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Timeline */}
+      {hours.map(h => {
+        const hEvents = eventsAtHour(h);
+        return (
+          <div key={h} className="flex border-b min-h-[52px]">
+            <div className="w-14 shrink-0 text-right pr-2 pt-1 text-xs text-muted-foreground font-mono">
+              {h.toString().padStart(2, '0')}:00
+            </div>
+            <div className="flex-1 border-l py-1 px-2 space-y-1">
+              {hEvents.map(ev => {
+                const s = TIPO_STYLE[ev.tipo] || TIPO_STYLE.appuntamento;
+                return (
+                  <div key={ev.id} onClick={() => onEventClick(ev)} className="rounded-lg px-2.5 py-2 text-xs cursor-pointer active:scale-[0.98]"
+                    style={{ background: s.bg, borderLeft: `3px solid ${s.border}` }}>
+                    <div className="font-medium">{s.icon} {ev.descrizione}</div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      {formatTime(ev.ora)}{ev.ora_fine ? `–${formatTime(ev.ora_fine)}` : ''}
+                      {ev.cliente_nome && ` · ${ev.cliente_nome}`}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Mobile 3-Day View ──────────────────────────────────────────────────────
+function Mobile3DayView({ centerDate, eventi, marketing, oggi, onEventClick }: {
+  centerDate: Date;
+  eventi: CalendarioEvent[];
+  marketing: MarketingEvent[];
+  oggi: Date;
+  onEventClick: (ev: CalendarioEvent) => void;
+}) {
+  const days = [addDays(centerDate, -1), centerDate, addDays(centerDate, 1)];
+  const hours = Array.from({ length: 14 }, (_, i) => i + 7);
+
+  return (
+    <div className="flex-1 overflow-y-auto pb-24">
+      {/* Day headers */}
+      <div className="grid grid-cols-3 sticky top-0 z-10 bg-white border-b">
+        {days.map(d => {
+          const isToday = isSameDay(d, oggi);
+          return (
+            <div key={toDateStr(d)} className={`text-center py-2 border-r last:border-r-0 ${isToday ? 'bg-primary/10' : ''}`}>
+              <div className="text-[10px] text-muted-foreground">{GIORNI[getDayIndex(d)]}</div>
+              <div className={`text-sm font-bold ${isToday ? 'text-primary' : ''}`}>{d.getDate()}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Timeline rows */}
+      {hours.map(h => (
+        <div key={h} className="flex border-b min-h-[48px]">
+          <div className="w-10 shrink-0 text-right pr-1 pt-0.5 text-[10px] text-muted-foreground font-mono">
+            {h.toString().padStart(2, '0')}
+          </div>
+          <div className="flex-1 grid grid-cols-3">
+            {days.map(d => {
+              const dateStr = toDateStr(d);
+              const hEvents = eventi.filter(e => e.data === dateStr && e.ora && parseInt(e.ora.slice(0, 2)) === h);
+              return (
+                <div key={dateStr} className="border-l px-0.5 py-0.5 space-y-0.5">
+                  {hEvents.map(ev => {
+                    const s = TIPO_STYLE[ev.tipo] || TIPO_STYLE.appuntamento;
+                    return (
+                      <div key={ev.id} onClick={() => onEventClick(ev)} className="rounded px-1 py-0.5 text-[9px] leading-tight cursor-pointer active:scale-[0.98] truncate"
+                        style={{ background: s.bg, borderLeft: `2px solid ${s.border}` }}>
+                        {s.icon} {ev.descrizione.slice(0, 15)}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Mobile Month View (dots) ───────────────────────────────────────────────
+function MobileMonthView({ year, month, eventi, marketing, oggi, onDaySelect }: {
+  year: number;
+  month: number;
+  eventi: CalendarioEvent[];
+  marketing: MarketingEvent[];
+  oggi: Date;
+  onDaySelect: (d: Date) => void;
+}) {
+  const [expandedDay, setExpandedDay] = useState<string | null>(null);
+
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  let startDay = firstDay.getDay();
+  startDay = startDay === 0 ? 6 : startDay - 1;
+
+  const cells: (Date | null)[] = [];
+  for (let i = 0; i < startDay; i++) cells.push(null);
+  for (let d = 1; d <= lastDay.getDate(); d++) cells.push(new Date(year, month, d));
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const evByDay = (d: Date) => eventi.filter(e => e.data === toDateStr(d));
+  const mktByDay = (d: Date) => {
+    const ds = toDateStr(d);
+    return marketing.filter(e => {
+      if (e.data === ds) return true;
+      if (e.data_fine && e.data <= ds && e.data_fine >= ds) return true;
+      return false;
+    });
+  };
+
+  const expandedEvents = expandedDay ? eventi.filter(e => e.data === expandedDay) : [];
+  const expandedMkt = expandedDay ? marketing.filter(e => {
+    if (e.data === expandedDay) return true;
+    if (e.data_fine && e.data <= expandedDay && e.data_fine >= expandedDay) return true;
+    return false;
+  }) : [];
+
+  return (
+    <div className="flex-1 overflow-y-auto pb-24">
+      {/* Day headers */}
+      <div className="grid grid-cols-7 border-b">
+        {GIORNI.map(g => (
+          <div key={g} className="text-center text-[10px] font-semibold text-muted-foreground py-2">{g}</div>
+        ))}
+      </div>
+
+      {/* Grid */}
+      <div className="grid grid-cols-7">
+        {cells.map((d, i) => {
+          if (!d) return <div key={`e-${i}`} className="aspect-square border-b border-r bg-muted/20" />;
+
+          const ds = toDateStr(d);
+          const isToday = isSameDay(d, oggi);
+          const isExpanded = expandedDay === ds;
+          const dayEv = evByDay(d);
+          const dayMkt = mktByDay(d);
+          const totalCount = dayEv.length + dayMkt.length;
+
+          // Colored dots for event types
+          const dots: string[] = [];
+          if (dayMkt.length > 0) dots.push('#F97316');
+          dayEv.forEach(ev => {
+            const s = TIPO_STYLE[ev.tipo];
+            if (s && !dots.includes(s.border)) dots.push(s.border);
+          });
+
+          return (
+            <div
+              key={ds}
+              onClick={() => {
+                setExpandedDay(isExpanded ? null : ds);
+                onDaySelect(d);
+              }}
+              className={`aspect-square border-b border-r flex flex-col items-center justify-center cursor-pointer relative transition-colors
+                ${isExpanded ? 'bg-primary/10' : ''}`}
+            >
+              <div className={`text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full
+                ${isToday ? 'bg-primary text-primary-foreground' : ''}`}>
+                {d.getDate()}
+              </div>
+              {totalCount > 0 && (
+                <div className="flex gap-0.5 mt-0.5">
+                  {dots.slice(0, 3).map((color, idx) => (
+                    <div key={idx} className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
+                  ))}
+                  {dots.length > 3 && <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground" />}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Expanded day events */}
+      {expandedDay && (expandedEvents.length > 0 || expandedMkt.length > 0) && (
+        <div className="px-3 py-3 border-t bg-muted/30 space-y-2">
+          <div className="text-xs font-semibold text-muted-foreground mb-1">
+            {(() => { const d = parseLocalDate(expandedDay); return `${GIORNI_FULL[getDayIndex(d)]} ${d.getDate()} ${MESI[d.getMonth()]}`; })()}
+          </div>
+          {expandedMkt.map(m => {
+            const color = MARKETING_COLOR[m.categoria] || '#F97316';
+            return (
+              <div key={m.id} className="rounded-xl p-2.5 text-xs" style={{ background: '#FFF7ED', borderLeft: `3px solid ${color}`, color }}>
+                {MARKETING_LABEL[m.categoria]} {m.titolo}
+              </div>
+            );
+          })}
+          {expandedEvents.map(ev => {
+            const s = TIPO_STYLE[ev.tipo] || TIPO_STYLE.appuntamento;
+            return (
+              <div key={ev.id} className="rounded-xl p-2.5 text-xs cursor-pointer active:scale-[0.98]"
+                style={{ background: s.bg, borderLeft: `3px solid ${s.border}` }}>
+                <div className="font-medium">{s.icon} {ev.descrizione}</div>
+                {ev.cliente_nome && <div className="text-[10px] text-muted-foreground mt-0.5">{ev.cliente_nome}</div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Mobile View Switcher ───────────────────────────────────────────────────
+function MobileViewSwitcher({ vista, onChange }: { vista: MobileVista; onChange: (v: MobileVista) => void }) {
+  const views: { key: MobileVista; label: string }[] = [
+    { key: 'agenda', label: 'Agenda' },
+    { key: 'giorno', label: 'Giorno' },
+    { key: '3giorni', label: '3 giorni' },
+    { key: 'settimana', label: 'Settimana' },
+    { key: 'mese', label: 'Mese' },
+  ];
+  return (
+    <div className="flex overflow-x-auto no-scrollbar border-b bg-white">
+      {views.map(v => (
+        <button
+          key={v.key}
+          onClick={() => onChange(v.key)}
+          className={`shrink-0 text-xs font-medium px-3 py-2.5 border-b-2 transition-colors min-h-[44px]
+            ${vista === v.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'}`}
+        >
+          {v.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 // ─── Event Badge (compact) ────────────────────────────────────────────────────
 function EventBadge({ ev, onClick, onDragStart, onDragEnd, isDragging }: {
   ev: CalendarioEvent;
