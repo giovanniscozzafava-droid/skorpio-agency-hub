@@ -727,7 +727,10 @@ export async function syncMissingWorkflowTasks(): Promise<number> {
       // Self-healing: se il file esportato esiste già, il CLP non deve restare in Montato.
       if (fase === 'Montato' && await clpHasExportedFile(clp.id)) {
         await completaTaskPerContenuto(clp.id, 'Upload esportato');
-        await supabase.from('contenuti').update({ fase: 'Uploadato' }).eq('id', clp.id);
+        // [OLD] await supabase.from('contenuti').update({ fase: 'Uploadato' }).eq('id', clp.id);
+        const { cambiaFaseCLP: cambiaFaseSH } = await import('../services/faseService');
+        console.log('[Step2c] syncMissing self-heal via FaseService', { id: clp.id });
+        await cambiaFaseSH({ contenutoId: clp.id, nuovaFase: 'Uploadato', source: 'workflow', userId: 'sync-heal' });
         continue;
       }
 
