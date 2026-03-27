@@ -328,6 +328,13 @@ export async function avanzaFaseDaTask(
       step.descrizioneNext(contenuto as Contenuto),
       'Da fare',
     );
+    // Se è Upload esportato, aggiungi nota con percorso Drive
+    if (step.tipoNext === 'Upload esportato' && newTask) {
+      const driveNote = contenuto.link_drive
+        ? `Carica il file esportato nella cartella "file_esportato/" su Google Drive:\n${contenuto.link_drive}`
+        : `Carica il file esportato nella sezione Riprese del CLP ${contenuto.id_display}, nella zona "File esportato".`;
+      await supabase.from('task').update({ note: driveNote }).eq('id', newTask.id);
+    }
   }
 
   // 5. Se la fase è Montato → triggera Drive
