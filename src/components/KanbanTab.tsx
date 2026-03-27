@@ -274,8 +274,8 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   const [liveActive, setLiveActive] = useState(false);
   const [newTaskIds, setNewTaskIds] = useState<Set<string>>(new Set());
   const [filtraOggi, setFiltraOggi] = useState(false);
-  // Quale board mostrare: 'standard' | 'clp' | 'both'
   const [boardMode, setBoardMode] = useState<'standard' | 'clp' | 'both'>('both');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const pendingEventsRef = useRef<RealtimeEvent[]>([]);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
