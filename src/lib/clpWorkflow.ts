@@ -253,8 +253,12 @@ export async function richiestaModifiche(
   // Completa il task di revisione corrente
   await completaTaskPerContenuto(contenuto.id, 'Revisione montaggio');
 
-  // Riporta CLP a Pre montato
-  await supabase.from('contenuti').update({ fase: 'Pre montato', note_revisione: noteRevisione }).eq('id', contenuto.id);
+  // [OLD] await supabase.from('contenuti').update({ fase: 'Pre montato', note_revisione: noteRevisione }).eq('id', contenuto.id);
+  // [NEW - FaseService + note_revisione separato]
+  const { cambiaFaseCLP: cambiaFaseRM } = await import('../services/faseService');
+  console.log('[Step2c] richiestaModifiche via FaseService', { id: contenuto.id });
+  await cambiaFaseRM({ contenutoId: contenuto.id, nuovaFase: 'Pre montato', source: 'workflow', userId: 'revisione' });
+  await supabase.from('contenuti').update({ note_revisione: noteRevisione }).eq('id', contenuto.id);
 
   // Crea nuovo task di Montaggio per Alessandro
   const nomeAlessandro = findMembro(team, 'Alessandro');
