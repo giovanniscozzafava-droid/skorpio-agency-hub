@@ -654,6 +654,7 @@ export type Database = {
           id_display: string
           note: string | null
           ora: string | null
+          posizione: number | null
           priorita: string | null
           scadenza: string | null
           stato: string | null
@@ -672,6 +673,7 @@ export type Database = {
           id_display?: string
           note?: string | null
           ora?: string | null
+          posizione?: number | null
           priorita?: string | null
           scadenza?: string | null
           stato?: string | null
@@ -690,6 +692,7 @@ export type Database = {
           id_display?: string
           note?: string | null
           ora?: string | null
+          posizione?: number | null
           priorita?: string | null
           scadenza?: string | null
           stato?: string | null

@@ -156,9 +156,12 @@ interface TaskCardProps {
   showFaseBadge?: boolean;
   /** Data di pubblicazione (per countdown Programmato) */
   pubDate?: { data: string | null; ora: string | null } | null;
+  /** Vertical reorder callbacks */
+  onDragOverTask?: (e: React.DragEvent) => void;
+  dropIndicator?: 'above' | 'below' | null;
 }
 
-function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate }: TaskCardProps) {
+function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate, onDragOverTask, dropIndicator }: TaskCardProps) {
   const scad = scadenzaInfo(task);
   const isScaduto = scad?.label.includes('SCADUTO');
   const member = team.find(m => m.nome === task.assegnato_a);
@@ -172,6 +175,7 @@ function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEn
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
+      onDragOver={onDragOverTask}
       onClick={onClick}
       style={{
         borderLeft: `3px solid ${PRIORITA_COLOR[task.priorita] || '#64748B'}`,
@@ -182,6 +186,8 @@ function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEn
           animation: 'taskHighlight 3s ease-out forwards',
         } : {}),
         ...(isAssignedToMe ? { boxShadow: '0 0 0 1px rgba(59,130,246,0.2)' } : {}),
+        ...(dropIndicator === 'above' ? { borderTop: '3px solid hsl(var(--primary))' } : {}),
+        ...(dropIndicator === 'below' ? { borderBottom: '3px solid hsl(var(--primary))' } : {}),
       }}
     >
       <div className="flex items-center gap-1.5 mb-1">
@@ -284,6 +290,8 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   const [showNuovoTask, setShowNuovoTask] = useState(false);
   const [dragItem, setDragItem] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
+  const [dragOverPos, setDragOverPos] = useState<'above' | 'below' | null>(null);
   const [liveActive, setLiveActive] = useState(false);
   const [newTaskIds, setNewTaskIds] = useState<Set<string>>(new Set());
   const [filtraOggi, setFiltraOggi] = useState(false);
@@ -443,13 +451,19 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       }
       return true;
     });
-    const score = (t: Task) => {
-      if (!t.scadenza) return 2_000_000_000_000;
-      const ms = getTargetDate(t.scadenza, t.ora).getTime();
-      if (ms < Date.now()) return 3_000_000_000_000 + (Date.now() - ms);
-      return ms;
-    };
-    return filtered.sort((a, b) => score(a) - score(b));
+    return filtered.sort((a, b) => {
+      const pa = a.posizione ?? 0;
+      const pb = b.posizione ?? 0;
+      if (pa !== pb) return pa - pb;
+      // fallback: scadenza
+      const score = (t: Task) => {
+        if (!t.scadenza) return 2_000_000_000_000;
+        const ms = getTargetDate(t.scadenza, t.ora).getTime();
+        if (ms < Date.now()) return 3_000_000_000_000 + (Date.now() - ms);
+        return ms;
+      };
+      return score(a) - score(b);
+    });
   };
 
   // ── Task CLP: mappa fase CLP → tipo task attivo ─────────────────────────────
@@ -476,7 +490,69 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
 
       return faseReale === faseCLP && tipoColonna === t.tipo && t.stato !== 'Completato';
+    }).sort((a, b) => (a.posizione ?? 0) - (b.posizione ?? 0));
+  };
+
+  // ── Drag over task (vertical reorder indicator) ─────────────────────────────
+  const handleDragOverTask = (e: React.DragEvent, taskId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!dragItem || dragItem === taskId) {
+      setDragOverTaskId(null);
+      setDragOverPos(null);
+      return;
+    }
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    const pos = e.clientY < midY ? 'above' : 'below';
+    setDragOverTaskId(taskId);
+    setDragOverPos(pos);
+  };
+
+  // ── Drop on task (vertical reorder within column) ───────────────────────────
+  const handleDropOnTask = async (targetTaskId: string, columnTasks: Task[]) => {
+    if (!dragItem || dragItem === targetTaskId) return;
+    const draggedTask = tasks.find(t => t.id === dragItem);
+    const targetTask = tasks.find(t => t.id === targetTaskId);
+    if (!draggedTask || !targetTask) return;
+
+    // Only reorder within same column (same stato for standard, same fase for CLP)
+    const sameColumn = draggedTask.stato === targetTask.stato &&
+      (draggedTask.id_contenuto ? clpFasi[draggedTask.id_contenuto || ''] === clpFasi[targetTask.id_contenuto || ''] : true);
+    if (!sameColumn) return;
+
+    setDragOverTaskId(null);
+    setDragOverPos(null);
+    setDropTarget(null);
+
+    // Build new order
+    const ordered = columnTasks.filter(t => t.id !== dragItem);
+    const targetIdx = ordered.findIndex(t => t.id === targetTaskId);
+    const insertIdx = dragOverPos === 'above' ? targetIdx : targetIdx + 1;
+    ordered.splice(insertIdx, 0, draggedTask);
+
+    // Update posizione locally
+    const updates: { id: string; posizione: number }[] = [];
+    ordered.forEach((t, i) => {
+      updates.push({ id: t.id, posizione: i });
     });
+
+    isMyAction.current = true;
+    setTasks(prev => {
+      const copy = [...prev];
+      for (const u of updates) {
+        const idx = copy.findIndex(t => t.id === u.id);
+        if (idx >= 0) copy[idx] = { ...copy[idx], posizione: u.posizione };
+      }
+      return copy;
+    });
+
+    // Save to DB
+    for (const u of updates) {
+      await supabase.from('task').update({ posizione: u.posizione } as any).eq('id', u.id);
+    }
+    sounds.drop();
+    setDragItem(null);
   };
 
   // ── Drag standard (stato → stato) ──────────────────────────────────────────
@@ -647,8 +723,14 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                   className={`kanban-col ${isDrop ? 'kanban-drop-target' : ''}`}
                   style={{ background: col.bg, border: `1px solid ${col.border}30`, minWidth: 180 }}
                   onDragOver={e => { e.preventDefault(); setDropTarget(`clp__${col.stato}`); }}
-                  onDragLeave={() => setDropTarget(null)}
-                  onDrop={() => handleDropCLP(col.stato)}
+                  onDragLeave={() => { setDropTarget(null); setDragOverTaskId(null); setDragOverPos(null); }}
+                  onDrop={() => {
+                    if (dragOverTaskId && colTasks.some(t => t.id === dragOverTaskId)) {
+                      handleDropOnTask(dragOverTaskId, colTasks);
+                    } else {
+                      handleDropCLP(col.stato);
+                    }
+                  }}
                 >
                   <div className="kanban-col-header" style={{ borderBottom: `2px solid ${col.border}40` }}>
                     <div className="flex items-center gap-1.5">
@@ -673,10 +755,12 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                           isNew={newTaskIds.has(task.id)}
                           draggingId={dragItem}
                           onDragStart={() => setDragItem(task.id)}
-                          onDragEnd={() => setDragItem(null)}
+                          onDragEnd={() => { setDragItem(null); setDragOverTaskId(null); setDragOverPos(null); }}
                           onClick={() => setSelectedTask(task)}
                           showFaseBadge={false}
                           pubDate={pub}
+                          onDragOverTask={(e) => handleDragOverTask(e, task.id)}
+                          dropIndicator={dragOverTaskId === task.id ? dragOverPos : null}
                         />
                       );
                     })}
@@ -714,8 +798,14 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                   className={`kanban-col ${dropTarget === col.stato ? 'kanban-drop-target' : ''}`}
                   style={{ background: col.bg, border: `1px solid ${col.border}30` }}
                   onDragOver={e => { e.preventDefault(); setDropTarget(col.stato); }}
-                  onDragLeave={() => setDropTarget(null)}
-                  onDrop={() => handleDropStandard(col.stato)}
+                  onDragLeave={() => { setDropTarget(null); setDragOverTaskId(null); setDragOverPos(null); }}
+                  onDrop={() => {
+                    if (dragOverTaskId && colTasks.some(t => t.id === dragOverTaskId)) {
+                      handleDropOnTask(dragOverTaskId, colTasks);
+                    } else {
+                      handleDropStandard(col.stato);
+                    }
+                  }}
                 >
                   <div className="kanban-col-header" style={{ borderBottom: `2px solid ${col.border}40` }}>
                     <div className="flex items-center gap-2">
@@ -737,9 +827,11 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                         isNew={newTaskIds.has(task.id)}
                         draggingId={dragItem}
                         onDragStart={() => setDragItem(task.id)}
-                        onDragEnd={() => setDragItem(null)}
+                        onDragEnd={() => { setDragItem(null); setDragOverTaskId(null); setDragOverPos(null); }}
                         onClick={() => setSelectedTask(task)}
                         showFaseBadge={true}
+                        onDragOverTask={(e) => handleDragOverTask(e, task.id)}
+                        dropIndicator={dragOverTaskId === task.id ? dragOverPos : null}
                       />
                     ))}
                     {colTasks.length === 0 && (
