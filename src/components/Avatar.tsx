@@ -5,10 +5,11 @@ interface AvatarProps {
   colore: string;
   size?: number;
   className?: string;
+  avatarUrl?: string | null;
 }
 
 export const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
-  function Avatar({ nome, colore, size = 32, className = '' }, ref) {
+  function Avatar({ nome, colore, size = 32, className = '', avatarUrl }, ref) {
     const iniziale = nome.charAt(0).toUpperCase();
     return (
       <div
@@ -17,7 +18,7 @@ export const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
         style={{
           width: size,
           height: size,
-          backgroundColor: colore,
+          backgroundColor: avatarUrl ? 'transparent' : colore,
           fontSize: size * 0.4,
           borderRadius: '50%',
           display: 'flex',
@@ -26,9 +27,18 @@ export const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
           color: 'white',
           fontWeight: 700,
           userSelect: 'none',
+          overflow: 'hidden',
         }}
       >
-        {iniziale}
+        {avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt={nome}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        ) : (
+          iniziale
+        )}
       </div>
     );
   }
