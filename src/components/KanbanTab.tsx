@@ -158,7 +158,7 @@ interface TaskCardProps {
   pubDate?: { data: string | null; ora: string | null } | null;
 }
 
-function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true }: TaskCardProps) {
+function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate }: TaskCardProps) {
   const scad = scadenzaInfo(task);
   const isScaduto = scad?.label.includes('SCADUTO');
   const member = team.find(m => m.nome === task.assegnato_a);
