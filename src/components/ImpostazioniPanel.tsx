@@ -46,6 +46,37 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
 
   const [section, setSection] = useState<'profilo' | 'team' | 'integrazioni' | 'audit'>('profilo');
 
+  // ── Snapshot dati ──────────────────────────────────────────────────────────
+  const [snapshotRunning, setSnapshotRunning] = useState(false);
+  const [snapshotResult, setSnapshotResult] = useState<Record<string, number> | null>(null);
+
+  const runSnapshot = async () => {
+    setSnapshotRunning(true);
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const res = await fetch(`${supabaseUrl}/functions/v1/backup-snapshot`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseKey}`,
+          'apikey': supabaseKey,
+        },
+        body: JSON.stringify({ note: `Manual snapshot by ${utente?.nome || 'admin'}` }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSnapshotResult(data.counts);
+        addToast('📸 Snapshot salvato!', 'success');
+      } else {
+        addToast('Errore snapshot', 'error');
+      }
+    } catch (e) {
+      addToast('Errore snapshot: ' + (e as Error).message, 'error');
+    }
+    setSnapshotRunning(false);
+  };
+
   // ── Audit Clienti ↔ CLP ──────────────────────────────────────────────────
   const [auditRunning, setAuditRunning] = useState(false);
   const [auditReport, setAuditReport] = useState<Array<{ cliente: string; clpCount: number; inClienti: boolean; clienteId: string | null }>>([]);
