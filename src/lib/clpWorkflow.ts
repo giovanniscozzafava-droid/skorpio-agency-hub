@@ -147,6 +147,17 @@ export function findMembro(team: TeamMember[], cerca: string): string {
   return m?.nome ?? cerca;
 }
 
+async function clpHasExportedFile(contenutoId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('log_riprese')
+    .select('id')
+    .eq('contenuto_id', contenutoId)
+    .not('exported_file_id', 'is', null)
+    .limit(1);
+
+  return !!data?.length;
+}
+
 export async function completaTaskPerContenuto(contenutoId: string, tipo: string) {
   const { data } = await supabase
     .from('task')
@@ -452,22 +463,34 @@ export async function completaTaskEAvanzaFase(
 
   if (!contenuto) return null;
 
+  let faseNext = step.faseNext;
+  let stepForNextTask = step;
+
+  // Se l'esportato è già stato caricato fuori dal task dedicato,
+  // salta automaticamente lo step "Upload esportato" e porta Elisa in Uploadato.
+  if (step.faseNext === 'Montato' && await clpHasExportedFile(contenutoId)) {
+    const uploadStep = WORKFLOW_MAP['Upload esportato'];
+    faseNext = uploadStep.faseNext;
+    stepForNextTask = uploadStep;
+    await completaTaskPerContenuto(contenutoId, 'Upload esportato');
+  }
+
   await supabase
     .from('contenuti')
-    .update({ fase: step.faseNext })
+    .update({ fase: faseNext })
     .eq('id', contenutoId);
 
-  if (step.tipoNext) {
-    const assegnatoA = findMembro(team, step.assegnatoKeyword);
+  if (stepForNextTask.tipoNext) {
+    const assegnatoA = findMembro(team, stepForNextTask.assegnatoKeyword);
     const newTask = await creaTaskWorkflow(
       contenuto as Contenuto,
       assegnatoA,
-      step.tipoNext,
-      step.descrizioneNext(contenuto as Contenuto),
+      stepForNextTask.tipoNext,
+      stepForNextTask.descrizioneNext(contenuto as Contenuto),
       'Da fare',
     );
     // Se è Upload esportato, aggiungi nota con percorso Drive
-    if (step.tipoNext === 'Upload esportato' && newTask) {
+    if (stepForNextTask.tipoNext === 'Upload esportato' && newTask) {
       const slug = contenuto.titolo.replace(/\s+/g, '-').slice(0, 40);
       const folderPath = `SKORPIO_Clip/${contenuto.cliente_nome}/${contenuto.id_display}_${slug}/file_esportato/`;
       const driveNote = contenuto.link_drive
@@ -504,7 +527,7 @@ export async function completaTaskEAvanzaFase(
   }
 
   // Se faseNext = Programmato e data+ora già passati → pubblica subito + cleanup
-  if (step.faseNext === 'Programmato' && contenuto.data_pubblicazione && contenuto.ora_pubblicazione) {
+  if (faseNext === 'Programmato' && contenuto.data_pubblicazione && contenuto.ora_pubblicazione) {
     if (isProntoPerPubblicazione(contenuto.data_pubblicazione, contenuto.ora_pubblicazione)) {
       await supabase.from('contenuti').update({ fase: 'Pubblicato' }).eq('id', contenutoId);
       await creaTaskCleanup(contenuto as Contenuto, team as any[]);
@@ -512,7 +535,7 @@ export async function completaTaskEAvanzaFase(
     }
   }
 
-  return step.faseNext;
+  return faseNext;
 }
 
 /**
@@ -649,6 +672,13 @@ export async function syncMissingWorkflowTasks(): Promise<number> {
         if (prevTipo) {
           await completaTaskPerContenuto(clp.id, prevTipo);
         }
+      }
+
+      // Self-healing: se il file esportato esiste già, il CLP non deve restare in Montato.
+      if (fase === 'Montato' && await clpHasExportedFile(clp.id)) {
+        await completaTaskPerContenuto(clp.id, 'Upload esportato');
+        await supabase.from('contenuti').update({ fase: 'Uploadato' }).eq('id', clp.id);
+        continue;
       }
 
       // 2. Cancella task di fasi FUTURE che non dovrebbero esistere
