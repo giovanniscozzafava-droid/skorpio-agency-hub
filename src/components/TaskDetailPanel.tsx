@@ -1213,18 +1213,39 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
                 👁️ AZIONI REVISIONE
               </p>
 
-              {/* Video preview del file esportato */}
-              {exportedFileId && utente?.id && (
-                <div className="mb-3">
-                  <p className="text-[11px] text-muted-foreground mb-1.5">📹 Anteprima file esportato</p>
-                  <video
-                    controls
-                    className="w-full rounded-lg border border-border"
-                    style={{ maxHeight: 200 }}
-                    src={`${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${exportedFileId}&teamId=${utente.id}`}
-                  >
-                    Il tuo browser non supporta il player video.
-                  </video>
+              {/* Video preview — all versions */}
+              {utente?.id && allExportedFiles.length > 0 && (
+                <div className="mb-3 space-y-3">
+                  {allExportedFiles.map((ef, idx) => {
+                    const isLatest = idx === allExportedFiles.length - 1;
+                    const vLabel = allExportedFiles.length > 1
+                      ? `v${idx + 1}${isLatest ? ' (ultima)' : ' (precedente)'}`
+                      : '';
+                    return (
+                      <div key={ef.id}>
+                        <p className="text-[11px] text-muted-foreground mb-1.5">
+                          {isLatest ? '📹' : '📼'} {vLabel ? `Versione ${vLabel}` : 'Anteprima file esportato'}
+                          {ef.uploadedAt && (
+                            <span className="ml-1 opacity-60">
+                              · {new Date(ef.uploadedAt).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          )}
+                        </p>
+                        <video
+                          controls
+                          className="w-full rounded-lg border"
+                          style={{
+                            maxHeight: isLatest ? 200 : 140,
+                            borderColor: isLatest ? 'hsl(214 80% 55% / 0.4)' : 'hsl(var(--border))',
+                            opacity: isLatest ? 1 : 0.75,
+                          }}
+                          src={`${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${ef.fileId}&teamId=${utente.id}`}
+                        >
+                          Il tuo browser non supporta il player video.
+                        </video>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
