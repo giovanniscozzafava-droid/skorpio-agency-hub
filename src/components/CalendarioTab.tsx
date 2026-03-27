@@ -1805,7 +1805,7 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
     const [evResAll, mktRes, contRes] = await Promise.all([
       supabase.from('calendario').select('*').gte('data', rangeStart).lte('data', rangeEnd).order('ora', { nullsFirst: true }),
       supabase.from('marketing_calendar').select('*').gte('data', rangeStart).lte('data', rangeEnd),
-      supabase.from('contenuti').select('id, id_display, titolo, cliente_nome, tipo, canale, fase, data_pubblicazione').neq('fase', 'Pubblicato').neq('fase', 'Scartata'),
+      supabase.from('contenuti').select('id, id_display, titolo, cliente_nome, tipo, canale, fase, data_pubblicazione, ora_pubblicazione, assegnato_montaggio').not('data_pubblicazione', 'is', null).neq('fase', 'Scartata'),
     ]);
 
     const eventiDB = (evResAll.data as CalendarioEvent[]) || [];
