@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import { sounds } from '../lib/sounds';
