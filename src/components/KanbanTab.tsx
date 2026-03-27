@@ -281,6 +281,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   const pendingEventsRef = useRef<RealtimeEvent[]>([]);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMyAction = useRef(false);
+  const tasksRef = useRef<Task[]>([]);
 
   const flushNotifications = useCallback(() => {
     const events = pendingEventsRef.current;
@@ -327,14 +328,16 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
         .select('id, fase'),
     ]);
 
-    setTasks(taskData || []);
+    const nextTasks = taskData || [];
+    setTasks(nextTasks);
+    tasksRef.current = nextTasks;
     setClpFasi(
       Object.fromEntries((contenutiData || []).map(contenuto => [contenuto.id, contenuto.fase || '']))
     );
     setLoading(false);
 
     const oggi = new Date(); oggi.setHours(0, 0, 0, 0);
-    const scaduti = (taskData || []).filter(t => {
+    const scaduti = nextTasks.filter(t => {
       if (!t.scadenza) return false;
       const s = parseLocalDate(t.scadenza);
       return s < oggi && t.stato !== 'Completato';
@@ -351,7 +354,11 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
         setTimeout(() => setLiveActive(false), 800);
         if (payload.eventType === 'INSERT') {
           const newTask = payload.new as Task;
-          setTasks(prev => prev.some(t => t.id === newTask.id) ? prev : [newTask, ...prev]);
+          setTasks(prev => {
+            const next = prev.some(t => t.id === newTask.id) ? prev : [newTask, ...prev];
+            tasksRef.current = next;
+            return next;
+          });
           setNewTaskIds(prev => new Set(prev).add(newTask.id));
           setTimeout(() => setNewTaskIds(prev => { const next = new Set(prev); next.delete(newTask.id); return next; }), 3000);
           pendingEventsRef.current.push({ tipo: 'nuovo', task: newTask });
@@ -359,8 +366,12 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
           void loadTasks();
         } else if (payload.eventType === 'UPDATE') {
           const updatedTask = payload.new as Task;
-          const prevTask = tasks.find(t => t.id === updatedTask.id);
-          setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
+          const prevTask = tasksRef.current.find(t => t.id === updatedTask.id);
+          setTasks(prev => {
+            const next = prev.map(t => t.id === updatedTask.id ? updatedTask : t);
+            tasksRef.current = next;
+            return next;
+          });
           setSelectedTask(prev => prev?.id === updatedTask.id ? updatedTask : prev);
           if (updatedTask.stato === 'Completato' && prevTask?.stato !== 'Completato') {
             pendingEventsRef.current.push({ tipo: 'completato', task: updatedTask, fromStato: prevTask?.stato });
@@ -370,7 +381,11 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
           scheduleFlush();
           void loadTasks();
         } else if (payload.eventType === 'DELETE') {
-          setTasks(prev => prev.filter(t => t.id !== (payload.old as Task).id));
+          setTasks(prev => {
+            const next = prev.filter(t => t.id !== (payload.old as Task).id);
+            tasksRef.current = next;
+            return next;
+          });
           void loadTasks();
         }
       })
@@ -379,7 +394,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       supabase.removeChannel(channel);
       if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
     };
-  }, [loadTasks, scheduleFlush, tasks]);
+  }, [loadTasks, scheduleFlush]);
 
   // ── Task standard (senza CLP) ───────────────────────────────────────────────
   const matchesSearch = (t: Task) => {
