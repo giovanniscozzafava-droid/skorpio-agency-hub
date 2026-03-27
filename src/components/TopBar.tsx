@@ -67,24 +67,42 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
           <img src={fuyueLogo} alt="Fuyue" className="hidden lg:block h-4 w-auto opacity-50 hover:opacity-80 transition-opacity" />
         </div>
 
-        {/* Contatori */}
+        {/* Contatori — desktop: full text, mobile: compact numbers */}
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <span className="stat-pill text-xs" style={{ background: 'rgba(245,158,11,0.2)', color: '#FCD34D' }}>
+          {/* Desktop counters */}
+          <span className="stat-pill text-xs hidden md:inline-flex" style={{ background: 'rgba(245,158,11,0.2)', color: '#FCD34D' }}>
             📋 {taskCounts.daFare} da fare
           </span>
           {taskCounts.urgenti > 0 && (
-            <span className="stat-pill text-xs" style={{ background: 'rgba(239,68,68,0.2)', color: '#FCA5A5' }}>
+            <span className="stat-pill text-xs hidden md:inline-flex" style={{ background: 'rgba(239,68,68,0.2)', color: '#FCA5A5' }}>
               🔴 {taskCounts.urgenti} urgenti
             </span>
           )}
           {taskCounts.scaduti > 0 && (
-            <span className="stat-pill text-xs" style={{ background: 'rgba(239,68,68,0.3)', color: '#F87171' }}>
+            <span className="stat-pill text-xs hidden md:inline-flex" style={{ background: 'rgba(239,68,68,0.3)', color: '#F87171' }}>
               ⚠️ {taskCounts.scaduti} scaduti
             </span>
           )}
 
+          {/* Mobile compact counters — just numbers */}
+          <span className="stat-pill text-xs md:hidden" style={{ background: 'rgba(245,158,11,0.2)', color: '#FCD34D' }}>
+            {taskCounts.daFare}
+          </span>
+          {taskCounts.urgenti > 0 && (
+            <span className="stat-pill text-xs md:hidden" style={{ background: 'rgba(239,68,68,0.2)', color: '#FCA5A5' }}>
+              {taskCounts.urgenti}
+            </span>
+          )}
+          {taskCounts.scaduti > 0 && (
+            <span className="stat-pill text-xs md:hidden" style={{ background: 'rgba(239,68,68,0.3)', color: '#F87171' }}>
+              {taskCounts.scaduti}
+            </span>
+          )}
+
           {/* Google Drive storage indicator */}
-          <DriveStorageIndicator />
+          <div className="hidden md:block">
+            <DriveStorageIndicator />
+          </div>
         </div>
 
         {/* Admin: avatar team per filtrare kanban */}
