@@ -686,33 +686,36 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
     if (!task.id_contenuto || savingFase) return;
     setSavingFase(true);
 
-    const result = await avanzaFaseDaTask(
-      task.id,
-      task.tipo,
-      task.id_contenuto,
-      nuovaFase,
-      team,
-      utente?.id
-    );
+    try {
+      const result = await avanzaFaseDaTask(
+        task.id,
+        task.tipo,
+        task.id_contenuto,
+        nuovaFase,
+        team,
+        utente?.id
+      );
 
-    setClpFase(nuovaFase);
-    setSavingFase(false);
+      setClpFase(nuovaFase);
 
-    if (result.completatoTask) {
-      setTaskCompletato(true);
-      sounds.taskCompletato();
-      // Rifletti il completamento nel task visualizzato
-      const { data } = await supabase.from('task').select('*').eq('id', task.id).single();
-      if (data) onUpdate(data as Task);
+      if (result.completatoTask) {
+        setTaskCompletato(true);
+        sounds.taskCompletato();
+        const { data } = await supabase.from('task').select('*').eq('id', task.id).single();
+        if (data) onUpdate(data as Task);
 
-      const msgs: string[] = [`✅ Task completato — CLP → "${nuovaFase}"`];
-      if (result.taskCreato) msgs.push('Nuovo task creato!');
-      if (result.driveTriggered) msgs.push('📁 Drive in creazione…');
-      addToast(msgs.join(' · '), 'success');
-    } else {
-      sounds.salva();
-      addToast(`🔄 Fase CLP → ${nuovaFase}`, 'success');
+        const msgs: string[] = [`✅ Task completato — CLP → "${nuovaFase}"`];
+        if (result.taskCreato) msgs.push('Nuovo task creato!');
+        if (result.driveTriggered) msgs.push('📁 Drive in creazione…');
+        addToast(msgs.join(' · '), 'success');
+      } else {
+        sounds.salva();
+        addToast(`🔄 Fase CLP → ${nuovaFase}`, 'success');
+      }
+    } catch (err: any) {
+      addToast(`⚠️ ${err.message}`, 'warn');
     }
+    setSavingFase(false);
   };
 
   const handleArchivia = async () => {
