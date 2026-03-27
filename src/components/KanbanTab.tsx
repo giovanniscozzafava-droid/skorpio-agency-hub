@@ -410,15 +410,14 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   // Un task CLP si mostra nella colonna corrispondente alla sua fase corrente.
   // I task con stato 'Completato' li mettiamo nell'ultima colonna completata.
   const filteredCLP = (faseCLP: string) => {
-    const tipoColonna = TIPO_PER_FASE[faseCLP]; // es. 'Premontaggio' per colonna 'Girato'
+    const tipoColonna = TIPO_PER_FASE[faseCLP];
     return tasks.filter(t => {
       if (!t.id_contenuto || t.id_contenuto.trim() === '') return false;
       if (personaView && t.assegnato_a !== personaView) return false;
       if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
-      // Colonne Programmato/Pubblicato: task senza tipo successivo (ultimo step)
+      if (!matchesSearch(t)) return false;
       if (faseCLP === 'Programmato') return t.tipo === 'Programmazione' && t.stato !== 'Completato';
       if (faseCLP === 'Pubblicato') return t.tipo === 'Cleanup' || (t.stato === 'Completato' && t.tipo === 'Programmazione');
-      // Colonne intermedie: task con il tipo corrispondente, non ancora completato
       return tipoColonna && t.tipo === tipoColonna && t.stato !== 'Completato';
     });
   };
