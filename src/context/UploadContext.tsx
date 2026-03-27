@@ -140,6 +140,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   const abortRef = useRef<Map<string, AbortController>>(new Map());
   const pausedRef = useRef<Set<string>>(new Set());
   const runningRef = useRef<Set<string>>(new Set());
+  const triggerLockRef = useRef(false);
 
   // Derived counts
   const activeCount  = queue.filter(u => u.status === 'uploading').length;
@@ -372,23 +373,34 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   // ── trigger next queued item ─────────────────────────────────────────────
 
   const triggerNext = useCallback(() => {
-    // Use functional state update to get latest queue
-    setQueue(prev => {
+    // Prevent concurrent triggerNext calls from racing
+    if (triggerLockRef.current) return;
+    triggerLockRef.current = true;
+
+    try {
       const running = runningRef.current.size;
-      if (running >= MAX_CONCURRENT) return prev;
+      if (running >= MAX_CONCURRENT) return;
       const slots = MAX_CONCURRENT - running;
-      let started = 0;
-      for (const item of prev) {
-        if (started >= slots) break;
-        if (item.status === 'queued' && !runningRef.current.has(item.id) && !pausedRef.current.has(item.id)) {
-          runningRef.current.add(item.id);
-          // Launch async (no await in setQueue)
-          setTimeout(() => runUpload(item.id), 0);
-          started++;
+
+      // Read current queue synchronously via ref-like approach
+      setQueue(prev => {
+        let started = 0;
+        for (const item of prev) {
+          if (started >= slots) break;
+          if (item.status === 'queued' && !runningRef.current.has(item.id) && !pausedRef.current.has(item.id)) {
+            runningRef.current.add(item.id);
+            // Stagger launches by 200ms to avoid edge function overload
+            const delay = started * 200;
+            setTimeout(() => runUpload(item.id), delay);
+            started++;
+          }
         }
-      }
-      return prev;
-    });
+        return prev;
+      });
+    } finally {
+      // Release lock after a short delay to let state settle
+      setTimeout(() => { triggerLockRef.current = false; }, 300);
+    }
   }, [runUpload]);
 
   // ── public API ───────────────────────────────────────────────────────────
