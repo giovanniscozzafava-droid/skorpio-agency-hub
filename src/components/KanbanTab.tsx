@@ -156,6 +156,9 @@ interface TaskCardProps {
   showFaseBadge?: boolean;
   /** Data di pubblicazione (per countdown Programmato) */
   pubDate?: { data: string | null; ora: string | null } | null;
+  /** Vertical reorder callbacks */
+  onDragOverTask?: (e: React.DragEvent) => void;
+  dropIndicator?: 'above' | 'below' | null;
 }
 
 function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate }: TaskCardProps) {
