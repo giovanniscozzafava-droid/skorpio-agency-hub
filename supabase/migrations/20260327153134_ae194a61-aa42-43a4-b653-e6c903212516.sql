@@ -1,0 +1,1 @@
+ALTER TABLE public.task ADD COLUMN posizione integer DEFAULT 0;
