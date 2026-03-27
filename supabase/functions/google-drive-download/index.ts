@@ -22,15 +22,29 @@ async function getValidAccessToken(teamId: string): Promise<string> {
     .eq('id', teamId)
     .single();
 
-  if (error || !member) throw new Error('Membro team non trovato');
-  if (!member.google_drive_connected) throw new Error('Google Drive non connesso');
-  if (!member.google_drive_refresh_token) throw new Error('Refresh token mancante');
+  // If requested member doesn't have Drive connected, fallback to any member who does
+  let activeMember = member;
+  if (!member?.google_drive_connected || !member?.google_drive_refresh_token) {
+    const { data: fallback } = await supabase
+      .from('team')
+      .select('id, google_drive_access_token, google_drive_refresh_token, google_drive_token_expiry, google_drive_connected')
+      .eq('google_drive_connected', true)
+      .not('google_drive_refresh_token', 'is', null)
+      .limit(1)
+      .single();
+    if (!fallback) throw new Error('Nessun membro del team ha Google Drive connesso');
+    activeMember = fallback;
+    teamId = fallback.id;
+  }
+
+  if (!activeMember) throw new Error('Membro team non trovato');
+  if (!activeMember.google_drive_refresh_token) throw new Error('Refresh token mancante');
 
   const nowMs = Date.now();
-  const expiryMs = member.google_drive_token_expiry ?? 0;
+  const expiryMs = activeMember.google_drive_token_expiry ?? 0;
 
-  if (member.google_drive_access_token && expiryMs - nowMs > 3 * 60 * 1000) {
-    return member.google_drive_access_token;
+  if (activeMember.google_drive_access_token && expiryMs - nowMs > 3 * 60 * 1000) {
+    return activeMember.google_drive_access_token;
   }
 
   const res = await fetch('https://oauth2.googleapis.com/token', {
@@ -39,7 +53,7 @@ async function getValidAccessToken(teamId: string): Promise<string> {
     body: new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID,
       client_secret: GOOGLE_CLIENT_SECRET,
-      refresh_token: member.google_drive_refresh_token,
+      refresh_token: activeMember.google_drive_refresh_token,
       grant_type: 'refresh_token',
     }),
   });
