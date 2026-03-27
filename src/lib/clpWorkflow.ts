@@ -286,6 +286,8 @@ export async function approvaRevisione(
 
 /**
  * Chiamato quando l'utente cambia la fase CLP direttamente dal TaskDetailPanel.
+ * Completa SEMPRE il task corrente se la fase avanza in avanti, e crea il task
+ * che "vive" nella nuova fase.
  */
 export async function avanzaFaseDaTask(
   taskId: string,
@@ -295,18 +297,40 @@ export async function avanzaFaseDaTask(
   team: TeamMember[],
   teamId?: string
 ): Promise<{ completatoTask: boolean; taskCreato: boolean; driveTriggered: boolean }> {
+  const FASE_SEQ = ['Girato', 'Pre montato', 'Montato', 'Uploadato', 'Revisionato', 'Programmato', 'Pubblicato'];
   const step = WORKFLOW_MAP[taskTipo];
-  const isStepCompletion = step && step.faseNext === nuovaFase;
+  const faseCurrent = step?.faseCurrent;
+  const currentIdx = faseCurrent ? FASE_SEQ.indexOf(faseCurrent) : -1;
+  const targetIdx = FASE_SEQ.indexOf(nuovaFase);
+  const isForward = targetIdx > currentIdx;
 
   // 1. Aggiorna sempre la fase del CLP
   await supabase.from('contenuti').update({ fase: nuovaFase }).eq('id', contenutoId);
 
-  if (!isStepCompletion) {
+  // Se stiamo andando INDIETRO, non completare il task corrente
+  if (!isForward) {
     return { completatoTask: false, taskCreato: false, driveTriggered: false };
   }
 
-  // 2. Completa il task corrente
+  // 2. Completa il task corrente (e tutti i task di fasi precedenti rimasti aperti)
   await supabase.from('task').update({ stato: 'Completato' }).eq('id', taskId);
+
+  // Completa anche eventuali task orfani di fasi precedenti
+  const FASE_TIPO_MAP: Record<string, string> = {
+    'Girato': 'Premontaggio', 'Pre montato': 'Montaggio', 'Montato': 'Upload esportato',
+    'Uploadato': 'Revisione montaggio', 'Revisionato': 'Programmazione',
+  };
+  for (let i = 0; i < targetIdx; i++) {
+    const prevTipo = FASE_TIPO_MAP[FASE_SEQ[i]];
+    if (prevTipo) {
+      await supabase.from('task')
+        .update({ stato: 'Completato' })
+        .eq('id_contenuto', contenutoId)
+        .eq('tipo', prevTipo)
+        .neq('stato', 'Completato')
+        .neq('stato', 'Archiviato');
+    }
+  }
 
   // 3. Prendi contenuto fresco
   const { data: contenuto } = await supabase
@@ -317,25 +341,50 @@ export async function avanzaFaseDaTask(
 
   if (!contenuto) return { completatoTask: true, taskCreato: false, driveTriggered: false };
 
-  // 4. Crea il task successivo (se c'è)
+  // 4. Trova il task che dovrebbe "vivere" nella nuova fase e crealo
+  // Es: fase Uploadato → task tipo "Revisione montaggio"
+  const tipoNuovaFase = FASE_TIPO_MAP[nuovaFase];
   let newTask = null;
-  if (step.tipoNext) {
-    const assegnatoA = findMembro(team, step.assegnatoKeyword);
-    newTask = await creaTaskWorkflow(
-      contenuto as Contenuto,
-      assegnatoA,
-      step.tipoNext,
-      step.descrizioneNext(contenuto as Contenuto),
-      'Da fare',
-    );
-    // Se è Upload esportato, aggiungi nota con percorso Drive
-    if (step.tipoNext === 'Upload esportato' && newTask) {
-      const slug = (contenuto as Contenuto).titolo.replace(/\s+/g, '-').slice(0, 40);
-      const folderPath = `SKORPIO_Clip/${(contenuto as Contenuto).cliente_nome}/${(contenuto as Contenuto).id_display}_${slug}/file_esportato/`;
-      const driveNote = contenuto.link_drive
-        ? `📂 Carica il file esportato nella cartella "file_esportato/" su Google Drive:\n${contenuto.link_drive}\n\nPercorso: ${folderPath}`
-        : `📂 Carica il file esportato nella sezione Riprese del CLP ${(contenuto as Contenuto).id_display}, zona "File esportato".\n\nPercorso Drive: ${folderPath}`;
-      await supabase.from('task').update({ note: driveNote }).eq('id', newTask.id);
+  if (tipoNuovaFase) {
+    // Controlla se esiste già un task aperto di questo tipo
+    const { data: existing } = await supabase.from('task')
+      .select('id')
+      .eq('id_contenuto', contenutoId)
+      .eq('tipo', tipoNuovaFase)
+      .neq('stato', 'Completato')
+      .neq('stato', 'Archiviato')
+      .limit(1);
+
+    if (!existing || existing.length === 0) {
+      // Trova il WORKFLOW_MAP entry per il tipo che stiamo creando
+      // Es: tipoNuovaFase = 'Revisione montaggio' → WORKFLOW_MAP['Revisione montaggio']
+      const wfStep = WORKFLOW_MAP[tipoNuovaFase];
+      if (wfStep) {
+        const assegnatoA = findMembro(team, wfStep.assegnatoKeyword);
+        const c = contenuto as Contenuto;
+        const desc = `${wfStep.emojiNext || '📋'} ${tipoNuovaFase} ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`;
+        newTask = await creaTaskWorkflow(c, assegnatoA, tipoNuovaFase, desc, 'Da fare');
+      } else {
+        // Fallback per tipi senza entry in WORKFLOW_MAP (es: step iniziale)
+        const wfEntry = Object.entries(WORKFLOW_MAP).find(([, v]) => v.faseCurrent === nuovaFase);
+        if (wfEntry) {
+          const [, entryStep] = wfEntry;
+          const assegnatoA = findMembro(team, entryStep.assegnatoKeyword);
+          const c = contenuto as Contenuto;
+          const desc = `${entryStep.emojiNext || '📋'} ${tipoNuovaFase} ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`;
+          newTask = await creaTaskWorkflow(c, assegnatoA, tipoNuovaFase, desc, 'Da fare');
+        }
+      }
+
+      // Se è Upload esportato, aggiungi nota con percorso Drive
+      if (tipoNuovaFase === 'Upload esportato' && newTask) {
+        const slug = (contenuto as Contenuto).titolo.replace(/\s+/g, '-').slice(0, 40);
+        const folderPath = `SKORPIO_Clip/${(contenuto as Contenuto).cliente_nome}/${(contenuto as Contenuto).id_display}_${slug}/file_esportato/`;
+        const driveNote = contenuto.link_drive
+          ? `📂 Carica il file esportato nella cartella "file_esportato/" su Google Drive:\n${contenuto.link_drive}\n\nPercorso: ${folderPath}`
+          : `📂 Carica il file esportato nella sezione Riprese del CLP ${(contenuto as Contenuto).id_display}, zona "File esportato".\n\nPercorso Drive: ${folderPath}`;
+        await supabase.from('task').update({ note: driveNote }).eq('id', newTask.id);
+      }
     }
   }
 
