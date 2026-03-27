@@ -490,7 +490,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
 
       return faseReale === faseCLP && tipoColonna === t.tipo && t.stato !== 'Completato';
-    }).sort((a, b) => ((a as any).posizione ?? 0) - ((b as any).posizione ?? 0));
+    }).sort((a, b) => (a.posizione ?? 0) - (b.posizione ?? 0));
   };
 
   // ── Drag over task (vertical reorder indicator) ─────────────────────────────
