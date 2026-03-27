@@ -689,7 +689,9 @@ export async function syncMissingWorkflowTasks(): Promise<number> {
         .eq('tipo', info.tipo)
         .eq('stato', 'Completato');
 
-      if (completed && completed.length > 0) continue;
+      // Se esiste già un task completato della fase corrente ma il CLP è ANCORA in questa fase,
+      // significa che il task successivo non è stato creato correttamente: ricrealo comunque.
+      // Quindi non facciamo continue qui.
 
       const assegnatoA = findMembro(team, info.keyword);
       const labelMap: Record<string, string> = {
