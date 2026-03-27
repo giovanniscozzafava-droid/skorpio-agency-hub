@@ -490,7 +490,69 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
 
       return faseReale === faseCLP && tipoColonna === t.tipo && t.stato !== 'Completato';
+    }).sort((a, b) => ((a as any).posizione ?? 0) - ((b as any).posizione ?? 0));
+  };
+
+  // ── Drag over task (vertical reorder indicator) ─────────────────────────────
+  const handleDragOverTask = (e: React.DragEvent, taskId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!dragItem || dragItem === taskId) {
+      setDragOverTaskId(null);
+      setDragOverPos(null);
+      return;
+    }
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    const pos = e.clientY < midY ? 'above' : 'below';
+    setDragOverTaskId(taskId);
+    setDragOverPos(pos);
+  };
+
+  // ── Drop on task (vertical reorder within column) ───────────────────────────
+  const handleDropOnTask = async (targetTaskId: string, columnTasks: Task[]) => {
+    if (!dragItem || dragItem === targetTaskId) return;
+    const draggedTask = tasks.find(t => t.id === dragItem);
+    const targetTask = tasks.find(t => t.id === targetTaskId);
+    if (!draggedTask || !targetTask) return;
+
+    // Only reorder within same column (same stato for standard, same fase for CLP)
+    const sameColumn = draggedTask.stato === targetTask.stato &&
+      (draggedTask.id_contenuto ? clpFasi[draggedTask.id_contenuto || ''] === clpFasi[targetTask.id_contenuto || ''] : true);
+    if (!sameColumn) return;
+
+    setDragOverTaskId(null);
+    setDragOverPos(null);
+    setDropTarget(null);
+
+    // Build new order
+    const ordered = columnTasks.filter(t => t.id !== dragItem);
+    const targetIdx = ordered.findIndex(t => t.id === targetTaskId);
+    const insertIdx = dragOverPos === 'above' ? targetIdx : targetIdx + 1;
+    ordered.splice(insertIdx, 0, draggedTask);
+
+    // Update posizione locally
+    const updates: { id: string; posizione: number }[] = [];
+    ordered.forEach((t, i) => {
+      updates.push({ id: t.id, posizione: i });
     });
+
+    isMyAction.current = true;
+    setTasks(prev => {
+      const copy = [...prev];
+      for (const u of updates) {
+        const idx = copy.findIndex(t => t.id === u.id);
+        if (idx >= 0) (copy[idx] as any).posizione = u.posizione;
+      }
+      return copy;
+    });
+
+    // Save to DB
+    for (const u of updates) {
+      await supabase.from('task').update({ posizione: u.posizione } as any).eq('id', u.id);
+    }
+    sounds.drop();
+    setDragItem(null);
   };
 
   // ── Drag standard (stato → stato) ──────────────────────────────────────────
