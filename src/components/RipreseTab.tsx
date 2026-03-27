@@ -395,10 +395,21 @@ function NuovaClipModal({ clienti, team, contenuti, onClose, onCreated, onClipUp
         .single();
       const fasePrecedente = ['Idea', 'Script'];
       if (clpData && fasePrecedente.includes(clpData.fase)) {
-        await supabase
-          .from('contenuti')
-          .update({ fase: 'Girato' })
-          .eq('id', contenutoId);
+        // [OLD - replaced by FaseService]
+        // await supabase.from('contenuti').update({ fase: 'Girato' }).eq('id', contenutoId);
+
+        // [NEW - FaseService centralizzato]
+        console.log('[Step2b] auto-avanzamento a Girato via FaseService', { contenutoId });
+        const result = await cambiaFaseCLP({
+          contenutoId,
+          nuovaFase: 'Girato',
+          source: 'riprese',
+          userId: utente?.id || 'unknown',
+        });
+        console.log('[Step2b] risultato:', result);
+        if (!result.success) {
+          addToast('⚠️ Errore avanzamento a Girato: ' + result.errors.join(', '), 'warn');
+        }
       }
     }
 

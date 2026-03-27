@@ -495,10 +495,20 @@ export async function completaTaskEAvanzaFase(
     await completaTaskPerContenuto(contenutoId, 'Upload esportato');
   }
 
-  await supabase
-    .from('contenuti')
-    .update({ fase: faseNext })
-    .eq('id', contenutoId);
+  // [OLD - replaced by FaseService]
+  // await supabase.from('contenuti').update({ fase: faseNext }).eq('id', contenutoId);
+
+  // [NEW - FaseService centralizzato]
+  const { cambiaFaseCLP } = await import('../services/faseService');
+  console.log('[Step2c] completaTaskEAvanzaFase via FaseService', { contenutoId, faseNext });
+  const faseResult = await cambiaFaseCLP({
+    contenutoId,
+    nuovaFase: faseNext,
+    source: 'kanban',
+    userId: teamId || 'workflow',
+    taskIdCompletato: undefined, // task già completato sopra
+  });
+  console.log('[Step2c] risultato:', faseResult);
 
   if (stepForNextTask.tipoNext) {
     const assegnatoA = findMembro(team, stepForNextTask.assegnatoKeyword);
