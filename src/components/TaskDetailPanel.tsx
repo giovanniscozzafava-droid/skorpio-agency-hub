@@ -960,14 +960,14 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
               </p>
 
               {/* Video preview del file esportato */}
-              {contenutoRevisione?.drive_export_folder_id && utente?.id && (
+              {exportedFileId && utente?.id && (
                 <div className="mb-3">
                   <p className="text-[11px] text-muted-foreground mb-1.5">📹 Anteprima file esportato</p>
                   <video
                     controls
                     className="w-full rounded-lg border border-border"
                     style={{ maxHeight: 200 }}
-                    src={`${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${contenutoRevisione.drive_export_folder_id}&teamId=${utente.id}`}
+                    src={`${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${exportedFileId}&teamId=${utente.id}`}
                   >
                     Il tuo browser non supporta il player video.
                   </video>
