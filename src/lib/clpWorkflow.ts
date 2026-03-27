@@ -105,14 +105,14 @@ export const WORKFLOW_MAP: Record<string, WorkflowStep> = {
   },
   'Upload esportato': {
     faseCurrent: 'Montato',
-    faseNext: 'Caricato',
+    faseNext: 'Uploadato',
     tipoNext: 'Revisione montaggio',
     assegnatoKeyword: 'Elisa',
     emojiNext: '👁️',
     descrizioneNext: c => `👁️ Revisione ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
   },
   'Revisione montaggio': {
-    faseCurrent: 'Caricato',
+    faseCurrent: 'Uploadato',
     faseNext: 'Revisionato',
     tipoNext: 'Programmazione',
     assegnatoKeyword: 'Elisa',

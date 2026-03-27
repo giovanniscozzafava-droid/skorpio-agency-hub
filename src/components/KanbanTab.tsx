@@ -127,7 +127,7 @@ const TIPO_PER_FASE: Record<string, string> = {
   'Girato':      'Premontaggio',
   'Pre montato': 'Montaggio',
   'Montato':     'Upload esportato',
-  'Caricato':    'Revisione montaggio',
+  'Uploadato':   'Revisione montaggio',
   'Revisionato': 'Programmazione',
 };
 
