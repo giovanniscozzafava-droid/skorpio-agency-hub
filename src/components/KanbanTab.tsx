@@ -456,7 +456,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       if (!faseReale) return false;
 
       if (faseCLP === 'Programmato') {
-        return faseReale === 'Programmato' && t.tipo === 'Programmazione' && t.stato !== 'Completato';
+        return faseReale === 'Programmato' && t.tipo === 'Programmazione';
       }
 
       if (faseCLP === 'Pubblicato') {
