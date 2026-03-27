@@ -85,6 +85,7 @@ function vibrato(
     gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
     lfo.start(t0); lfo.stop(t0 + duration + 0.05);
     osc.start(t0); osc.stop(t0 + duration + 0.05);
+    activeNodes.push(osc, lfo);
   } catch (_) {}
 }
 
