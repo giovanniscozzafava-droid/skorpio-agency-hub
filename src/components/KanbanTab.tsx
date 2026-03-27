@@ -240,7 +240,14 @@ function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEn
         </p>
       )}
 
-      {task.scadenza ? (
+      {pubDate?.data ? (
+        <div className="mt-1.5">
+          <p className="text-[9px] font-bold uppercase tracking-wider mb-0.5" style={{ color: '#7C3AED', opacity: 0.7 }}>
+            📡 Pubblicazione
+          </p>
+          <LiveClock scadenza={pubDate.data} ora={pubDate.ora} />
+        </div>
+      ) : task.scadenza ? (
         <LiveClock scadenza={task.scadenza} ora={task.ora} />
       ) : scad ? (
         <div
