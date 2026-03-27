@@ -528,7 +528,14 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
           </div>
           <div className="grid grid-cols-2 gap-3 mt-3">
             <LabelSelect label="🎬 Stile" field="stile" options={['Commedia', 'Storytelling', 'Trend', 'Ispirazione', 'Divulgativo', 'Tutorial', 'Behind the scenes', 'Talking head', 'Testimonial', 'Before/After', 'Unboxing', 'ASMR', 'Vlog', 'Altro']} />
-            <LabelInput label="🔗 Link ispirazione" field="link_ispirazione" placeholder="https://instagram.com/reel/..." />
+            <div>
+              <LabelInput label="🔗 Link ispirazione" field="link_ispirazione" placeholder="https://instagram.com/reel/..." />
+              {form.link_ispirazione && form.link_ispirazione.startsWith('http') && (
+                <a href={form.link_ispirazione} target="_blank" rel="noopener noreferrer" className="text-xs mt-1 inline-flex items-center gap-1 hover:underline" style={{ color: '#3B82F6' }}>
+                  ↗ Apri link
+                </a>
+              )}
+            </div>
           </div>
 
           {/* ─── CREATIVITÀ ─── */}
