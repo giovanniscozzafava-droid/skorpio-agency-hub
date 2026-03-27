@@ -5,6 +5,7 @@ import { useApp } from '../context/AppContext';
 import { useUpload } from '../context/UploadContext';
 import type { LogRipresa, Cliente, TeamMember, Contenuto, Task } from '../types';
 import { WORKFLOW_STEPS_ORDER } from '../lib/clpWorkflow';
+import { cambiaFaseCLP } from '../services/faseService';
 import { ClipFileUpload, FileStatusDot, formatBytes } from './ClipFileUpload';
 import { ClipReviewModal } from './ClipReviewModal';
 import { BulkUploadModal, AutoCleanupDialog } from './DriveStorageIndicator';
