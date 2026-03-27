@@ -47,6 +47,15 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
     <>
       {/* Top bar */}
       <div className="skorpio-topbar">
+        {/* Hamburger — mobile only */}
+        <button
+          onClick={() => setShowDrawer(true)}
+          className="lg:hidden p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0"
+          aria-label="Menu"
+        >
+          <Menu size={22} />
+        </button>
+
         {/* Logo */}
         <div className="flex items-center gap-2 mr-4 flex-shrink-0">
           <span className="text-xl">🦂</span>
