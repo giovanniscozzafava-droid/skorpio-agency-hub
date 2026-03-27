@@ -1810,7 +1810,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
         </button>
       </div>
 
-      {/* Table */}
+      {/* Table / Card List */}
       <div className="flex-1 overflow-auto">
         {loading ? (
           <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
@@ -1820,6 +1820,86 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
           <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
             <div className="text-4xl mb-2">🎬</div>
             <p className="text-sm">Nessuna clip trovata</p>
+          </div>
+        ) : isMobile ? (
+          /* ── MOBILE: Card List ── */
+          <div className="space-y-3 p-3">
+            {groupedRows.map(group => {
+              const { key, clp, clips: groupClips } = group;
+              const firstClip = groupClips[0];
+              const codes = groupClips.map(c => c.id_clip);
+              const statoCounts = groupClips.reduce((acc, c) => {
+                acc[c.stato] = (acc[c.stato] || 0) + 1;
+                return acc;
+              }, {} as Record<string, number>);
+              const operatori = [...new Set(groupClips.map(c => c.operatore).filter(Boolean))];
+
+              return (
+                <div
+                  key={key}
+                  className="sk-card p-3 active:bg-muted/40"
+                  onClick={() => setDetailClip(firstClip)}
+                >
+                  {/* Header: CLP + Cliente */}
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {clp && (
+                        <span className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded flex-shrink-0">
+                          {clp.id_display}
+                        </span>
+                      )}
+                      <span className="text-xs font-medium truncate" style={{ color: 'hsl(var(--skorpio-text-secondary))' }}>
+                        {firstClip.cliente_nome || '—'}
+                      </span>
+                    </div>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        setDetailClip(firstClip);
+                      }}
+                      className="text-muted-foreground text-lg min-w-[44px] min-h-[44px] flex items-center justify-center"
+                    >
+                      ⋮
+                    </button>
+                  </div>
+
+                  {/* Title */}
+                  <p className="text-sm font-medium mb-2 leading-snug" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
+                    {clp?.titolo || firstClip.titolo || '—'}
+                  </p>
+
+                  {/* Stato + Fase */}
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {Object.entries(statoCounts).map(([stato, cnt]) => {
+                      const cfg = STATO_CFG[stato] || STATO_CFG['Grezza'];
+                      return (
+                        <span key={stato}
+                          className="inline-flex items-center gap-0.5 px-2 py-1 rounded-full text-xs font-semibold border min-h-[32px]"
+                          style={{ background: cfg.bg, color: cfg.text, borderColor: cfg.border }}>
+                          {cnt > 1 && <span>{cnt}×</span>} {stato}
+                        </span>
+                      );
+                    })}
+                    {clp && <FaseBadge fase={clp.fase} />}
+                  </div>
+
+                  {/* Bottom row: operatore + clips count */}
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>👤 {operatori.join(', ') || '—'}</span>
+                    <span className="font-mono">{codes.length} clip · {codes.slice(0, 3).join('-')}{codes.length > 3 ? '…' : ''}</span>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Mobile FAB */}
+            <button
+              onClick={() => setShowNuova(true)}
+              className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-2xl text-white"
+              style={{ background: 'hsl(var(--clr-blue))' }}
+            >
+              +
+            </button>
           </div>
         ) : (
           <table className="w-full border-collapse">
