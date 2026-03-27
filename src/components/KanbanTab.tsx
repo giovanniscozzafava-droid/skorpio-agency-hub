@@ -285,6 +285,7 @@ interface RealtimeEvent {
 // ─── Main component ───────────────────────────────────────────────────────────
 export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   const { utente, addToast } = useApp();
+  const isMobile = useIsMobile();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -300,6 +301,9 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [clpFasi, setClpFasi] = useState<Record<string, string>>({});
   const [clpPubDates, setClpPubDates] = useState<Record<string, { data: string | null; ora: string | null }>>({});
+  // Mobile: which column to show
+  const [mobileCol, setMobileCol] = useState('Da fare');
+  const [mobileCLPCol, setMobileCLPCol] = useState('Girato');
 
   const pendingEventsRef = useRef<RealtimeEvent[]>([]);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
