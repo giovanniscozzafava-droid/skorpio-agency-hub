@@ -227,17 +227,22 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
       .then(({ data }) => {
         if (data) setContenutoRevisione(data as Contenuto);
       });
-    // Load exported file ID from log_riprese for video preview
+    // Load ALL exported files from log_riprese for version history
     supabase
       .from('log_riprese')
-      .select('exported_file_id')
+      .select('id, exported_file_id, exported_file_name, exported_file_uploaded_at')
       .eq('contenuto_id', task.id_contenuto)
       .not('exported_file_id', 'is', null)
-      .order('riga', { ascending: true })
-      .limit(1)
+      .order('exported_file_uploaded_at', { ascending: true })
       .then(({ data }) => {
-        if (data && data.length > 0 && data[0].exported_file_id) {
-          setExportedFileId(data[0].exported_file_id);
+        if (data && data.length > 0) {
+          setExportedFileId(data[data.length - 1].exported_file_id);
+          setAllExportedFiles(data.map(d => ({
+            id: d.id,
+            fileId: d.exported_file_id!,
+            fileName: d.exported_file_name || 'export',
+            uploadedAt: d.exported_file_uploaded_at || '',
+          })));
         }
       });
   }, [task.id_contenuto]);
