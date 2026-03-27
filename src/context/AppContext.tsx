@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import type { Session } from '@supabase/supabase-js';
 import type { TeamMember } from '../types';
 import { supabase } from '../integrations/supabase/client';
-import { checkAutoPubblica } from '../lib/clpWorkflow';
+import { checkAutoPubblica, syncMissingWorkflowTasks } from '../lib/clpWorkflow';
 
 interface AppContextType {
   utente: TeamMember | null;
