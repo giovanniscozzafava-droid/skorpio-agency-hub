@@ -51,7 +51,7 @@ function MainApp() {
   }).length;
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'hsl(var(--skorpio-bg))' }}>
+    <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'hsl(var(--skorpio-bg))' }} data-build="publish-refresh-2026-03-27-1728">
       <TopBar
         team={team}
         taskCounts={{ daFare, urgenti, scaduti }}
