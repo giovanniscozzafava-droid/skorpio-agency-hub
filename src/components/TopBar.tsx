@@ -8,6 +8,8 @@ import { NotificheDropdown } from './NotificheDropdown';
 import { useNotifiche } from '@/hooks/useNotifiche';
 import { DriveStorageIndicator } from './DriveStorageIndicator';
 import { UploadIndicator } from './UploadIndicator';
+import { MobileDrawer } from './MobileDrawer';
+import { Menu } from 'lucide-react';
 
 interface TopBarProps {
   team: TeamMember[];
