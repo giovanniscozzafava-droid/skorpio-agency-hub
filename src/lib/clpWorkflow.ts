@@ -629,6 +629,7 @@ export async function syncMissingWorkflowTasks(): Promise<number> {
       const labelMap: Record<string, string> = {
         'Premontaggio': 'Pre montaggio',
         'Montaggio': 'Montaggio',
+        'Upload esportato': 'Upload esportato',
         'Revisione montaggio': 'Revisione',
         'Programmazione': 'Programmazione',
       };
