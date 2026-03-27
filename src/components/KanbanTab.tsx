@@ -542,7 +542,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       const copy = [...prev];
       for (const u of updates) {
         const idx = copy.findIndex(t => t.id === u.id);
-        if (idx >= 0) (copy[idx] as any).posizione = u.posizione;
+        if (idx >= 0) copy[idx] = { ...copy[idx], posizione: u.posizione };
       }
       return copy;
     });
