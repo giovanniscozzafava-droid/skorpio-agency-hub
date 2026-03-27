@@ -225,6 +225,19 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
       .then(({ data }) => {
         if (data) setContenutoRevisione(data as Contenuto);
       });
+    // Load exported file ID from log_riprese for video preview
+    supabase
+      .from('log_riprese')
+      .select('exported_file_id')
+      .eq('contenuto_id', task.id_contenuto)
+      .not('exported_file_id', 'is', null)
+      .order('riga', { ascending: true })
+      .limit(1)
+      .then(({ data }) => {
+        if (data && data.length > 0 && data[0].exported_file_id) {
+          setExportedFileId(data[0].exported_file_id);
+        }
+      });
   }, [task.id_contenuto]);
 
   const handleApprovaRevisione = async () => {
