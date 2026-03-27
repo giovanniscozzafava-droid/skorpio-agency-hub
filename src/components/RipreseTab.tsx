@@ -1610,52 +1610,54 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
 
       {/* Toolbar */}
       <div className="flex-shrink-0 border-b border-border bg-card">
-        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
-          <select
-            className="border border-border rounded-md px-2.5 py-1.5 text-xs bg-background text-foreground focus:outline-none"
-            value={filtroStato}
-            onChange={e => setFiltroStato(e.target.value)}
-          >
-            <option value="">Tutti gli stati</option>
-            {STATI.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
+        <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 px-4 py-2.5">
+          <div className="flex flex-wrap gap-2">
+            <select
+              className="border border-border rounded-md px-2.5 py-1.5 text-xs bg-background text-foreground focus:outline-none flex-1 sm:flex-none min-w-0"
+              value={filtroStato}
+              onChange={e => setFiltroStato(e.target.value)}
+            >
+              <option value="">Tutti gli stati</option>
+              {STATI.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
 
-          <select
-            className="border border-border rounded-md px-2.5 py-1.5 text-xs bg-background text-foreground focus:outline-none max-w-[190px]"
-            value={filtroCliente}
-            onChange={e => setFiltroCliente(e.target.value)}
-          >
-            <option value="">Tutti i clienti</option>
-            {clienti.map(c => {
-              const count = clips.filter(cl => cl.cliente_id === c.id || cl.cliente_nome === c.nome).length;
-              return (
-                <option key={c.id} value={c.nome}>
-                  {c.nome}{count > 0 ? ` (${count})` : ''}
-                </option>
-              );
-            })}
-          </select>
-
-          <select
-            className="border border-border rounded-md px-2.5 py-1.5 text-xs bg-background text-foreground focus:outline-none max-w-[150px]"
-            value={filtroOperatore}
-            onChange={e => setFiltroOperatore(e.target.value)}
-          >
-            <option value="">Tutti gli operatori</option>
-            {team
-              .filter(t => clips.some(cl => cl.operatore === t.nome))
-              .map(t => {
-                const count = clips.filter(cl => cl.operatore === t.nome).length;
+            <select
+              className="border border-border rounded-md px-2.5 py-1.5 text-xs bg-background text-foreground focus:outline-none flex-1 sm:flex-none min-w-0 max-w-full sm:max-w-[190px]"
+              value={filtroCliente}
+              onChange={e => setFiltroCliente(e.target.value)}
+            >
+              <option value="">Tutti i clienti</option>
+              {clienti.map(c => {
+                const count = clips.filter(cl => cl.cliente_id === c.id || cl.cliente_nome === c.nome).length;
                 return (
-                  <option key={t.id} value={t.nome}>
-                    {t.nome} ({count})
+                  <option key={c.id} value={c.nome}>
+                    {c.nome}{count > 0 ? ` (${count})` : ''}
                   </option>
                 );
               })}
-          </select>
+            </select>
+
+            <select
+              className="border border-border rounded-md px-2.5 py-1.5 text-xs bg-background text-foreground focus:outline-none flex-1 sm:flex-none min-w-0 max-w-full sm:max-w-[150px]"
+              value={filtroOperatore}
+              onChange={e => setFiltroOperatore(e.target.value)}
+            >
+              <option value="">Tutti gli operatori</option>
+              {team
+                .filter(t => clips.some(cl => cl.operatore === t.nome))
+                .map(t => {
+                  const count = clips.filter(cl => cl.operatore === t.nome).length;
+                  return (
+                    <option key={t.id} value={t.nome}>
+                      {t.nome} ({count})
+                    </option>
+                  );
+                })}
+            </select>
+          </div>
 
           <input
-            className="border border-border rounded-md px-2.5 py-1.5 text-xs bg-background text-foreground focus:outline-none w-36"
+            className="border border-border rounded-md px-2.5 py-1.5 text-xs bg-background text-foreground focus:outline-none w-full sm:w-36"
             placeholder="🔍 Cerca clip…"
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -1665,7 +1667,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
             {groupedRows.length} CLP · {filtered.length} / {clips.length} clip
           </span>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="flex items-center gap-2 sm:ml-auto">
             <button
               onClick={() => setShowReport(v => !v)}
               className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-all ${showReport ? 'bg-[hsl(var(--clr-blue))] text-white border-[hsl(var(--clr-blue))]' : 'border-border hover:bg-muted text-foreground'}`}
@@ -1674,14 +1676,14 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
             </button>
             <button
               onClick={() => setShowBulkUpload(true)}
-              className="px-3 py-1.5 rounded-md border border-border hover:bg-muted text-foreground text-xs font-medium transition-colors"
+              className="px-3 py-1.5 rounded-md border border-border hover:bg-muted text-foreground text-xs font-medium transition-colors hidden sm:inline-flex"
               title="Upload clip multiple da Google Drive"
             >
               ☁️ Upload Clip
             </button>
             <button
               onClick={() => setShowNuova(true)}
-              className="px-4 py-1.5 rounded-md bg-[hsl(var(--clr-blue))] text-white text-xs font-semibold hover:opacity-90 transition-opacity"
+              className="px-4 py-1.5 rounded-md bg-[hsl(var(--clr-blue))] text-white text-xs font-semibold hover:opacity-90 transition-opacity hidden sm:inline-flex"
             >
               + Nuova Clip
             </button>
