@@ -161,7 +161,7 @@ interface TaskCardProps {
   dropIndicator?: 'above' | 'below' | null;
 }
 
-function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate }: TaskCardProps) {
+function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate, onDragOverTask, dropIndicator }: TaskCardProps) {
   const scad = scadenzaInfo(task);
   const isScaduto = scad?.label.includes('SCADUTO');
   const member = team.find(m => m.nome === task.assegnato_a);
@@ -175,6 +175,7 @@ function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEn
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
+      onDragOver={onDragOverTask}
       onClick={onClick}
       style={{
         borderLeft: `3px solid ${PRIORITA_COLOR[task.priorita] || '#64748B'}`,
@@ -185,6 +186,8 @@ function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEn
           animation: 'taskHighlight 3s ease-out forwards',
         } : {}),
         ...(isAssignedToMe ? { boxShadow: '0 0 0 1px rgba(59,130,246,0.2)' } : {}),
+        ...(dropIndicator === 'above' ? { borderTop: '3px solid hsl(var(--primary))' } : {}),
+        ...(dropIndicator === 'below' ? { borderBottom: '3px solid hsl(var(--primary))' } : {}),
       }}
     >
       <div className="flex items-center gap-1.5 mb-1">
