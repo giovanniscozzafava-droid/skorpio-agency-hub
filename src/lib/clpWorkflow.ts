@@ -402,19 +402,39 @@ export async function completaTaskEAvanzaFase(
 }
 
 /**
- * Check all'avvio: CLPs in stato "Programmato" con data_pubblicazione <= oggi
- * vengono portati a "Pubblicato" e il task Programmazione di Elisa viene completato.
+ * Helper: controlla se un CLP programmato con data+ora è pronto per la pubblicazione.
+ * Richiede OBBLIGATORIAMENTE ora_pubblicazione — senza orario resta Programmato.
+ */
+function isProntoPerPubblicazione(dataPub: string | null, oraPub: string | null): boolean {
+  if (!dataPub || !oraPub) return false;
+  const now = new Date();
+  const scheduled = new Date(`${dataPub}T${oraPub.length === 5 ? oraPub + ':00' : oraPub}`);
+  return now >= scheduled;
+}
+
+/**
+ * Check periodico: CLPs in stato "Programmato" con data+ora passati
+ * vengono portati a "Pubblicato" e il task Programmazione/Pubblicazione viene completato.
+ * NOTA: senza ora_pubblicazione il CLP resta in Programmato.
  */
 export async function checkAutoPubblica(): Promise<number> {
   const oggi = toDateStr(new Date());
 
-  const { data: daPublicare } = await supabase
+  // Prendi tutti i CLPs programmati con data <= oggi (filtro orario fatto dopo in JS)
+  const { data: candidati } = await supabase
     .from('contenuti')
-    .select('id')
+    .select('id, data_pubblicazione, ora_pubblicazione')
     .eq('fase', 'Programmato')
     .lte('data_pubblicazione', oggi);
 
-  if (!daPublicare || daPublicare.length === 0) return 0;
+  if (!candidati || candidati.length === 0) return 0;
+
+  // Filtra solo quelli il cui orario è effettivamente passato
+  const daPublicare = candidati.filter(c =>
+    isProntoPerPubblicazione(c.data_pubblicazione, c.ora_pubblicazione)
+  );
+
+  if (daPublicare.length === 0) return 0;
 
   const ids = daPublicare.map(c => c.id);
 
@@ -422,6 +442,7 @@ export async function checkAutoPubblica(): Promise<number> {
 
   for (const { id } of daPublicare) {
     await completaTaskPerContenuto(id, 'Programmazione');
+    await completaTaskPerContenuto(id, 'Pubblicazione');
     try {
       const { data: contenuto } = await supabase.from('contenuti').select('*').eq('id', id).single();
       if (contenuto) {
