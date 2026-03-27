@@ -159,6 +159,13 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   const [oraPub, setOraPub] = useState<string>(task.ora ? task.ora.slice(0, 5) : '');
   const [savingProg, setSavingProg] = useState(false);
   const isProgrammazioneTask = task.tipo === 'Programmazione';
+  const isUploadTask = task.tipo === 'Upload esportato';
+
+  // ── Upload esportato state ─────────────────────────────────────────────────
+  const [uploadProgress, setUploadProgress] = useState<{ percent: number; fileName: string } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const { enqueue } = useUpload();
 
   const isCLPTask = !!(task.id_contenuto && WORKFLOW_MAP[task.tipo]);
   const workflowStep = WORKFLOW_MAP[task.tipo];
