@@ -450,7 +450,10 @@ export async function avanzaFaseDaTask(
   // 6. Se fase = Programmato e data+ora già passati → pubblica subito + cleanup
   if (nuovaFase === 'Programmato' && contenuto.data_pubblicazione && contenuto.ora_pubblicazione) {
     if (isProntoPerPubblicazione(contenuto.data_pubblicazione, contenuto.ora_pubblicazione)) {
-      await supabase.from('contenuti').update({ fase: 'Pubblicato' }).eq('id', contenutoId);
+      // [OLD] await supabase.from('contenuti').update({ fase: 'Pubblicato' }).eq('id', contenutoId);
+      const { cambiaFaseCLP: cambiaFase } = await import('../services/faseService');
+      console.log('[Step2c] auto-publish via FaseService', { contenutoId });
+      await cambiaFase({ contenutoId, nuovaFase: 'Pubblicato', source: 'workflow', userId: teamId || 'workflow' });
       await creaTaskCleanup(contenuto as Contenuto, team as any[]);
       return { completatoTask: true, taskCreato: !!newTask, driveTriggered };
     }
