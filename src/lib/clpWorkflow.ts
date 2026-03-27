@@ -9,6 +9,7 @@ import type { Contenuto, FaseCLP, TeamMember } from '../types';
 export const DEFAULT_LEAD_TIMES: Record<string, number> = {
   'Premontaggio': 5,
   'Montaggio': 3,
+  'Upload esportato': 2,
   'Revisione montaggio': 2,
   'Programmazione': 1,
   'Pubblicazione': 0,
@@ -97,13 +98,21 @@ export const WORKFLOW_MAP: Record<string, WorkflowStep> = {
   'Montaggio': {
     faseCurrent: 'Pre montato',
     faseNext: 'Montato',
+    tipoNext: 'Upload esportato',
+    assegnatoKeyword: 'Alessandro',
+    emojiNext: '📤',
+    descrizioneNext: c => `📤 Upload esportato ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
+  },
+  'Upload esportato': {
+    faseCurrent: 'Montato',
+    faseNext: 'Caricato',
     tipoNext: 'Revisione montaggio',
     assegnatoKeyword: 'Elisa',
     emojiNext: '👁️',
     descrizioneNext: c => `👁️ Revisione ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
   },
   'Revisione montaggio': {
-    faseCurrent: 'Montato',
+    faseCurrent: 'Caricato',
     faseNext: 'Revisionato',
     tipoNext: 'Programmazione',
     assegnatoKeyword: 'Elisa',
@@ -124,7 +133,8 @@ export const WORKFLOW_MAP: Record<string, WorkflowStep> = {
 export const WORKFLOW_STEPS_ORDER = [
   { fase: 'Girato', tipo: 'Premontaggio', label: 'Pre montaggio', emoji: '🎬', assegnato: 'Luca' },
   { fase: 'Pre montato', tipo: 'Montaggio', label: 'Montaggio', emoji: '✂️', assegnato: 'Alessandro' },
-  { fase: 'Montato', tipo: 'Revisione montaggio', label: 'Revisione', emoji: '👁️', assegnato: 'Elisa' },
+  { fase: 'Montato', tipo: 'Upload esportato', label: 'Upload esportato', emoji: '📤', assegnato: 'Alessandro' },
+  { fase: 'Caricato', tipo: 'Revisione montaggio', label: 'Revisione', emoji: '👁️', assegnato: 'Elisa' },
   { fase: 'Revisionato', tipo: 'Programmazione', label: 'Programmazione', emoji: '📅', assegnato: 'Elisa' },
   { fase: 'Programmato', tipo: '', label: 'Pubblicazione', emoji: '📤', assegnato: 'Elisa' },
   { fase: 'Pubblicato', tipo: 'Cleanup', label: 'Pubblicato', emoji: '✅', assegnato: '' },
@@ -318,6 +328,13 @@ export async function avanzaFaseDaTask(
       step.descrizioneNext(contenuto as Contenuto),
       'Da fare',
     );
+    // Se è Upload esportato, aggiungi nota con percorso Drive
+    if (step.tipoNext === 'Upload esportato' && newTask) {
+      const driveNote = contenuto.link_drive
+        ? `Carica il file esportato nella cartella "file_esportato/" su Google Drive:\n${contenuto.link_drive}`
+        : `Carica il file esportato nella sezione Riprese del CLP ${contenuto.id_display}, nella zona "File esportato".`;
+      await supabase.from('task').update({ note: driveNote }).eq('id', newTask.id);
+    }
   }
 
   // 5. Se la fase è Montato → triggera Drive
@@ -391,13 +408,20 @@ export async function completaTaskEAvanzaFase(
 
   if (step.tipoNext) {
     const assegnatoA = findMembro(team, step.assegnatoKeyword);
-    await creaTaskWorkflow(
+    const newTask = await creaTaskWorkflow(
       contenuto as Contenuto,
       assegnatoA,
       step.tipoNext,
       step.descrizioneNext(contenuto as Contenuto),
       'Da fare',
     );
+    // Se è Upload esportato, aggiungi nota con percorso Drive
+    if (step.tipoNext === 'Upload esportato' && newTask) {
+      const driveNote = contenuto.link_drive
+        ? `Carica il file esportato nella cartella "file_esportato/" su Google Drive:\n${contenuto.link_drive}`
+        : `Carica il file esportato nella sezione Riprese del CLP ${contenuto.id_display}, nella zona "File esportato".`;
+      await supabase.from('task').update({ note: driveNote }).eq('id', newTask.id);
+    }
   }
 
   // Se faseNext = Montato → triggera Drive
@@ -534,18 +558,20 @@ export async function creaTaskCleanup(contenuto: Contenuto, team: any[]): Promis
  * Chiamato all'avvio per recuperare CLPs entrati nel workflow prima dell'automazione.
  */
 export async function syncMissingWorkflowTasks(): Promise<number> {
-  const FASE_ORDER = ['Girato', 'Pre montato', 'Montato', 'Revisionato', 'Programmato', 'Pubblicato'];
+  const FASE_ORDER = ['Girato', 'Pre montato', 'Montato', 'Caricato', 'Revisionato', 'Programmato', 'Pubblicato'];
   const FASE_TO_TIPO: Record<string, { tipo: string; keyword: string; emoji: string }> = {
     'Girato': { tipo: 'Premontaggio', keyword: 'Luca', emoji: '🎬' },
     'Pre montato': { tipo: 'Montaggio', keyword: 'Alessandro', emoji: '✂️' },
-    'Montato': { tipo: 'Revisione montaggio', keyword: 'Elisa', emoji: '👁️' },
+    'Montato': { tipo: 'Upload esportato', keyword: 'Alessandro', emoji: '📤' },
+    'Caricato': { tipo: 'Revisione montaggio', keyword: 'Elisa', emoji: '👁️' },
     'Revisionato': { tipo: 'Programmazione', keyword: 'Elisa', emoji: '📅' },
   };
   // Mappa fase → tipo task di quella fase (per completare task di fasi precedenti)
   const FASE_TIPO_MAP: Record<string, string> = {
     'Girato': 'Premontaggio',
     'Pre montato': 'Montaggio',
-    'Montato': 'Revisione montaggio',
+    'Montato': 'Upload esportato',
+    'Caricato': 'Revisione montaggio',
     'Revisionato': 'Programmazione',
   };
 
@@ -617,6 +643,7 @@ export async function syncMissingWorkflowTasks(): Promise<number> {
       const labelMap: Record<string, string> = {
         'Premontaggio': 'Pre montaggio',
         'Montaggio': 'Montaggio',
+        'Upload esportato': 'Upload esportato',
         'Revisione montaggio': 'Revisione',
         'Programmazione': 'Programmazione',
       };
