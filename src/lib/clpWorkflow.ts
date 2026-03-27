@@ -315,6 +315,14 @@ export async function avanzaFaseDaTask(
   const targetIdx = FASE_SEQ.indexOf(nuovaFase);
   const isForward = targetIdx > currentIdx;
 
+  // BLOCCO: non si può andare a Uploadato o oltre senza un file esportato
+  if (targetIdx >= FASE_SEQ.indexOf('Uploadato')) {
+    const hasFile = await clpHasExportedFile(contenutoId);
+    if (!hasFile) {
+      throw new Error('Non puoi avanzare a questa fase senza aver prima caricato il file esportato.');
+    }
+  }
+
   // 1. Aggiorna sempre la fase del CLP
   await supabase.from('contenuti').update({ fase: nuovaFase }).eq('id', contenutoId);
 
