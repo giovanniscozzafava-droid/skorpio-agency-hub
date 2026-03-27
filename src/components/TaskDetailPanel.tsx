@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
-import { useUpload } from '../context/UploadContext';
+
 import { sounds } from '../lib/sounds';
 import { avanzaFaseDaTask, completaTaskEAvanzaFase, WORKFLOW_MAP, richiestaModifiche, approvaRevisione } from '../lib/clpWorkflow';
 import type { Task, TeamMember, FaseCLP, Contenuto } from '../types';
