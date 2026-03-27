@@ -356,32 +356,23 @@ export async function avanzaFaseDaTask(
       .limit(1);
 
     if (!existing || existing.length === 0) {
-      // Trova chi deve eseguire questo task
-      const stepForNewTask = Object.values(WORKFLOW_MAP).find(s => s.faseCurrent === nuovaFase);
-      if (stepForNewTask) {
-        const assegnatoA = findMembro(team, stepForNewTask.assegnatoKeyword);
-        newTask = await creaTaskWorkflow(
-          contenuto as Contenuto,
-          assegnatoA,
-          tipoNuovaFase,
-          stepForNewTask.descrizioneNext
-            ? `${stepForNewTask.emojiNext} ${tipoNuovaFase} ${(contenuto as Contenuto).id_display} – ${(contenuto as Contenuto).titolo}${(contenuto as Contenuto).cliente_nome ? ` (${(contenuto as Contenuto).cliente_nome})` : ''}`
-            : `${tipoNuovaFase} ${(contenuto as Contenuto).id_display}`,
-          'Da fare',
-        );
+      // Trova il WORKFLOW_MAP entry per il tipo che stiamo creando
+      // Es: tipoNuovaFase = 'Revisione montaggio' → WORKFLOW_MAP['Revisione montaggio']
+      const wfStep = WORKFLOW_MAP[tipoNuovaFase];
+      if (wfStep) {
+        const assegnatoA = findMembro(team, wfStep.assegnatoKeyword);
+        const c = contenuto as Contenuto;
+        const desc = `${wfStep.emojiNext || '📋'} ${tipoNuovaFase} ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`;
+        newTask = await creaTaskWorkflow(c, assegnatoA, tipoNuovaFase, desc, 'Da fare');
       } else {
-        // Fallback: usa WORKFLOW_MAP dal tipo della nuova fase
+        // Fallback per tipi senza entry in WORKFLOW_MAP (es: step iniziale)
         const wfEntry = Object.entries(WORKFLOW_MAP).find(([, v]) => v.faseCurrent === nuovaFase);
         if (wfEntry) {
-          const [wfTipo, wfStep] = wfEntry;
-          const assegnatoA = findMembro(team, wfStep.assegnatoKeyword);
-          newTask = await creaTaskWorkflow(
-            contenuto as Contenuto,
-            assegnatoA,
-            wfTipo,
-            wfStep.descrizioneNext(contenuto as Contenuto),
-            'Da fare',
-          );
+          const [, entryStep] = wfEntry;
+          const assegnatoA = findMembro(team, entryStep.assegnatoKeyword);
+          const c = contenuto as Contenuto;
+          const desc = `${entryStep.emojiNext || '📋'} ${tipoNuovaFase} ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`;
+          newTask = await creaTaskWorkflow(c, assegnatoA, tipoNuovaFase, desc, 'Da fare');
         }
       }
 
