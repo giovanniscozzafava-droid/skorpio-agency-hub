@@ -459,9 +459,26 @@
 
 /* ---- Responsive: Mobile & Tablet ---- */
 @media (max-width: 1023px) {
+  * {
+    max-width: 100vw;
+    box-sizing: border-box;
+  }
+
   /* When tabbar is hidden, reduce top padding */
   .pt-\[100px\] {
     padding-top: 56px !important;
+  }
+
+  /* Tables must not cause horizontal overflow */
+  table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  /* Detail panels full width on tablet */
+  .detail-panel {
+    width: 100% !important;
   }
 }
 
@@ -470,5 +487,18 @@
     gap: 6px;
     padding-left: 8px;
     padding-right: 8px;
+  }
+
+  /* Kanban columns: no horizontal scroll, full width */
+  .kanban-col {
+    min-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* Modals: full width bottom sheet style */
+  .sk-modal {
+    max-width: 100%;
+    border-radius: 1rem 1rem 0 0;
+    max-height: 95vh;
   }
 }
