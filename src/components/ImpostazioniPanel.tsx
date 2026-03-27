@@ -1049,6 +1049,39 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
           )}
 
           {/* ── SEZIONE AUDIT ── */}
+           {section === 'audit' && isAdmin && (
+            <div className="px-5 py-5 space-y-4 border-b" style={{ borderColor: 'hsl(var(--border))' }}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider"
+                  style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                  📸 Snapshot Dati
+                </h3>
+                <button
+                  onClick={runSnapshot}
+                  disabled={snapshotRunning}
+                  className="text-xs px-3 py-1.5 rounded-lg font-semibold text-white disabled:opacity-50"
+                  style={{ background: snapshotRunning ? '#94A3B8' : '#22C55E' }}
+                >
+                  {snapshotRunning ? '⏳ Conteggio…' : '📸 Snapshot dati'}
+                </button>
+              </div>
+              <div className="rounded-xl p-3 text-xs"
+                style={{ background: 'hsl(142 70% 45% / 0.08)', border: '1px solid hsl(142 70% 45% / 0.20)', color: 'hsl(142 50% 30%)' }}>
+                Conta i record nelle tabelle principali e salva uno snapshot per confronto futuro. Usa dopo ogni modifica critica.
+              </div>
+              {snapshotResult && (
+                <div className="grid grid-cols-2 gap-2">
+                  {Object.entries(snapshotResult).map(([table, count]) => (
+                    <div key={table} className="rounded-lg p-2.5 text-center"
+                      style={{ background: 'hsl(var(--muted))', border: '1px solid hsl(var(--border))' }}>
+                      <p className="text-xs font-bold" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>{count}</p>
+                      <p className="text-[10px] mt-0.5" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>{table}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {section === 'audit' && isAdmin && (
             <div className="px-5 py-5 space-y-4">
               <div className="flex items-center justify-between">
