@@ -283,8 +283,10 @@ export async function approvaRevisione(
   // Completa il task di revisione
   await completaTaskPerContenuto(contenuto.id, 'Revisione montaggio');
 
-  // Avanza a Revisionato
-  await supabase.from('contenuti').update({ fase: 'Revisionato' }).eq('id', contenuto.id);
+  // [OLD] await supabase.from('contenuti').update({ fase: 'Revisionato' }).eq('id', contenuto.id);
+  const { cambiaFaseCLP: cambiaFaseAR } = await import('../services/faseService');
+  console.log('[Step2c] approvaRevisione via FaseService', { id: contenuto.id });
+  await cambiaFaseAR({ contenutoId: contenuto.id, nuovaFase: 'Revisionato', source: 'workflow', userId: 'revisione' });
 
   // Crea task Programmazione per Elisa
   const nomeElisa = findMembro(team, 'Elisa');
