@@ -896,7 +896,7 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
                     className="flex items-center gap-3 p-3 rounded-xl border transition-all"
                     style={{ borderColor: 'hsl(var(--border))', background: 'hsl(var(--card))' }}
                   >
-                    <Avatar nome={m.nome} colore={m.colore} size={40} />
+                    <Avatar nome={m.nome} colore={m.colore} size={40} avatarUrl={m.avatar_url} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-sm truncate"

@@ -131,7 +131,7 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
                   outlineOffset: 2,
                 }}
               >
-                <Avatar nome={m.nome} colore={m.colore} size={28} />
+                <Avatar nome={m.nome} colore={m.colore} size={28} avatarUrl={m.avatar_url} />
               </button>
             ))}
           </div>
