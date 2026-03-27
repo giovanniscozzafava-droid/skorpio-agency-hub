@@ -24,6 +24,7 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
   const [orologio, setOrologio] = useState(new Date());
   const [showImpostazioni, setShowImpostazioni] = useState(false);
   const [showNotifiche, setShowNotifiche] = useState(false);
+  const [showDrawer, setShowDrawer] = useState(false);
   const { nonLette } = useNotifiche(utente?.nome ?? null);
 
   useEffect(() => {
