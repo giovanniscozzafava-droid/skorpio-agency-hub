@@ -203,6 +203,58 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
     setDeletingCleanup(false);
   };
 
+  // Load contenuto for Revisione tasks (video preview + approve/reject)
+  useEffect(() => {
+    if (!task.id_contenuto) return;
+    supabase
+      .from('contenuti')
+      .select('*')
+      .eq('id', task.id_contenuto)
+      .single()
+      .then(({ data }) => {
+        if (data) setContenutoRevisione(data as Contenuto);
+      });
+  }, [task.id_contenuto]);
+
+  const handleApprovaRevisione = async () => {
+    if (!contenutoRevisione) return;
+    setSavingRevisione(true);
+    try {
+      await approvaRevisione(contenutoRevisione, team);
+      setClpFase('Revisionato');
+      setTaskCompletato(true);
+      sounds.taskCompletato();
+      addToast('✅ Revisione approvata → CLP avanzato a Revisionato — task Programmazione creato!', 'success');
+      const { data } = await supabase.from('task').select('*').eq('id', task.id).single();
+      if (data) onUpdate(data as Task);
+    } catch (err: any) {
+      addToast(`❌ Errore: ${err.message}`, 'error');
+    }
+    setSavingRevisione(false);
+  };
+
+  const handleRichiestaModifiche = async () => {
+    if (!contenutoRevisione || !noteModifiche.trim()) {
+      addToast('⚠️ Scrivi cosa va corretto', 'warn');
+      return;
+    }
+    setSavingRevisione(true);
+    try {
+      await richiestaModifiche(contenutoRevisione, team, noteModifiche.trim());
+      setClpFase('Pre montato');
+      setTaskCompletato(true);
+      sounds.salva();
+      addToast('🔄 Richiesta modifiche inviata → task Montaggio creato per Alessandro', 'success');
+      const { data } = await supabase.from('task').select('*').eq('id', task.id).single();
+      if (data) onUpdate(data as Task);
+      setShowModificheForm(false);
+      setNoteModifiche('');
+    } catch (err: any) {
+      addToast(`❌ Errore: ${err.message}`, 'error');
+    }
+    setSavingRevisione(false);
+  };
+
   useEffect(() => {
     if (!task.id_contenuto) return;
     supabase
