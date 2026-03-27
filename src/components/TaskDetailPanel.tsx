@@ -149,6 +149,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   const [noteModifiche, setNoteModifiche] = useState('');
   const [savingRevisione, setSavingRevisione] = useState(false);
   const [contenutoRevisione, setContenutoRevisione] = useState<Contenuto | null>(null);
+  const [exportedFileId, setExportedFileId] = useState<string | null>(null);
   const isRevisioneTask = task.tipo === 'Revisione montaggio';
   const isAutoTask = task.assegnato_da?.includes('Sistema') || task.assegnato_da?.includes('⚡');
 
