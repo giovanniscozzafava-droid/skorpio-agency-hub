@@ -516,9 +516,19 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
     const targetTask = tasks.find(t => t.id === targetTaskId);
     if (!draggedTask || !targetTask) return;
 
-    // Only reorder within same column (same stato for standard, same fase for CLP)
-    const sameColumn = draggedTask.stato === targetTask.stato &&
-      (draggedTask.id_contenuto ? clpFasi[draggedTask.id_contenuto || ''] === clpFasi[targetTask.id_contenuto || ''] : true);
+    // Only reorder within same column
+    const isCLP_dragged = draggedTask.id_contenuto && draggedTask.id_contenuto.trim() !== '';
+    const isCLP_target = targetTask.id_contenuto && targetTask.id_contenuto.trim() !== '';
+    let sameColumn = false;
+    if (isCLP_dragged && isCLP_target) {
+      // CLP: same column = same fase + same tipo
+      const faseDragged = clpFasi[draggedTask.id_contenuto || ''];
+      const faseTarget = clpFasi[targetTask.id_contenuto || ''];
+      sameColumn = faseDragged === faseTarget && draggedTask.tipo === targetTask.tipo;
+    } else if (!isCLP_dragged && !isCLP_target) {
+      // Standard: same stato
+      sameColumn = draggedTask.stato === targetTask.stato;
+    }
     if (!sameColumn) return;
 
     setDragOverTaskId(null);
