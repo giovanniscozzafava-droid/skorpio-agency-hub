@@ -611,7 +611,13 @@ export async function checkAutoPubblica(): Promise<number> {
 
   const ids = daPublicare.map(c => c.id);
 
-  await supabase.from('contenuti').update({ fase: 'Pubblicato' }).in('id', ids);
+  // [OLD] await supabase.from('contenuti').update({ fase: 'Pubblicato' }).in('id', ids);
+  // [NEW - FaseService centralizzato]
+  const { cambiaFaseCLP } = await import('../services/faseService');
+  for (const id of ids) {
+    console.log('[Step2c] checkAutoPubblica via FaseService', { id });
+    await cambiaFaseCLP({ contenutoId: id, nuovaFase: 'Pubblicato', source: 'workflow', userId: 'auto-publish' });
+  }
 
   for (const { id } of daPublicare) {
     await completaTaskPerContenuto(id, 'Programmazione');
