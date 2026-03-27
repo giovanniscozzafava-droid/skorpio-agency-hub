@@ -569,7 +569,7 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
               <div className="flex flex-col items-center gap-3 py-4 rounded-xl"
                 style={{ background: 'hsl(210 20% 97%)' }}>
                 <div className="relative">
-                  <Avatar nome={utente.nome} colore={utente.colore} size={72} />
+                  <Avatar nome={utente.nome} colore={utente.colore} size={72} avatarUrl={utente.avatar_url} />
                   <div
                     className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center text-xs border-2 border-white"
                     style={{ background: utente.colore }}

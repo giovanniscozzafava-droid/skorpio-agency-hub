@@ -546,7 +546,7 @@ export function ChatPopup({ team }: ChatPopupProps) {
                     >
                       ←
                     </button>
-                    <Avatar nome={contattoAttivo.nome} colore={contattoAttivo.colore} size={32} />
+                    <Avatar nome={contattoAttivo.nome} colore={contattoAttivo.colore} size={32} avatarUrl={contattoAttivo.avatar_url} />
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-xs truncate" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
                         {contattoAttivo.nome}
