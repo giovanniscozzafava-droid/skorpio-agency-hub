@@ -1,9 +1,18 @@
 // ============================================================
 // SKORPIO — Synthetic Meme Audio Engine (Web Audio API only)
 // No external files. Pure oscillators & noise. Have fun 🦂
+// ONE SOUND AT A TIME: each new sound stops the previous one.
 // ============================================================
 
 let audioCtx: AudioContext | null = null;
+let activeNodes: { stop: () => void }[] = [];
+
+function stopAll() {
+  for (const n of activeNodes) {
+    try { n.stop(); } catch (_) {}
+  }
+  activeNodes = [];
+}
 
 function getCtx(): AudioContext {
   if (!audioCtx) {

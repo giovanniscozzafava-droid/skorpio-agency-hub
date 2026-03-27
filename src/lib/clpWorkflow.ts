@@ -316,10 +316,22 @@ export async function avanzaFaseDaTask(
   const isForward = targetIdx > currentIdx;
 
   // BLOCCO: non si può andare a Uploadato o oltre senza un file esportato
+  // Bypass per task creati prima del 28/03/2026 (migrazione vecchia logica)
+  const BYPASS_DATE = '2026-03-28';
   if (targetIdx >= FASE_SEQ.indexOf('Uploadato')) {
-    const hasFile = await clpHasExportedFile(contenutoId);
-    if (!hasFile) {
-      throw new Error('Non puoi avanzare a questa fase senza aver prima caricato il file esportato.');
+    const { data: taskRow } = await supabase
+      .from('task')
+      .select('created_at')
+      .eq('id_contenuto', contenutoId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    const isOldTask = taskRow?.created_at && taskRow.created_at < BYPASS_DATE;
+    if (!isOldTask) {
+      const hasFile = await clpHasExportedFile(contenutoId);
+      if (!hasFile) {
+        throw new Error('Non puoi avanzare a questa fase senza aver prima caricato il file esportato.');
+      }
     }
   }
 
