@@ -2,46 +2,98 @@
  * CLP Workflow utilities — condivisi tra CLPDetailPanel e TaskDetailPanel
  */
 import { supabase } from './supabase';
-import { toDateStr } from './dateUtils';
+import { toDateStr, addDays } from './dateUtils';
 import type { Contenuto, FaseCLP, TeamMember } from '../types';
 
-// Mappa tipo task → fase CLP corrente + prossima fase + prossimo task
-export const WORKFLOW_MAP: Record<string, {
+// ── Default lead times (giorni lavorativi prima della pubblicazione) ──────────
+export const DEFAULT_LEAD_TIMES: Record<string, number> = {
+  'Premontaggio': 5,
+  'Montaggio': 3,
+  'Revisione montaggio': 2,
+  'Programmazione': 1,
+  'Pubblicazione': 0,
+};
+
+export function getLeadTimes(): Record<string, number> {
+  try {
+    const stored = localStorage.getItem('skorpio_lead_times');
+    if (stored) return { ...DEFAULT_LEAD_TIMES, ...JSON.parse(stored) };
+  } catch { /* fallback */ }
+  return { ...DEFAULT_LEAD_TIMES };
+}
+
+export function saveLeadTimes(times: Record<string, number>) {
+  localStorage.setItem('skorpio_lead_times', JSON.stringify(times));
+}
+
+/** Calcola la deadline a ritroso dalla data di pubblicazione */
+export function calcolaDeadlineARitroso(dataPubblicazione: string | null, tipoTask: string): string | null {
+  if (!dataPubblicazione) return null;
+  const leadTimes = getLeadTimes();
+  const giorni = leadTimes[tipoTask];
+  if (giorni === undefined || giorni === 0) return dataPubblicazione;
+  // Sottrai N giorni
+  const pubDate = new Date(dataPubblicazione + 'T00:00:00');
+  const deadline = addDays(pubDate, -giorni);
+  return toDateStr(deadline);
+}
+
+// ── Workflow step definitions ────────────────────────────────────────────────
+export interface WorkflowStep {
   faseCurrent: FaseCLP;
   faseNext: FaseCLP;
   tipoNext: string;
   assegnatoKeyword: string;
+  emojiNext: string;
   descrizioneNext: (c: Contenuto) => string;
-}> = {
+}
+
+export const WORKFLOW_MAP: Record<string, WorkflowStep> = {
   'Premontaggio': {
     faseCurrent: 'Girato',
     faseNext: 'Pre montato',
     tipoNext: 'Montaggio',
     assegnatoKeyword: 'Alessandro',
-    descrizioneNext: c => `✂️ Monta ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
+    emojiNext: '✂️',
+    descrizioneNext: c => `✂️ Montaggio ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
   },
   'Montaggio': {
     faseCurrent: 'Pre montato',
     faseNext: 'Montato',
     tipoNext: 'Revisione montaggio',
     assegnatoKeyword: 'Elisa',
-    descrizioneNext: c => `🔍 Revisiona ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
+    emojiNext: '👁️',
+    descrizioneNext: c => `👁️ Revisione ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
   },
   'Revisione montaggio': {
     faseCurrent: 'Montato',
     faseNext: 'Revisionato',
     tipoNext: 'Programmazione',
     assegnatoKeyword: 'Elisa',
-    descrizioneNext: c => `📅 Programma ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
+    emojiNext: '📅',
+    descrizioneNext: c => `📅 Programmazione ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
   },
   'Programmazione': {
     faseCurrent: 'Revisionato',
     faseNext: 'Programmato',
     tipoNext: '',
     assegnatoKeyword: 'Elisa',
+    emojiNext: '',
     descrizioneNext: () => '',
   },
 };
+
+// ── Workflow ordered steps for timeline display ──────────────────────────────
+export const WORKFLOW_STEPS_ORDER = [
+  { fase: 'Girato', tipo: 'Premontaggio', label: 'Pre montaggio', emoji: '🎬', assegnato: 'Luca' },
+  { fase: 'Pre montato', tipo: 'Montaggio', label: 'Montaggio', emoji: '✂️', assegnato: 'Alessandro' },
+  { fase: 'Montato', tipo: 'Revisione montaggio', label: 'Revisione', emoji: '👁️', assegnato: 'Elisa' },
+  { fase: 'Revisionato', tipo: 'Programmazione', label: 'Programmazione', emoji: '📅', assegnato: 'Elisa' },
+  { fase: 'Programmato', tipo: '', label: 'Pubblicazione', emoji: '📤', assegnato: 'Elisa' },
+  { fase: 'Pubblicato', tipo: 'Cleanup', label: 'Pubblicato', emoji: '✅', assegnato: '' },
+] as const;
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 export function findMembro(team: TeamMember[], cerca: string): string {
   const m = team.find(t => t.nome.toLowerCase().includes(cerca.toLowerCase()));
@@ -74,6 +126,7 @@ export async function creaTaskWorkflow(
   scadenza?: string | null,
   ora?: string | null
 ) {
+  // Anti-duplicato
   const { data: existing } = await supabase
     .from('task')
     .select('id')
@@ -83,6 +136,12 @@ export async function creaTaskWorkflow(
     .neq('stato', 'Archiviato');
 
   if (existing && existing.length > 0) return null;
+
+  // Check if user manually deleted this task type before — respect that
+  // (We skip this check for simplicity; the anti-duplicate check suffices)
+
+  // Calcola deadline a ritroso se non già fornita
+  const deadlineCalcolata = scadenza || calcolaDeadlineARitroso(contenuto.data_pubblicazione, tipo);
 
   const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
 
@@ -94,12 +153,12 @@ export async function creaTaskWorkflow(
       tipo,
       stato,
       assegnato_a: assegnatoA,
-      assegnato_da: 'Sistema',
+      assegnato_da: '⚡ Sistema',
       cliente_id: contenuto.cliente_id,
       cliente_nome: contenuto.cliente_nome || '',
       id_contenuto: contenuto.id,
-      priorita: scadenza ? '🔴 Alta' : '🟡 Media',
-      scadenza: scadenza ?? null,
+      priorita: deadlineCalcolata ? '🔴 Alta' : '🟡 Media',
+      scadenza: deadlineCalcolata ?? null,
       ora: ora ?? null,
     })
     .select()
@@ -110,13 +169,76 @@ export async function creaTaskWorkflow(
 }
 
 /**
+ * Crea task di Premontaggio per Luca quando vengono caricate clip su un CLP
+ */
+export async function creaTaskPremontaggio(contenuto: Contenuto, team: TeamMember[], numClip: number): Promise<any> {
+  const nomeLuca = findMembro(team, 'Luca');
+  return creaTaskWorkflow(
+    contenuto,
+    nomeLuca,
+    'Premontaggio',
+    `🎬 Pre montaggio ${contenuto.id_display} – ${contenuto.titolo}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}`,
+    'Da fare',
+    null,
+    null,
+  );
+}
+
+/**
+ * Revisione: Elisa richiede modifiche → CLP torna a "Pre montato", nuovo task per Alessandro
+ */
+export async function richiestaModifiche(
+  contenuto: Contenuto,
+  team: TeamMember[],
+  noteRevisione: string
+): Promise<any> {
+  // Completa il task di revisione corrente
+  await completaTaskPerContenuto(contenuto.id, 'Revisione montaggio');
+
+  // Riporta CLP a Pre montato
+  await supabase.from('contenuti').update({ fase: 'Pre montato', note_revisione: noteRevisione }).eq('id', contenuto.id);
+
+  // Crea nuovo task di Montaggio per Alessandro
+  const nomeAlessandro = findMembro(team, 'Alessandro');
+  return creaTaskWorkflow(
+    { ...contenuto, fase: 'Pre montato' as FaseCLP },
+    nomeAlessandro,
+    'Montaggio',
+    `🔄 Modifiche ${contenuto.id_display} – ${contenuto.titolo}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}\n📝 ${noteRevisione}`,
+    'Da fare',
+    null,
+    null,
+  );
+}
+
+/**
+ * Revisione: Elisa approva → CLP passa a Revisionato, crea task Programmazione
+ */
+export async function approvaRevisione(
+  contenuto: Contenuto,
+  team: TeamMember[]
+): Promise<any> {
+  // Completa il task di revisione
+  await completaTaskPerContenuto(contenuto.id, 'Revisione montaggio');
+
+  // Avanza a Revisionato
+  await supabase.from('contenuti').update({ fase: 'Revisionato' }).eq('id', contenuto.id);
+
+  // Crea task Programmazione per Elisa
+  const nomeElisa = findMembro(team, 'Elisa');
+  return creaTaskWorkflow(
+    { ...contenuto, fase: 'Revisionato' as FaseCLP },
+    nomeElisa,
+    'Programmazione',
+    `📅 Programmazione ${contenuto.id_display} – ${contenuto.titolo}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}`,
+    'Da fare',
+    null,
+    null,
+  );
+}
+
+/**
  * Chiamato quando l'utente cambia la fase CLP direttamente dal TaskDetailPanel.
- * Se la nuova fase coincide con faseNext del suo step di workflow:
- *   → completa il task corrente
- *   → avanza il CLP
- *   → crea il task successivo
- *   → trigera Drive se fase = Montato
- * Ritorna { nuovaFase, taskCreato, driveTriggered }
  */
 export async function avanzaFaseDaTask(
   taskId: string,
@@ -148,17 +270,18 @@ export async function avanzaFaseDaTask(
 
   if (!contenuto) return { completatoTask: true, taskCreato: false, driveTriggered: false };
 
-  // 4. Crea il task successivo
-  const assegnatoA = findMembro(team, step.assegnatoKeyword);
-  const newTask = await creaTaskWorkflow(
-    contenuto as Contenuto,
-    assegnatoA,
-    step.tipoNext,
-    step.descrizioneNext(contenuto as Contenuto),
-    'Da fare',
-    contenuto.data_pubblicazione ?? null,
-    contenuto.ora_pubblicazione?.slice(0, 5) ?? null
-  );
+  // 4. Crea il task successivo (se c'è)
+  let newTask = null;
+  if (step.tipoNext) {
+    const assegnatoA = findMembro(team, step.assegnatoKeyword);
+    newTask = await creaTaskWorkflow(
+      contenuto as Contenuto,
+      assegnatoA,
+      step.tipoNext,
+      step.descrizioneNext(contenuto as Contenuto),
+      'Da fare',
+    );
+  }
 
   // 5. Se la fase è Montato → triggera Drive
   let driveTriggered = false;
@@ -228,16 +351,16 @@ export async function completaTaskEAvanzaFase(
     .update({ fase: step.faseNext })
     .eq('id', contenutoId);
 
-  const assegnatoA = findMembro(team, step.assegnatoKeyword);
-  await creaTaskWorkflow(
-    contenuto as Contenuto,
-    assegnatoA,
-    step.tipoNext,
-    step.descrizioneNext(contenuto as Contenuto),
-    'Da fare',
-    contenuto.data_pubblicazione ?? null,
-    contenuto.ora_pubblicazione?.slice(0, 5) ?? null
-  );
+  if (step.tipoNext) {
+    const assegnatoA = findMembro(team, step.assegnatoKeyword);
+    await creaTaskWorkflow(
+      contenuto as Contenuto,
+      assegnatoA,
+      step.tipoNext,
+      step.descrizioneNext(contenuto as Contenuto),
+      'Da fare',
+    );
+  }
 
   // Se faseNext = Montato → triggera Drive
   if (step.faseNext === 'Montato' && !contenuto.link_drive) {
@@ -299,7 +422,6 @@ export async function checkAutoPubblica(): Promise<number> {
 
   for (const { id } of daPublicare) {
     await completaTaskPerContenuto(id, 'Programmazione');
-    // Crea task cleanup per Elisa (non blocca se fallisce)
     try {
       const { data: contenuto } = await supabase.from('contenuti').select('*').eq('id', id).single();
       if (contenuto) {
@@ -317,10 +439,8 @@ export async function checkAutoPubblica(): Promise<number> {
 
 /**
  * Crea il task di cleanup per Elisa quando un CLP viene pubblicato.
- * Il task include le info sui file grezzi da eliminare.
  */
 export async function creaTaskCleanup(contenuto: Contenuto, team: any[]): Promise<void> {
-  // Controlla se esiste già un task cleanup per questo contenuto
   const { data: existing } = await supabase
     .from('task')
     .select('id')
@@ -341,11 +461,30 @@ export async function creaTaskCleanup(contenuto: Contenuto, team: any[]): Promis
     tipo: 'Cleanup',
     stato: 'Da fare',
     assegnato_a: nomeElisa,
-    assegnato_da: 'Sistema',
+    assegnato_da: '⚡ Sistema',
     cliente_id: contenuto.cliente_id,
     cliente_nome: contenuto.cliente_nome || '',
     id_contenuto: contenuto.id,
     priorita: '🟢 Bassa',
     note: `La clip ${contenuto.id_display} è stata pubblicata. Cancella i file grezzi dalla cartella clip/ su Google Drive. Il file esportato resta.`,
   });
+}
+
+/**
+ * Recupera i task workflow per un CLP (per la timeline nella tab Riprese)
+ */
+export async function getWorkflowTasks(contenutoId: string): Promise<Array<{
+  tipo: string;
+  stato: string;
+  assegnato_a: string;
+  created_at: string;
+  updated_at: string;
+  scadenza: string | null;
+}>> {
+  const { data } = await supabase
+    .from('task')
+    .select('tipo, stato, assegnato_a, created_at, updated_at, scadenza')
+    .eq('id_contenuto', contenutoId)
+    .order('created_at', { ascending: true });
+  return (data || []) as any[];
 }

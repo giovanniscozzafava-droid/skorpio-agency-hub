@@ -2,7 +2,8 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import { useUpload } from '../context/UploadContext';
-import type { LogRipresa, Cliente, TeamMember, Contenuto } from '../types';
+import type { LogRipresa, Cliente, TeamMember, Contenuto, Task } from '../types';
+import { WORKFLOW_STEPS_ORDER } from '../lib/clpWorkflow';
 import { ClipFileUpload, FileStatusDot, formatBytes } from './ClipFileUpload';
 import { ClipReviewModal } from './ClipReviewModal';
 import { BulkUploadModal, AutoCleanupDialog } from './DriveStorageIndicator';
@@ -70,6 +71,83 @@ function shouldTriggerCleanup(field: 'stato' | 'fase', newValue: string): boolea
   if (field === 'stato' && newValue === 'Usata') return true;
   if (field === 'fase' && newValue === 'Pubblicato') return true;
   return false;
+}
+
+// ─── WorkflowCompact: compact workflow status for Riprese table ──────────────
+
+const FASI_ORDER = ['Idea', 'Script', 'Girato', 'Pre montato', 'Montato', 'Revisionato', 'Programmato', 'Pubblicato'];
+
+const WORKFLOW_COMPACT_MAP: Record<string, { emoji: string; label: string; assegnato: string }> = {
+  'Girato':      { emoji: '🎬', label: 'Pre montaggio', assegnato: 'Luca' },
+  'Pre montato': { emoji: '✂️', label: 'Montaggio', assegnato: 'Alessandro' },
+  'Montato':     { emoji: '👁️', label: 'Revisione', assegnato: 'Elisa' },
+  'Revisionato': { emoji: '📅', label: 'Programmazione', assegnato: 'Elisa' },
+  'Programmato': { emoji: '📤', label: 'Pubblicazione', assegnato: 'Elisa' },
+  'Pubblicato':  { emoji: '✅', label: 'Pubblicato', assegnato: '' },
+};
+
+function WorkflowCompact({ fase, clpId, dataPub }: { fase: string; clpId: string; dataPub: string | null }) {
+  const [showPopover, setShowPopover] = useState(false);
+  const info = WORKFLOW_COMPACT_MAP[fase];
+  if (!info) return <span className="text-xs text-muted-foreground">—</span>;
+
+  const faseIdx = FASI_ORDER.indexOf(fase);
+  const color = FASE_COLORS[fase] || '#94A3B8';
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setShowPopover(p => !p)}
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-colors hover:opacity-80"
+        style={{ background: color + '18', color, borderColor: color + '40' }}
+      >
+        <span>{info.emoji}</span>
+        <span>{info.label}</span>
+        {info.assegnato && <span className="opacity-60">→ {info.assegnato}</span>}
+      </button>
+
+      {showPopover && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setShowPopover(false)} />
+          <div className="absolute left-0 top-full mt-1 z-40 bg-card border border-border rounded-xl shadow-xl p-3 w-56 space-y-1.5"
+            style={{ animation: 'fadeIn 0.15s ease-out' }}>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Workflow</p>
+            {WORKFLOW_STEPS_ORDER.map((step, i) => {
+              const stepFaseIdx = FASI_ORDER.indexOf(step.fase);
+              const isDone = faseIdx > stepFaseIdx || (fase === 'Pubblicato' && step.fase === 'Pubblicato');
+              const isCurrent = step.fase === fase;
+              const stepColor = FASE_COLORS[step.fase] || '#94A3B8';
+              return (
+                <div key={step.fase} className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full border-2 flex-shrink-0"
+                    style={{
+                      background: isDone ? stepColor : isCurrent ? stepColor : 'transparent',
+                      borderColor: stepColor,
+                      opacity: isDone && !isCurrent ? 0.5 : 1,
+                    }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <span className={`text-[11px] font-medium ${isCurrent ? 'font-bold' : ''}`}
+                      style={{ color: isCurrent ? stepColor : isDone ? stepColor : 'hsl(var(--muted-foreground))', opacity: isDone && !isCurrent ? 0.6 : 1 }}>
+                      {isDone && !isCurrent ? '✓ ' : isCurrent ? '● ' : ''}{step.label}
+                    </span>
+                    {step.assegnato && (
+                      <span className="text-[10px] text-muted-foreground ml-1">— {step.assegnato}</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            {dataPub && (
+              <p className="text-[10px] text-muted-foreground mt-2 pt-1.5 border-t border-border">
+                📅 Pubblicazione: {dataPub}
+              </p>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -1750,6 +1828,7 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
                 <th className={thCls}>Titolo</th>
                 <th className={thCls}>Stato Clip</th>
                 <th className={thCls}>Fase CLP</th>
+                <th className={thCls}>Workflow</th>
                 <th className={thCls}>Operatore</th>
                 <th className={`${thCls} w-12 text-center`}>FILE</th>
                 <th className={`${thCls} w-8 text-center`}>🗑️</th>
@@ -1880,6 +1959,11 @@ export function RipreseTab({ clienti, team }: RipreseTabProps) {
                       {/* Fase CLP */}
                       <td className={tdCls}>
                         {clp ? <FaseBadge fase={clp.fase} /> : <span className="text-xs text-muted-foreground">—</span>}
+                      </td>
+
+                      {/* Workflow */}
+                      <td className={tdCls} onClick={e => e.stopPropagation()}>
+                        {clp ? <WorkflowCompact fase={clp.fase} clpId={clp.id} dataPub={clp.data_pubblicazione} /> : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
 
                       {/* Operatore */}

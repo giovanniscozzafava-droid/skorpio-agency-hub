@@ -157,6 +157,7 @@ function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEn
   const isScaduto = scad?.label.includes('SCADUTO');
   const member = team.find(m => m.nome === task.assegnato_a);
   const isAssignedToMe = task.assegnato_a === utente?.nome;
+  const isAutoTask = task.assegnato_da?.includes('Sistema') || task.assegnato_da?.includes('⚡');
 
   return (
     <div
@@ -177,12 +178,20 @@ function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEn
         ...(isAssignedToMe ? { boxShadow: '0 0 0 1px rgba(59,130,246,0.2)' } : {}),
       }}
     >
-      {isNew && (
-        <span className="text-xs font-bold px-1.5 py-0.5 rounded mb-1 inline-block"
-          style={{ background: '#DBEAFE', color: '#1D4ED8' }}>
-          NUOVO
-        </span>
-      )}
+      <div className="flex items-center gap-1.5 mb-1">
+        {isNew && (
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded inline-block"
+            style={{ background: '#DBEAFE', color: '#1D4ED8' }}>
+            NUOVO
+          </span>
+        )}
+        {isAutoTask && (
+          <span className="text-[9px] font-bold px-1 py-0.5 rounded inline-block"
+            style={{ background: 'hsl(38 92% 50% / 0.15)', color: 'hsl(32 95% 40%)' }}>
+            ⚡ Auto
+          </span>
+        )}
+      </div>
 
       <div className="flex items-start justify-between gap-2 mb-2">
         <div

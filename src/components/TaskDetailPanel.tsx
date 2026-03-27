@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import { sounds } from '../lib/sounds';
-import { avanzaFaseDaTask, completaTaskEAvanzaFase, WORKFLOW_MAP } from '../lib/clpWorkflow';
-import type { Task, TeamMember, FaseCLP } from '../types';
+import { avanzaFaseDaTask, completaTaskEAvanzaFase, WORKFLOW_MAP, richiestaModifiche, approvaRevisione } from '../lib/clpWorkflow';
+import type { Task, TeamMember, FaseCLP, Contenuto } from '../types';
 import { Avatar } from './Avatar';
 import { Calendar } from './ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
@@ -141,6 +141,14 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   const [deletingCleanup, setDeletingCleanup] = useState(false);
   const isCleanupTask = task.tipo === 'Cleanup';
 
+  // ── Revisione state ────────────────────────────────────────────────────────
+  const [showModificheForm, setShowModificheForm] = useState(false);
+  const [noteModifiche, setNoteModifiche] = useState('');
+  const [savingRevisione, setSavingRevisione] = useState(false);
+  const [contenutoRevisione, setContenutoRevisione] = useState<Contenuto | null>(null);
+  const isRevisioneTask = task.tipo === 'Revisione montaggio';
+  const isAutoTask = task.assegnato_da?.includes('Sistema') || task.assegnato_da?.includes('⚡');
+
   // ── Programmazione date picker ─────────────────────────────────────────────
   const [dataPub, setDataPub] = useState<Date | undefined>(
     task.scadenza ? parseLocalDate(task.scadenza) : undefined
@@ -193,6 +201,58 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
       addToast(`❌ Errore eliminazione: ${err.message}`, 'error');
     }
     setDeletingCleanup(false);
+  };
+
+  // Load contenuto for Revisione tasks (video preview + approve/reject)
+  useEffect(() => {
+    if (!task.id_contenuto) return;
+    supabase
+      .from('contenuti')
+      .select('*')
+      .eq('id', task.id_contenuto)
+      .single()
+      .then(({ data }) => {
+        if (data) setContenutoRevisione(data as Contenuto);
+      });
+  }, [task.id_contenuto]);
+
+  const handleApprovaRevisione = async () => {
+    if (!contenutoRevisione) return;
+    setSavingRevisione(true);
+    try {
+      await approvaRevisione(contenutoRevisione, team);
+      setClpFase('Revisionato');
+      setTaskCompletato(true);
+      sounds.taskCompletato();
+      addToast('✅ Revisione approvata → CLP avanzato a Revisionato — task Programmazione creato!', 'success');
+      const { data } = await supabase.from('task').select('*').eq('id', task.id).single();
+      if (data) onUpdate(data as Task);
+    } catch (err: any) {
+      addToast(`❌ Errore: ${err.message}`, 'error');
+    }
+    setSavingRevisione(false);
+  };
+
+  const handleRichiestaModifiche = async () => {
+    if (!contenutoRevisione || !noteModifiche.trim()) {
+      addToast('⚠️ Scrivi cosa va corretto', 'warn');
+      return;
+    }
+    setSavingRevisione(true);
+    try {
+      await richiestaModifiche(contenutoRevisione, team, noteModifiche.trim());
+      setClpFase('Pre montato');
+      setTaskCompletato(true);
+      sounds.salva();
+      addToast('🔄 Richiesta modifiche inviata → task Montaggio creato per Alessandro', 'success');
+      const { data } = await supabase.from('task').select('*').eq('id', task.id).single();
+      if (data) onUpdate(data as Task);
+      setShowModificheForm(false);
+      setNoteModifiche('');
+    } catch (err: any) {
+      addToast(`❌ Errore: ${err.message}`, 'error');
+    }
+    setSavingRevisione(false);
   };
 
   useEffect(() => {
@@ -393,7 +453,15 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
-          <span className="text-xs font-mono text-muted-foreground">{task.id_display}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono text-muted-foreground">{task.id_display}</span>
+            {isAutoTask && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                style={{ background: 'hsl(38 92% 50% / 0.15)', color: 'hsl(32 95% 40%)', border: '1px solid hsl(38 92% 50% / 0.35)' }}>
+                ⚡ Auto
+              </span>
+            )}
+          </div>
           <button onClick={onClose} className="sk-btn-ghost text-lg px-2 py-1">✕</button>
         </div>
 
@@ -660,7 +728,91 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
             </div>
           )}
 
-          {/* ─── CAMBIA STATO TASK ──────────────────────────────────────────── */}
+          {/* ─── REVISIONE: Approva / Richiedi modifiche ─────────────────── */}
+          {isRevisioneTask && !taskCompletato && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                👁️ AZIONI REVISIONE
+              </p>
+
+              {/* Video preview del file esportato */}
+              {contenutoRevisione?.drive_export_folder_id && utente?.id && (
+                <div className="mb-3">
+                  <p className="text-[11px] text-muted-foreground mb-1.5">📹 Anteprima file esportato</p>
+                  <video
+                    controls
+                    className="w-full rounded-lg border border-border"
+                    style={{ maxHeight: 200 }}
+                    src={`${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${contenutoRevisione.drive_export_folder_id}&teamId=${utente.id}`}
+                  >
+                    Il tuo browser non supporta il player video.
+                  </video>
+                </div>
+              )}
+
+              <div className="rounded-xl p-3 space-y-2"
+                style={{ background: 'hsl(270 60% 55% / 0.06)', border: '1px solid hsl(270 60% 55% / 0.2)' }}>
+
+                {!showModificheForm ? (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleApprovaRevisione}
+                      disabled={savingRevisione}
+                      className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
+                      style={{ background: 'hsl(142 70% 45%)', color: 'white', opacity: savingRevisione ? 0.6 : 1 }}
+                    >
+                      {savingRevisione ? '⏳…' : '✅ Approvato'}
+                    </button>
+                    <button
+                      onClick={() => setShowModificheForm(true)}
+                      disabled={savingRevisione}
+                      className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
+                      style={{ background: 'hsl(38 92% 50% / 0.15)', color: 'hsl(32 95% 35%)', border: '1px solid hsl(38 92% 50% / 0.35)' }}
+                    >
+                      🔄 Richiedi modifiche
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium" style={{ color: 'hsl(270 50% 40%)' }}>
+                      Descrivi cosa va corretto:
+                    </p>
+                    <textarea
+                      value={noteModifiche}
+                      onChange={e => setNoteModifiche(e.target.value)}
+                      className="sk-textarea w-full text-sm"
+                      rows={3}
+                      placeholder="es. Accorcia l'intro, il logo è fuori inquadratura…"
+                      autoFocus
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleRichiestaModifiche}
+                        disabled={savingRevisione || !noteModifiche.trim()}
+                        className="flex-1 py-1.5 rounded-lg text-xs font-semibold"
+                        style={{ background: 'hsl(38 92% 50%)', color: 'white', opacity: (savingRevisione || !noteModifiche.trim()) ? 0.5 : 1 }}
+                      >
+                        {savingRevisione ? '⏳…' : '🔄 Invia richiesta'}
+                      </button>
+                      <button
+                        onClick={() => { setShowModificheForm(false); setNoteModifiche(''); }}
+                        className="flex-1 py-1.5 rounded-lg text-xs font-medium border border-border hover:bg-muted"
+                      >
+                        Annulla
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  ✅ Approvato → CLP avanza a Revisionato + task Programmazione per Elisa<br />
+                  🔄 Modifiche → CLP torna a Pre montato + task Montaggio per Alessandro
+                </p>
+              </div>
+            </div>
+          )}
+
+
           <div>
             <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>CAMBIA STATO TASK</p>
             <div className="flex flex-wrap gap-1.5">
