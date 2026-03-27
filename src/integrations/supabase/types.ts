@@ -14,6 +14,78 @@ export type Database = {
   }
   public: {
     Tables: {
+      _backup_counts: {
+        Row: {
+          created_at: string | null
+          id: number
+          note: string | null
+          record_count: number
+          tabella: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: number
+          note?: string | null
+          record_count: number
+          tabella: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: number
+          note?: string | null
+          record_count?: number
+          tabella?: string
+        }
+        Relationships: []
+      }
+      _fase_change_log: {
+        Row: {
+          calendar_updated: boolean | null
+          cleanup_created: boolean | null
+          contenuto_id: string
+          created_at: string | null
+          drive_folder_created: boolean | null
+          errors: string[] | null
+          id: string
+          new_fase: string
+          old_fase: string | null
+          reel_incremented: boolean | null
+          source: string
+          task_created_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          calendar_updated?: boolean | null
+          cleanup_created?: boolean | null
+          contenuto_id: string
+          created_at?: string | null
+          drive_folder_created?: boolean | null
+          errors?: string[] | null
+          id?: string
+          new_fase: string
+          old_fase?: string | null
+          reel_incremented?: boolean | null
+          source: string
+          task_created_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          calendar_updated?: boolean | null
+          cleanup_created?: boolean | null
+          contenuto_id?: string
+          created_at?: string | null
+          drive_folder_created?: boolean | null
+          errors?: string[] | null
+          id?: string
+          new_fase?: string
+          old_fase?: string | null
+          reel_incremented?: boolean | null
+          source?: string
+          task_created_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       brand_rules: {
         Row: {
           cliente_id: string | null
