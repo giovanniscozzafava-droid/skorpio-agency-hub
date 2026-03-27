@@ -67,9 +67,9 @@ function getDayIndex(d: Date) {
 }
 
 function getEventStyle(ev: CalendarioEvent) {
-  // Check if it's a workflow-generated task (from trigger sync)
+  // Workflow-generated tasks: use tipo_contenuto to pick specific color
   if (ev.tipo === 'appuntamento' && ev.descrizione?.includes('[TASK:')) {
-    return WORKFLOW_STYLE;
+    return WORKFLOW_STYLES[ev.tipo_contenuto] || WORKFLOW_DEFAULT;
   }
   return TIPO_STYLE[ev.tipo] || TIPO_STYLE.appuntamento;
 }
