@@ -21,8 +21,14 @@ const TIPO_STYLE: Record<string, { bg: string; border: string; icon: string; lab
   slot_pianificato: { bg: '#FFFDE7', border: '#F9A825', icon: '📝', label: 'Slottato',      dot: '#F9A825' },
 };
 
-// Workflow task colors (auto-generated tasks from CLP workflow)
-const WORKFLOW_STYLE = { bg: '#E3F2FD', border: '#1565C0', icon: '⚙️', label: 'Task Workflow', dot: '#1565C0' };
+// Workflow task sub-colors based on tipo_contenuto (task type)
+const WORKFLOW_STYLES: Record<string, { bg: string; border: string; icon: string; label: string; dot: string }> = {
+  'Premontaggio':  { bg: '#E3F2FD', border: '#1565C0', icon: '🎬', label: 'Pre montaggio',  dot: '#1565C0' },
+  'Montaggio':     { bg: '#EDE7F6', border: '#5E35B1', icon: '✂️', label: 'Montaggio',       dot: '#5E35B1' },
+  'Revisione':     { bg: '#FCE4EC', border: '#C62828', icon: '👁️', label: 'Revisione',       dot: '#C62828' },
+  'Cleanup':       { bg: '#ECEFF1', border: '#546E7A', icon: '🧹', label: 'Cleanup',         dot: '#546E7A' },
+};
+const WORKFLOW_DEFAULT = { bg: '#E3F2FD', border: '#1565C0', icon: '⚙️', label: 'Task Workflow', dot: '#1565C0' };
 
 const MARKETING_COLOR: Record<string, string> = {
   fest: '#F97316', gm: '#0D9488', mkt: '#DC2626', sport: '#2563EB', cult: '#7C3AED',
