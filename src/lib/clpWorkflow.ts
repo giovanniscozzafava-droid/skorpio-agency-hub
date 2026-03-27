@@ -491,14 +491,23 @@ export async function creaTaskCleanup(contenuto: Contenuto, team: any[]): Promis
 
 /**
  * Sync: trova CLPs in fasi workflow che non hanno il task corrispondente e li crea.
+ * Inoltre completa automaticamente i task di fasi precedenti che sono rimasti aperti.
  * Chiamato all'avvio per recuperare CLPs entrati nel workflow prima dell'automazione.
  */
 export async function syncMissingWorkflowTasks(): Promise<number> {
+  const FASE_ORDER = ['Girato', 'Pre montato', 'Montato', 'Revisionato', 'Programmato', 'Pubblicato'];
   const FASE_TO_TIPO: Record<string, { tipo: string; keyword: string; emoji: string }> = {
     'Girato': { tipo: 'Premontaggio', keyword: 'Luca', emoji: '🎬' },
     'Pre montato': { tipo: 'Montaggio', keyword: 'Alessandro', emoji: '✂️' },
     'Montato': { tipo: 'Revisione montaggio', keyword: 'Elisa', emoji: '👁️' },
     'Revisionato': { tipo: 'Programmazione', keyword: 'Elisa', emoji: '📅' },
+  };
+  // Mappa fase → tipo task di quella fase (per completare task di fasi precedenti)
+  const FASE_TIPO_MAP: Record<string, string> = {
+    'Girato': 'Premontaggio',
+    'Pre montato': 'Montaggio',
+    'Montato': 'Revisione montaggio',
+    'Revisionato': 'Programmazione',
   };
 
   const { data: teamData } = await supabase.from('team').select('*');
@@ -515,7 +524,37 @@ export async function syncMissingWorkflowTasks(): Promise<number> {
     if (!clps || clps.length === 0) continue;
 
     for (const clp of clps) {
-      // Check if task already exists
+      // 1. Completa i task di fasi PRECEDENTI rimasti aperti
+      const currentIdx = FASE_ORDER.indexOf(fase);
+      for (let i = 0; i < currentIdx; i++) {
+        const prevFase = FASE_ORDER[i];
+        const prevTipo = FASE_TIPO_MAP[prevFase];
+        if (prevTipo) {
+          await completaTaskPerContenuto(clp.id, prevTipo);
+        }
+      }
+
+      // 2. Cancella task di fasi FUTURE che non dovrebbero esistere
+      const futureTipi: string[] = [];
+      for (let i = currentIdx + 1; i < FASE_ORDER.length; i++) {
+        const futFase = FASE_ORDER[i];
+        const futTipo = FASE_TIPO_MAP[futFase];
+        if (futTipo) futureTipi.push(futTipo);
+      }
+      if (futureTipi.length > 0) {
+        const { data: futureTasks } = await supabase
+          .from('task')
+          .select('id')
+          .eq('id_contenuto', clp.id)
+          .in('tipo', futureTipi)
+          .neq('stato', 'Completato')
+          .neq('stato', 'Archiviato');
+        if (futureTasks && futureTasks.length > 0) {
+          await supabase.from('task').delete().in('id', futureTasks.map(t => t.id));
+        }
+      }
+
+      // 3. Crea task per fase corrente se mancante
       const { data: existing } = await supabase
         .from('task')
         .select('id')
@@ -526,7 +565,6 @@ export async function syncMissingWorkflowTasks(): Promise<number> {
 
       if (existing && existing.length > 0) continue;
 
-      // Check if there's a completed task of this type (user may have already done it)
       const { data: completed } = await supabase
         .from('task')
         .select('id')
