@@ -428,6 +428,17 @@
     min-width: 280px;
     max-width: 380px;
   }
+
+
+  /* ---- Slide in from left (mobile drawer) ---- */
+  @keyframes slideInLeft {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(0); }
+  }
+
+  .animate-slide-in-left {
+    animation: slideInLeft 250ms ease forwards;
+  }
 }
 
 @keyframes slideInRight {
@@ -439,4 +450,20 @@
   0%   { outline-color: #3B82F6; outline-width: 2px; background: #EFF6FF; }
   60%  { outline-color: #3B82F6; outline-width: 2px; background: #EFF6FF; }
   100% { outline-color: transparent; outline-width: 0; background: inherit; }
+}
+
+/* ---- Responsive: Mobile & Tablet ---- */
+@media (max-width: 1023px) {
+  /* When tabbar is hidden, reduce top padding */
+  .pt-\[100px\] {
+    padding-top: 56px !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .skorpio-topbar {
+    gap: 6px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
 }
