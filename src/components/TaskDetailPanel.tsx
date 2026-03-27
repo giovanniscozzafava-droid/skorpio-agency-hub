@@ -165,7 +165,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   const [uploadProgress, setUploadProgress] = useState<{ percent: number; fileName: string } | null>(null);
   const [uploading, setUploading] = useState(false);
   const uploadInputRef = useRef<HTMLInputElement>(null);
-  const { enqueue } = useUpload();
+  
 
   const isCLPTask = !!(task.id_contenuto && WORKFLOW_MAP[task.tipo]);
   const workflowStep = WORKFLOW_MAP[task.tipo];
