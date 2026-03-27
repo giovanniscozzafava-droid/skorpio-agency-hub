@@ -154,6 +154,8 @@ interface TaskCardProps {
   onClick: () => void;
   /** Se true, mostra il badge fase CLP (solo board standard) */
   showFaseBadge?: boolean;
+  /** Data di pubblicazione (per countdown Programmato) */
+  pubDate?: { data: string | null; ora: string | null } | null;
 }
 
 function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true }: TaskCardProps) {
