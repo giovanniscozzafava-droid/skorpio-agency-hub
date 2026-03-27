@@ -163,11 +163,13 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   const isProgrammazioneTask = task.tipo === 'Programmazione';
   const isUploadTask = task.tipo === 'Upload esportato';
   const isMontaggioTask = task.tipo === 'Montaggio';
+  const isMontaggioConModifiche = isMontaggioTask && !!contenutoRevisione?.note_revisione;
 
-  // ── Upload esportato state ─────────────────────────────────────────────────
+  // ── Upload esportato state (shared by Upload and Montaggio re-upload) ──────
   const [uploadProgress, setUploadProgress] = useState<{ percent: number; fileName: string } | null>(null);
   const [uploading, setUploading] = useState(false);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const montaggioUploadRef = useRef<HTMLInputElement>(null);
   
 
   const isCLPTask = !!(task.id_contenuto && WORKFLOW_MAP[task.tipo]);
