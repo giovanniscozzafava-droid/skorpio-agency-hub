@@ -828,6 +828,67 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
               )}
             </div>
           )}
+          {/* ─── UPLOAD ESPORTATO: file picker + progress ──────────────── */}
+          {isUploadTask && !taskCompletato && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                📤 CARICA FILE ESPORTATO
+              </p>
+              <div className="rounded-xl p-3 space-y-3"
+                style={{ background: 'hsl(45 90% 50% / 0.06)', border: '1px solid hsl(45 90% 50% / 0.25)' }}>
+                <p className="text-xs leading-relaxed" style={{ color: 'hsl(45 80% 30%)' }}>
+                  Seleziona il file esportato da caricare su Google Drive nella cartella <strong>file_esportato/</strong>.
+                  Il CLP avanzerà automaticamente a <strong>Uploadato</strong>.
+                </p>
+
+                {uploadProgress ? (
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-[11px]" style={{ color: 'hsl(45 80% 30%)' }}>
+                      <span>📁 {uploadProgress.fileName}</span>
+                      <span className="font-mono font-bold">{uploadProgress.percent}%</span>
+                    </div>
+                    <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: 'hsl(45 90% 50% / 0.15)' }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-300"
+                        style={{ width: `${uploadProgress.percent}%`, background: 'hsl(45 90% 50%)' }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">Caricamento in corso… non chiudere il pannello.</p>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      ref={uploadInputRef}
+                      type="file"
+                      accept="video/*,.mp4,.mov,.avi,.mkv,.webm"
+                      onChange={handleUploadEsportato}
+                      className="hidden"
+                    />
+                    <button
+                      onClick={() => uploadInputRef.current?.click()}
+                      disabled={uploading}
+                      className="w-full py-3 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2"
+                      style={{
+                        background: 'hsl(45 90% 50%)',
+                        color: 'white',
+                        opacity: uploading ? 0.6 : 1,
+                      }}
+                    >
+                      📤 Seleziona file da caricare
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {isUploadTask && taskCompletato && (
+            <div className="rounded-lg px-3 py-2.5 text-xs"
+              style={{ background: 'hsl(142 70% 45% / 0.08)', color: 'hsl(142 60% 35%)', border: '1px solid hsl(142 70% 45% / 0.25)' }}>
+              ✅ File esportato caricato — il task Revisione è stato creato per Elisa!
+            </div>
+          )}
+
           {/* ─── CLEANUP TASK: bottone elimina file grezzi ──────────────── */}
           {isCleanupTask && !taskCompletato && (
             <div>
