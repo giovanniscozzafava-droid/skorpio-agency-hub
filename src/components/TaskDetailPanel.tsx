@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
+
 import { sounds } from '../lib/sounds';
 import { avanzaFaseDaTask, completaTaskEAvanzaFase, WORKFLOW_MAP, richiestaModifiche, approvaRevisione } from '../lib/clpWorkflow';
 import type { Task, TeamMember, FaseCLP, Contenuto } from '../types';
+
 import { Avatar } from './Avatar';
 import { Calendar } from './ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
@@ -157,6 +159,13 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   const [oraPub, setOraPub] = useState<string>(task.ora ? task.ora.slice(0, 5) : '');
   const [savingProg, setSavingProg] = useState(false);
   const isProgrammazioneTask = task.tipo === 'Programmazione';
+  const isUploadTask = task.tipo === 'Upload esportato';
+
+  // ── Upload esportato state ─────────────────────────────────────────────────
+  const [uploadProgress, setUploadProgress] = useState<{ percent: number; fileName: string } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  
 
   const isCLPTask = !!(task.id_contenuto && WORKFLOW_MAP[task.tipo]);
   const workflowStep = WORKFLOW_MAP[task.tipo];
@@ -335,6 +344,145 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
     setSavingProg(false);
   };
 
+  // ── Upload esportato handler ──────────────────────────────────────────────
+  const handleUploadEsportato = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !task.id_contenuto || !utente?.id || !contenutoRevisione) return;
+
+    setUploading(true);
+    setUploadProgress({ percent: 0, fileName: file.name });
+
+    try {
+      const ext = file.name.split('.').pop() || 'mp4';
+      const mimeType = file.type || 'video/mp4';
+      const slug = (contenutoRevisione.titolo || '').toLowerCase()
+        .replace(/[àáâ]/g,'a').replace(/[èéê]/g,'e').replace(/[ìí]/g,'i')
+        .replace(/[òó]/g,'o').replace(/[ùú]/g,'u')
+        .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+      const fileName = `${contenutoRevisione.id_display}_${slug}_export.${ext}`;
+
+      // Init resumable upload
+      const initResult = await invokeEdge('google-drive-upload-init', {
+        fileName,
+        mimeType,
+        fileSize: file.size,
+        teamId: utente.id,
+        clientName: contenutoRevisione.cliente_nome || 'Generale',
+        zone: 'file_esportato',
+        contenutoId: task.id_contenuto,
+        idDisplay: contenutoRevisione.id_display,
+        titolo: contenutoRevisione.titolo,
+      });
+
+      const uploadUrl = initResult.uploadUrl;
+      const CHUNK = 4 * 1024 * 1024;
+      let uploaded = 0;
+      let fileId = '';
+
+      while (uploaded < file.size) {
+        const end = Math.min(uploaded + CHUNK, file.size);
+        const chunk = file.slice(uploaded, end);
+        const contentRange = `bytes ${uploaded}-${end - 1}/${file.size}`;
+
+        let result: any = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const proxyUrl = `${SUPABASE_URL}/functions/v1/google-drive-upload-chunk`;
+            const res = await fetch(proxyUrl, {
+              method: 'POST',
+              headers: {
+                'apikey': SUPABASE_KEY,
+                'Authorization': `Bearer ${SUPABASE_KEY}`,
+                'x-upload-url': uploadUrl,
+                'x-content-range': contentRange,
+                'x-content-type': mimeType,
+                'Content-Type': 'application/octet-stream',
+              },
+              body: chunk,
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+              throw new Error(err?.error || `Proxy error ${res.status}`);
+            }
+            result = await res.json();
+            break;
+          } catch (err) {
+            if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+            else throw err;
+          }
+        }
+
+        if (result.status === 308) {
+          uploaded = result.range ? parseInt(result.range.split('-')[1]) + 1 : end;
+        } else if (result.status === 200 || result.status === 201) {
+          fileId = result.fileId;
+          break;
+        }
+
+        setUploadProgress({
+          percent: Math.min(99, Math.round((uploaded / file.size) * 100)),
+          fileName: file.name,
+        });
+      }
+
+      if (!fileId) throw new Error('Upload completato senza fileId');
+
+      const fileUrl = `${SUPABASE_URL}/functions/v1/google-drive-download?fileId=${fileId}`;
+
+      // Update log_riprese with exported file info
+      const { data: clips } = await supabase
+        .from('log_riprese')
+        .select('id')
+        .eq('contenuto_id', task.id_contenuto)
+        .order('riga', { ascending: true })
+        .limit(1);
+
+      if (clips && clips.length > 0) {
+        await supabase.from('log_riprese').update({
+          exported_file_id: fileId,
+          exported_file_url: fileUrl,
+          exported_file_name: fileName,
+          exported_file_size: file.size,
+          exported_file_uploaded_at: new Date().toISOString(),
+          exported_file_mime_type: mimeType,
+        }).eq('id', clips[0].id);
+      } else {
+        // Create a log_riprese entry if none exists
+        await supabase.from('log_riprese').insert({
+          id_clip: contenutoRevisione.id_display || 'CLIP',
+          contenuto_id: task.id_contenuto,
+          cliente_id: contenutoRevisione.cliente_id,
+          cliente_nome: contenutoRevisione.cliente_nome,
+          id_contenuto_display: contenutoRevisione.id_display,
+          titolo: contenutoRevisione.titolo,
+          exported_file_id: fileId,
+          exported_file_url: fileUrl,
+          exported_file_name: fileName,
+          exported_file_size: file.size,
+          exported_file_uploaded_at: new Date().toISOString(),
+          exported_file_mime_type: mimeType,
+          operatore: utente.nome,
+          stato: 'Uploadato',
+          riga: 1,
+        });
+      }
+
+      // Complete task and advance CLP
+      const nuovaFase = await completaTaskEAvanzaFase(task.tipo, task.id_contenuto, team, utente.id);
+      setClpFase(nuovaFase || 'Uploadato');
+      setTaskCompletato(true);
+      sounds.taskCompletato();
+      addToast(`✅ File caricato su Drive — CLP avanzato a "Uploadato"!`, 'success');
+
+      const { data: updated } = await supabase.from('task').select('*').eq('id', task.id).single();
+      if (updated) onUpdate(updated as Task);
+    } catch (err: any) {
+      addToast(`❌ Errore upload: ${err.message}`, 'error');
+    }
+    setUploading(false);
+    setUploadProgress(null);
+    if (uploadInputRef.current) uploadInputRef.current.value = '';
+  };
 
 
   // ── Cambia solo lo stato del task (senza toccare il CLP) ──────────────────
@@ -680,6 +828,67 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
               )}
             </div>
           )}
+          {/* ─── UPLOAD ESPORTATO: file picker + progress ──────────────── */}
+          {isUploadTask && !taskCompletato && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                📤 CARICA FILE ESPORTATO
+              </p>
+              <div className="rounded-xl p-3 space-y-3"
+                style={{ background: 'hsl(45 90% 50% / 0.06)', border: '1px solid hsl(45 90% 50% / 0.25)' }}>
+                <p className="text-xs leading-relaxed" style={{ color: 'hsl(45 80% 30%)' }}>
+                  Seleziona il file esportato da caricare su Google Drive nella cartella <strong>file_esportato/</strong>.
+                  Il CLP avanzerà automaticamente a <strong>Uploadato</strong>.
+                </p>
+
+                {uploadProgress ? (
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-[11px]" style={{ color: 'hsl(45 80% 30%)' }}>
+                      <span>📁 {uploadProgress.fileName}</span>
+                      <span className="font-mono font-bold">{uploadProgress.percent}%</span>
+                    </div>
+                    <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: 'hsl(45 90% 50% / 0.15)' }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-300"
+                        style={{ width: `${uploadProgress.percent}%`, background: 'hsl(45 90% 50%)' }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">Caricamento in corso… non chiudere il pannello.</p>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      ref={uploadInputRef}
+                      type="file"
+                      accept="video/*,.mp4,.mov,.avi,.mkv,.webm"
+                      onChange={handleUploadEsportato}
+                      className="hidden"
+                    />
+                    <button
+                      onClick={() => uploadInputRef.current?.click()}
+                      disabled={uploading}
+                      className="w-full py-3 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2"
+                      style={{
+                        background: 'hsl(45 90% 50%)',
+                        color: 'white',
+                        opacity: uploading ? 0.6 : 1,
+                      }}
+                    >
+                      📤 Seleziona file da caricare
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {isUploadTask && taskCompletato && (
+            <div className="rounded-lg px-3 py-2.5 text-xs"
+              style={{ background: 'hsl(142 70% 45% / 0.08)', color: 'hsl(142 60% 35%)', border: '1px solid hsl(142 70% 45% / 0.25)' }}>
+              ✅ File esportato caricato — il task Revisione è stato creato per Elisa!
+            </div>
+          )}
+
           {/* ─── CLEANUP TASK: bottone elimina file grezzi ──────────────── */}
           {isCleanupTask && !taskCompletato && (
             <div>
