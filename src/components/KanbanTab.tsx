@@ -126,7 +126,8 @@ const FASE_NEXT: Record<string, string> = {
 const TIPO_PER_FASE: Record<string, string> = {
   'Girato':      'Premontaggio',
   'Pre montato': 'Montaggio',
-  'Montato':     'Revisione montaggio',
+  'Montato':     'Upload esportato',
+  'Caricato':    'Revisione montaggio',
   'Revisionato': 'Programmazione',
 };
 
