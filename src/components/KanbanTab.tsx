@@ -666,20 +666,25 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                     </span>
                   </div>
                   <div className="kanban-col-body">
-                    {colTasks.map(task => (
-                      <TaskCard
-                        key={task.id}
-                        task={task}
-                        team={team}
-                        utente={utente}
-                        isNew={newTaskIds.has(task.id)}
-                        draggingId={dragItem}
-                        onDragStart={() => setDragItem(task.id)}
-                        onDragEnd={() => setDragItem(null)}
-                        onClick={() => setSelectedTask(task)}
-                        showFaseBadge={false}
-                      />
-                    ))}
+                    {colTasks.map(task => {
+                      const isProgrammato = col.stato === 'Programmato' || col.stato === 'Pubblicato';
+                      const pub = isProgrammato && task.id_contenuto ? clpPubDates[task.id_contenuto] : null;
+                      return (
+                        <TaskCard
+                          key={task.id}
+                          task={task}
+                          team={team}
+                          utente={utente}
+                          isNew={newTaskIds.has(task.id)}
+                          draggingId={dragItem}
+                          onDragStart={() => setDragItem(task.id)}
+                          onDragEnd={() => setDragItem(null)}
+                          onClick={() => setSelectedTask(task)}
+                          showFaseBadge={false}
+                          pubDate={pub}
+                        />
+                      );
+                    })}
                     {colTasks.length === 0 && (
                       <div className="flex items-center justify-center h-12 text-xs rounded-lg"
                         style={{ color: 'hsl(var(--muted-foreground))', border: `1px dashed ${col.border}40` }}>
