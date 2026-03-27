@@ -140,6 +140,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   const abortRef = useRef<Map<string, AbortController>>(new Map());
   const pausedRef = useRef<Set<string>>(new Set());
   const runningRef = useRef<Set<string>>(new Set());
+  const triggerLockRef = useRef(false);
 
   // Derived counts
   const activeCount  = queue.filter(u => u.status === 'uploading').length;
