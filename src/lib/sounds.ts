@@ -52,6 +52,7 @@ function tone(
     gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
     osc.start(t0);
     osc.stop(t0 + duration + 0.05);
+    activeNodes.push(osc);
   } catch (_) { /* silenzioso se non supportato */ }
 }
 
