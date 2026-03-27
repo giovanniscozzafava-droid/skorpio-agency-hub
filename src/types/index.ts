@@ -54,6 +54,7 @@ export type Task = {
   note: string;
   created_at: string;
   updated_at: string;
+  posizione?: number;
 };
 
 export type FaseCLP = 'Idea' | 'Script' | 'Girato' | 'Pre montato' | 'Montato' | 'Uploadato' | 'Revisionato' | 'Programmato' | 'Pubblicato' | 'Scartata';
