@@ -116,7 +116,8 @@ const TIPO_TO_FASE: Record<string, { label: string; bg: string; color: string; b
 const FASE_NEXT: Record<string, string> = {
   'Girato':      'Pre montato',
   'Pre montato': 'Montato',
-  'Montato':     'Revisionato',
+  'Montato':     'Caricato',
+  'Caricato':    'Revisionato',
   'Revisionato': 'Programmato',
   'Programmato': 'Pubblicato',
 };
