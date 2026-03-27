@@ -829,14 +829,38 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
               <div className="flex-1 h-px" style={{ background: 'hsl(var(--border))' }} />
             </div>
           )}
-          <div className="flex gap-4 overflow-x-auto pb-4">
-            {COLONNE.map(col => {
+
+          {/* Mobile: column tabs */}
+          {isMobile && (
+            <div className="flex gap-1 overflow-x-auto pb-2 mb-2 -mx-1 px-1" style={{ WebkitOverflowScrolling: 'touch' }}>
+              {COLONNE.map(col => {
+                const count = filteredStandard(col.stato).length;
+                return (
+                  <button
+                    key={col.stato}
+                    onClick={() => setMobileCol(col.stato)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex-shrink-0 transition-all min-h-[36px]"
+                    style={{
+                      background: mobileCol === col.stato ? col.colore : `${col.colore}15`,
+                      color: mobileCol === col.stato ? '#fff' : col.colore,
+                      border: `1px solid ${col.colore}${mobileCol === col.stato ? '' : '40'}`,
+                    }}
+                  >
+                    {col.icona} {col.stato} <span className="opacity-70">({count})</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div className={isMobile ? '' : 'flex gap-4 overflow-x-auto pb-4'}>
+            {COLONNE.filter(col => !isMobile || col.stato === mobileCol).map(col => {
               const colTasks = filteredStandard(col.stato);
               return (
                 <div
                   key={col.stato}
                   className={`kanban-col ${dropTarget === col.stato ? 'kanban-drop-target' : ''}`}
-                  style={{ background: col.bg, border: `1px solid ${col.border}30` }}
+                  style={{ background: col.bg, border: `1px solid ${col.border}30`, minWidth: isMobile ? '100%' : undefined }}
                   onDragOver={e => { e.preventDefault(); setDropTarget(col.stato); }}
                   onDragLeave={() => { setDropTarget(null); setDragOverTaskId(null); setDragOverPos(null); }}
                   onDrop={() => {
@@ -886,6 +910,17 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
             })}
           </div>
         </div>
+      )}
+
+      {/* Mobile FAB */}
+      {isMobile && (
+        <button
+          onClick={() => setShowNuovoTask(true)}
+          className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-2xl text-white"
+          style={{ background: 'hsl(var(--primary))' }}
+        >
+          +
+        </button>
       )}
 
       {/* Detail Panel */}
