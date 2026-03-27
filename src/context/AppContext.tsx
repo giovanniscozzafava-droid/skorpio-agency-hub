@@ -141,7 +141,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     };
     run();
-    const interval = setInterval(run, 5 * 60 * 1000);
+    const interval = setInterval(run, 60 * 1000); // ogni 60 secondi per check preciso su orario
     return () => clearInterval(interval);
   }, []);
 

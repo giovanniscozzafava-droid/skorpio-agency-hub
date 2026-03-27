@@ -660,9 +660,10 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
                 <div className="flex gap-2 pt-1">
                   <button
                     onClick={() => handleProgramma('Programmato')}
-                    disabled={savingPub || !pubDate}
+                    disabled={savingPub || !pubDate || !pubOra}
                     className="flex-1 text-xs px-3 py-2 rounded-lg font-semibold transition-all disabled:opacity-40"
                     style={{ background: 'hsl(271 60% 55%)', color: 'white' }}
+                    title={!pubOra ? 'Inserisci anche l\'ora di pubblicazione' : ''}
                   >
                     {savingPub ? '⏳…' : '📅 Programma'}
                   </button>
@@ -675,6 +676,11 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
                     {savingPub ? '⏳…' : '🚀 Pubblica ora'}
                   </button>
                 </div>
+                {!pubOra && pubDate && (
+                  <p className="text-xs mt-1" style={{ color: 'hsl(45 90% 50%)' }}>
+                    ⚠️ Per programmare devi impostare anche l'ora di pubblicazione
+                  </p>
+                )}
               </div>
             </>
           )}
