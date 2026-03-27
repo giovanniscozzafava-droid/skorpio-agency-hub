@@ -98,13 +98,21 @@ export const WORKFLOW_MAP: Record<string, WorkflowStep> = {
   'Montaggio': {
     faseCurrent: 'Pre montato',
     faseNext: 'Montato',
+    tipoNext: 'Upload esportato',
+    assegnatoKeyword: 'Alessandro',
+    emojiNext: '📤',
+    descrizioneNext: c => `📤 Upload esportato ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
+  },
+  'Upload esportato': {
+    faseCurrent: 'Montato',
+    faseNext: 'Caricato',
     tipoNext: 'Revisione montaggio',
     assegnatoKeyword: 'Elisa',
     emojiNext: '👁️',
     descrizioneNext: c => `👁️ Revisione ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
   },
   'Revisione montaggio': {
-    faseCurrent: 'Montato',
+    faseCurrent: 'Caricato',
     faseNext: 'Revisionato',
     tipoNext: 'Programmazione',
     assegnatoKeyword: 'Elisa',
@@ -125,7 +133,8 @@ export const WORKFLOW_MAP: Record<string, WorkflowStep> = {
 export const WORKFLOW_STEPS_ORDER = [
   { fase: 'Girato', tipo: 'Premontaggio', label: 'Pre montaggio', emoji: '🎬', assegnato: 'Luca' },
   { fase: 'Pre montato', tipo: 'Montaggio', label: 'Montaggio', emoji: '✂️', assegnato: 'Alessandro' },
-  { fase: 'Montato', tipo: 'Revisione montaggio', label: 'Revisione', emoji: '👁️', assegnato: 'Elisa' },
+  { fase: 'Montato', tipo: 'Upload esportato', label: 'Upload esportato', emoji: '📤', assegnato: 'Alessandro' },
+  { fase: 'Caricato', tipo: 'Revisione montaggio', label: 'Revisione', emoji: '👁️', assegnato: 'Elisa' },
   { fase: 'Revisionato', tipo: 'Programmazione', label: 'Programmazione', emoji: '📅', assegnato: 'Elisa' },
   { fase: 'Programmato', tipo: '', label: 'Pubblicazione', emoji: '📤', assegnato: 'Elisa' },
   { fase: 'Pubblicato', tipo: 'Cleanup', label: 'Pubblicato', emoji: '✅', assegnato: '' },
