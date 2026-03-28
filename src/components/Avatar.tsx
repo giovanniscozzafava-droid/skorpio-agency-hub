@@ -41,10 +41,13 @@ export const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
             alt={nome}
             onError={() => setImgError(true)}
             style={{
-              width: '100%',
-              height: '100%',
+              width: '140%',
+              height: '140%',
               objectFit: 'cover',
+              objectPosition: 'center 20%',
               display: 'block',
+              marginLeft: '-20%',
+              marginTop: '-5%',
             }}
           />
         ) : (
