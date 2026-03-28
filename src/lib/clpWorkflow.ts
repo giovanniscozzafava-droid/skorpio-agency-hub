@@ -4,10 +4,12 @@
 import { supabase } from './supabase';
 import { toDateStr, addDays } from './dateUtils';
 import type { Contenuto, FaseCLP, TeamMember } from '../types';
-import { FASE_TO_TASK_TIPO, FASE_TIPO_MAP, FASE_ORDER as FASE_ORDER_CONFIG, TEAM_ASSIGNMENTS } from '../config/faseConfig';
+import { FASE_TO_TASK_TIPO, FASE_TIPO_MAP, FASE_ORDER as FASE_ORDER_CONFIG, TEAM_ASSIGNMENTS, LEAD_TIMES_BY_TIPO } from '../config/faseConfig';
 
 // ── Default lead times (giorni lavorativi prima della pubblicazione) ──────────
+// Retrocompatibilità: mappa piatta usata come fallback
 export const DEFAULT_LEAD_TIMES: Record<string, number> = {
+  'Scrittura script': 7,
   'Premontaggio': 5,
   'Montaggio': 3,
   'Upload esportato': 2,
@@ -16,7 +18,12 @@ export const DEFAULT_LEAD_TIMES: Record<string, number> = {
   'Pubblicazione': 0,
 };
 
-export function getLeadTimes(): Record<string, number> {
+export function getLeadTimes(tipoContenuto?: string): Record<string, number> {
+  // Usa LEAD_TIMES_BY_TIPO se disponibile per il tipo contenuto
+  if (tipoContenuto) {
+    const perTipo = LEAD_TIMES_BY_TIPO[tipoContenuto] || LEAD_TIMES_BY_TIPO['default'];
+    if (perTipo) return { ...DEFAULT_LEAD_TIMES, ...perTipo };
+  }
   try {
     const stored = localStorage.getItem('skorpio_lead_times');
     if (stored) return { ...DEFAULT_LEAD_TIMES, ...JSON.parse(stored) };
@@ -29,9 +36,9 @@ export function saveLeadTimes(times: Record<string, number>) {
 }
 
 /** Calcola la deadline a ritroso dalla data di pubblicazione */
-export function calcolaDeadlineARitroso(dataPubblicazione: string | null, tipoTask: string): string | null {
+export function calcolaDeadlineARitroso(dataPubblicazione: string | null, tipoTask: string, tipoContenuto?: string): string | null {
   if (!dataPubblicazione) return null;
-  const leadTimes = getLeadTimes();
+  const leadTimes = getLeadTimes(tipoContenuto);
   const giorni = leadTimes[tipoTask];
   if (giorni === undefined || giorni === 0) return dataPubblicazione;
   // Sottrai N giorni
@@ -44,8 +51,8 @@ export function calcolaDeadlineARitroso(dataPubblicazione: string | null, tipoTa
  * Ricalcola le scadenze di tutti i task aperti collegati a un CLP
  * in base alla nuova data di pubblicazione e ai lead times.
  */
-export async function ricalcolaScadenzeTask(contenutoId: string, dataPubblicazione: string, oraPubblicazione: string | null): Promise<number> {
-  const leadTimes = getLeadTimes();
+export async function ricalcolaScadenzeTask(contenutoId: string, dataPubblicazione: string, oraPubblicazione: string | null, tipoContenuto?: string): Promise<number> {
+  const leadTimes = getLeadTimes(tipoContenuto);
 
   const { data: openTasks } = await supabase
     .from('task')
@@ -89,6 +96,14 @@ export interface WorkflowStep {
 
 // [UNIFIED - old] assegnatoKeyword era hardcoded — ora usa TEAM_ASSIGNMENTS da faseConfig.ts
 export const WORKFLOW_MAP: Record<string, WorkflowStep> = {
+  'Scrittura script': {
+    faseCurrent: 'Idea',
+    faseNext: 'Script',
+    tipoNext: 'Premontaggio',
+    assegnatoKeyword: TEAM_ASSIGNMENTS['Premontaggio'],
+    emojiNext: '🎬',
+    descrizioneNext: c => `🎬 Pre montaggio ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
+  },
   'Premontaggio': {
     faseCurrent: 'Girato',
     faseNext: 'Pre montato',
@@ -129,11 +144,21 @@ export const WORKFLOW_MAP: Record<string, WorkflowStep> = {
     emojiNext: '',
     descrizioneNext: () => '',
   },
+  // FEAT 7: task condizionale — si inserisce solo se supervisione_giovanni è attivo
+  'Supervisione': {
+    faseCurrent: 'Montato',
+    faseNext: 'Montato', // resta nella stessa fase, poi crea Upload
+    tipoNext: 'Upload esportato',
+    assegnatoKeyword: TEAM_ASSIGNMENTS['Upload esportato'],
+    emojiNext: '📤',
+    descrizioneNext: c => `📤 Upload esportato ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
+  },
 };
 
 // ── Workflow ordered steps for timeline display ──────────────────────────────
 // [UNIFIED - old] assegnato hardcoded — ora usa TEAM_ASSIGNMENTS
 export const WORKFLOW_STEPS_ORDER = [
+  { fase: 'Script', tipo: 'Scrittura script', label: 'Scrittura script', emoji: '📝', assegnato: TEAM_ASSIGNMENTS['Scrittura script'] },
   { fase: 'Girato', tipo: 'Premontaggio', label: 'Pre montaggio', emoji: '🎬', assegnato: TEAM_ASSIGNMENTS['Premontaggio'] },
   { fase: 'Pre montato', tipo: 'Montaggio', label: 'Montaggio', emoji: '✂️', assegnato: TEAM_ASSIGNMENTS['Montaggio'] },
   { fase: 'Montato', tipo: 'Upload esportato', label: 'Upload esportato', emoji: '📤', assegnato: TEAM_ASSIGNMENTS['Upload esportato'] },
@@ -201,8 +226,8 @@ export async function creaTaskWorkflow(
   // Check if user manually deleted this task type before — respect that
   // (We skip this check for simplicity; the anti-duplicate check suffices)
 
-  // Calcola deadline a ritroso se non già fornita
-  const deadlineCalcolata = scadenza || calcolaDeadlineARitroso(contenuto.data_pubblicazione, tipo);
+  // Calcola deadline a ritroso se non già fornita (usa tipo contenuto per lead times differenziati)
+  const deadlineCalcolata = scadenza || calcolaDeadlineARitroso(contenuto.data_pubblicazione, tipo, contenuto.tipo);
 
   const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
 
@@ -252,16 +277,21 @@ export async function creaTaskPremontaggio(contenuto: Contenuto, team: TeamMembe
 export async function richiestaModifiche(
   contenuto: Contenuto,
   team: TeamMember[],
-  noteRevisione: string
+  noteRevisione: string,
+  userId?: string
 ): Promise<any> {
+  // Incrementa contatore revisioni
+  await supabase.from('contenuti').update({
+    revision_count: (contenuto as any).revision_count ? (contenuto as any).revision_count + 1 : 1,
+  }).eq('id', contenuto.id);
+
   // Completa il task di revisione corrente
   await completaTaskPerContenuto(contenuto.id, 'Revisione montaggio');
 
-  // [OLD] await supabase.from('contenuti').update({ fase: 'Pre montato', note_revisione: noteRevisione }).eq('id', contenuto.id);
   // [NEW - FaseService + note_revisione separato]
   const { cambiaFaseCLP: cambiaFaseRM } = await import('../services/faseService');
   console.log('[Step2c] richiestaModifiche via FaseService', { id: contenuto.id });
-  await cambiaFaseRM({ contenutoId: contenuto.id, nuovaFase: 'Pre montato', source: 'workflow', userId: 'revisione' });
+  await cambiaFaseRM({ contenutoId: contenuto.id, nuovaFase: 'Pre montato', source: 'workflow', userId: userId || 'revisione' });
   await supabase.from('contenuti').update({ note_revisione: noteRevisione }).eq('id', contenuto.id);
 
   // Crea nuovo task di Montaggio
@@ -283,15 +313,15 @@ export async function richiestaModifiche(
  */
 export async function approvaRevisione(
   contenuto: Contenuto,
-  team: TeamMember[]
+  team: TeamMember[],
+  userId?: string
 ): Promise<any> {
-  // Completa il task di revisione
+  // Completa il task di revisione (NON resettare revision_count — serve per storico)
   await completaTaskPerContenuto(contenuto.id, 'Revisione montaggio');
 
-  // [OLD] await supabase.from('contenuti').update({ fase: 'Revisionato' }).eq('id', contenuto.id);
   const { cambiaFaseCLP: cambiaFaseAR } = await import('../services/faseService');
   console.log('[Step2c] approvaRevisione via FaseService', { id: contenuto.id });
-  await cambiaFaseAR({ contenutoId: contenuto.id, nuovaFase: 'Revisionato', source: 'workflow', userId: 'revisione' });
+  await cambiaFaseAR({ contenutoId: contenuto.id, nuovaFase: 'Revisionato', source: 'workflow', userId: userId || 'revisione' });
 
   // Crea task Programmazione
   // [UNIFIED - old] const nomeElisa = findMembro(team, 'Elisa');
@@ -533,12 +563,17 @@ export async function completaTaskEAvanzaFase(
 
 /**
  * Helper: controlla se un CLP programmato con data+ora è pronto per la pubblicazione.
- * Richiede OBBLIGATORIAMENTE ora_pubblicazione — senza orario resta Programmato.
+ * Se ora_pubblicazione è assente, usa default 10:00:00.
  */
-function isProntoPerPubblicazione(dataPub: string | null, oraPub: string | null): boolean {
-  if (!dataPub || !oraPub) return false;
+function isProntoPerPubblicazione(dataPub: string | null, oraPub: string | null, contenutoId?: string): boolean {
+  if (!dataPub) return false;
+  let ora = oraPub;
+  if (!ora) {
+    console.log('[AutoPub] ora mancante, uso default 10:00', contenutoId || '');
+    ora = '10:00:00';
+  }
   const now = new Date();
-  const scheduled = new Date(`${dataPub}T${oraPub.length === 5 ? oraPub + ':00' : oraPub}`);
+  const scheduled = new Date(`${dataPub}T${ora.length === 5 ? ora + ':00' : ora}`);
   return now >= scheduled;
 }
 
@@ -561,14 +596,13 @@ export async function checkAutoPubblica(): Promise<number> {
 
   // Filtra solo quelli il cui orario è effettivamente passato
   const daPublicare = candidati.filter(c =>
-    isProntoPerPubblicazione(c.data_pubblicazione, c.ora_pubblicazione)
+    isProntoPerPubblicazione(c.data_pubblicazione, c.ora_pubblicazione, c.id)
   );
 
   if (daPublicare.length === 0) return 0;
 
   const ids = daPublicare.map(c => c.id);
 
-  // [OLD] await supabase.from('contenuti').update({ fase: 'Pubblicato' }).in('id', ids);
   // [NEW - FaseService centralizzato]
   const { cambiaFaseCLP } = await import('../services/faseService');
   for (const id of ids) {
@@ -576,15 +610,32 @@ export async function checkAutoPubblica(): Promise<number> {
     await cambiaFaseCLP({ contenutoId: id, nuovaFase: 'Pubblicato', source: 'workflow', userId: 'auto-publish' });
   }
 
-  for (const { id } of daPublicare) {
-    await completaTaskPerContenuto(id, 'Programmazione');
-    await completaTaskPerContenuto(id, 'Pubblicazione');
+  for (const c of daPublicare) {
+    await completaTaskPerContenuto(c.id, 'Programmazione');
+    await completaTaskPerContenuto(c.id, 'Pubblicazione');
     try {
-      const { data: contenuto } = await supabase.from('contenuti').select('*').eq('id', id).single();
+      const { data: contenuto } = await supabase.from('contenuti').select('*').eq('id', c.id).single();
       if (contenuto) {
         const { data: teamData } = await supabase.from('team').select('*');
         const team = (teamData || []) as any[];
         await creaTaskCleanup(contenuto as Contenuto, team);
+
+        // FEAT 5: Notifica auto-pubblicazione per Elisa e Giovanni
+        const ora = c.ora_pubblicazione || '10:00';
+        const titoloCLP = contenuto.titolo || contenuto.id_display || c.id;
+        const msg = `${contenuto.id_display} - ${titoloCLP} pubblicato automaticamente alle ${ora}`;
+        const destinatari = [TEAM_ASSIGNMENTS['Programmazione'], TEAM_ASSIGNMENTS['Scrittura script']]; // Elisa, Giovanni
+        for (const dest of destinatari) {
+          if (!dest) continue;
+          await supabase.from('notifiche').insert({
+            destinatario: dest,
+            tipo: 'auto_pubblicazione',
+            titolo: '📤 Pubblicato automaticamente',
+            messaggio: msg,
+          }).then(({ error }) => {
+            if (error) console.warn('[checkAutoPubblica] errore notifica:', error);
+          });
+        }
       }
     } catch (e) {
       console.error('[checkAutoPubblica] errore creaTaskCleanup:', e);

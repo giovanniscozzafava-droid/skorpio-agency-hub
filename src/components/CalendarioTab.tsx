@@ -30,10 +30,15 @@ const TIPO_STYLE: Record<string, { bg: string; border: string; icon: string; lab
 
 // Workflow task sub-colors based on tipo_contenuto (task type)
 const WORKFLOW_STYLES: Record<string, { bg: string; border: string; icon: string; label: string; dot: string }> = {
-  'Premontaggio':  { bg: '#E3F2FD', border: '#1565C0', icon: '🎬', label: 'Pre montaggio',  dot: '#1565C0' },
-  'Montaggio':     { bg: '#EDE7F6', border: '#5E35B1', icon: '✂️', label: 'Montaggio',       dot: '#5E35B1' },
-  'Revisione':     { bg: '#FCE4EC', border: '#C62828', icon: '👁️', label: 'Revisione',       dot: '#C62828' },
-  'Cleanup':       { bg: '#ECEFF1', border: '#546E7A', icon: '🧹', label: 'Cleanup',         dot: '#546E7A' },
+  'Scrittura script': { bg: '#FEF3C7', border: '#D97706', icon: '📝', label: 'Script',          dot: '#D97706' },
+  'Premontaggio':     { bg: '#E3F2FD', border: '#1565C0', icon: '🎬', label: 'Pre montaggio',   dot: '#1565C0' },
+  'Montaggio':        { bg: '#EDE7F6', border: '#5E35B1', icon: '✂️', label: 'Montaggio',        dot: '#5E35B1' },
+  'Upload esportato': { bg: '#FFF8E1', border: '#FF8F00', icon: '📤', label: 'Upload',           dot: '#FF8F00' },
+  'Revisione montaggio': { bg: '#FCE4EC', border: '#C62828', icon: '👁️', label: 'Revisione',    dot: '#C62828' },
+  'Revisione':        { bg: '#FCE4EC', border: '#C62828', icon: '👁️', label: 'Revisione',       dot: '#C62828' },
+  'Programmazione':   { bg: '#F3E5F5', border: '#6D28D9', icon: '📅', label: 'Programmazione',  dot: '#6D28D9' },
+  'Supervisione':     { bg: '#FEF3C7', border: '#92400E', icon: '👁️', label: 'Supervisione',   dot: '#92400E' },
+  'Cleanup':          { bg: '#ECEFF1', border: '#546E7A', icon: '🧹', label: 'Cleanup',         dot: '#546E7A' },
 };
 const WORKFLOW_DEFAULT = { bg: '#E3F2FD', border: '#1565C0', icon: '⚙️', label: 'Task Workflow', dot: '#1565C0' };
 

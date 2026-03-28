@@ -39,7 +39,7 @@ export const FASE_TRANSITIONS: Record<string, string[]> = {
   'Revisionato':  ['Programmato', 'Pre montato', 'Scartata'], // Pre montato = richiesta modifiche
   'Programmato':  ['Pubblicato', 'Scartata'],
   'Pubblicato':   ['Scartata'],
-  'Scartata':     [], // dead end
+  'Scartata':     ['Idea'], // può tornare a Idea (ripristino)
 };
 
 /** Check if a phase transition is valid */
@@ -58,6 +58,7 @@ export function isTransitionValid(from: string, to: string): boolean {
 
 /** Get the workflow task type that "lives" in a given phase */
 export const FASE_TO_TASK_TIPO: Record<string, { tipo: string; keyword: string; emoji: string }> = {
+  'Script':       { tipo: 'Scrittura script',     keyword: 'Giovanni',   emoji: '📝' },
   'Girato':       { tipo: 'Premontaggio',        keyword: 'Luca',       emoji: '🎬' },
   'Pre montato':  { tipo: 'Montaggio',            keyword: 'Alessandro', emoji: '✂️' },
   'Montato':      { tipo: 'Upload esportato',     keyword: 'Alessandro', emoji: '📤' },
@@ -72,10 +73,20 @@ export const FASE_TIPO_MAP: Record<string, string> = Object.fromEntries(
 
 /** Centralised team member assignments per task type — single source of truth */
 export const TEAM_ASSIGNMENTS: Record<string, string> = {
+  'Scrittura script':    'Giovanni',
   'Premontaggio':        'Luca',
   'Montaggio':           'Alessandro',
   'Upload esportato':    'Alessandro',
   'Revisione montaggio': 'Elisa',
   'Programmazione':      'Elisa',
   'Cleanup':             'Elisa',
+  'Supervisione':        'Giovanni',
+};
+
+/** Lead times per tipo di contenuto (giorni prima della pubblicazione) */
+export const LEAD_TIMES_BY_TIPO: Record<string, Record<string, number>> = {
+  'Reel': { 'Scrittura script': 5, 'Premontaggio': 3, 'Montaggio': 2, 'Upload esportato': 1, 'Revisione montaggio': 1, 'Programmazione': 1 },
+  'Showreel': { 'Scrittura script': 10, 'Premontaggio': 7, 'Montaggio': 5, 'Upload esportato': 3, 'Revisione montaggio': 2, 'Programmazione': 1 },
+  'Post': { 'Scrittura script': 3, 'Premontaggio': 2, 'Montaggio': 1, 'Upload esportato': 1, 'Revisione montaggio': 1, 'Programmazione': 1 },
+  'default': { 'Scrittura script': 7, 'Premontaggio': 5, 'Montaggio': 3, 'Upload esportato': 2, 'Revisione montaggio': 2, 'Programmazione': 1 },
 };

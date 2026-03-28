@@ -145,13 +145,25 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
 
   console.log('[FaseService] fase cambiata', { clpId: contenutoId, oldFase, newFase: nuovaFase, source });
 
+  // ── FEAT 3: Scartata → Idea reset ─────────────────────────────────────────
+  if (oldFase === 'Scartata' && nuovaFase === 'Idea') {
+    console.log('[Ripristino] CLP ripristinato da Scartata', { contenutoId });
+    await supabase.from('contenuti').update({ revision_count: 0 }).eq('id', contenutoId);
+  }
+
+  // ── FEAT 7: Supervisione Giovanni condizionale ───────────────────────────
+  const needsSupervisione = nuovaFase === 'Montato' && contenuto.supervisione_giovanni === true;
+
+  // ── Steps 4-9 wrappati in try/catch per rollback (FIX D) ────────────────
+  try {
+
   // ── 4. COMPLETA il task precedente ───────────────────────────────────────
   if (taskIdCompletato) {
     const { error: taskError } = await supabase
       .from('task')
       .update({ stato: 'Completato' })
       .eq('id', taskIdCompletato);
-    
+
     if (taskError) {
       errors.push('Errore completamento task: ' + taskError.message);
       console.error('[FaseService] errore completamento task', taskError);
@@ -162,40 +174,57 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
 
   // ── 5. CREA il task workflow successivo ──────────────────────────────────
   const team = await getTeam();
-  const taskInfo = FASE_TO_TASK_TIPO[nuovaFase];
-  
-  if (taskInfo) {
+
+  // Se supervisione_giovanni è attiva e fase=Montato, crea task Supervisione invece di Upload
+  if (needsSupervisione) {
     try {
       const c = contenuto as unknown as Contenuto;
-      const assegnatoA = findMembro(team, taskInfo.keyword);
-      const labelMap: Record<string, string> = {
-        'Premontaggio': 'Pre montaggio',
-        'Montaggio': 'Montaggio',
-        'Upload esportato': 'Upload esportato',
-        'Revisione montaggio': 'Revisione',
-        'Programmazione': 'Programmazione',
-      };
-      const desc = `${taskInfo.emoji} ${labelMap[taskInfo.tipo] || taskInfo.tipo} ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`;
-      
-      const newTask = await creaTaskWorkflow(c, assegnatoA, taskInfo.tipo, desc, 'Da fare');
-      
+      const nomeGiovanni = findMembro(team, 'Giovanni');
+      const desc = `👁️ Supervisione ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`;
+      const newTask = await creaTaskWorkflow(c, nomeGiovanni, 'Supervisione', desc, 'Da fare');
       if (newTask) {
         taskCreatedId = newTask.id;
-        console.log('[FaseService] task workflow creato', { taskId: newTask.id, tipo: taskInfo.tipo });
-
-        // Se è Upload esportato, aggiungi nota con percorso Drive
-        if (taskInfo.tipo === 'Upload esportato') {
-          const slug = c.titolo.replace(/\s+/g, '-').slice(0, 40);
-          const folderPath = `SKORPIO_Clip/${c.cliente_nome}/${c.id_display}_${slug}/file_esportato/`;
-          const driveNote = c.link_drive
-            ? `📂 Carica il file esportato nella cartella "file_esportato/" su Google Drive:\n${c.link_drive}\n\nPercorso: ${folderPath}`
-            : `📂 Carica il file esportato nella sezione Riprese del CLP ${c.id_display}, zona "File esportato".\n\nPercorso Drive: ${folderPath}`;
-          await supabase.from('task').update({ note: driveNote }).eq('id', newTask.id);
-        }
+        console.log('[FaseService] task supervisione creato', { taskId: newTask.id });
       }
     } catch (e: any) {
-      errors.push('Errore creazione task workflow: ' + (e?.message || String(e)));
-      console.error('[FaseService] errore creazione task', e);
+      errors.push('Errore creazione task supervisione: ' + (e?.message || String(e)));
+    }
+  } else {
+    const taskInfo = FASE_TO_TASK_TIPO[nuovaFase];
+    if (taskInfo) {
+      try {
+        const c = contenuto as unknown as Contenuto;
+        const assegnatoA = findMembro(team, taskInfo.keyword);
+        const labelMap: Record<string, string> = {
+          'Scrittura script': 'Scrittura script',
+          'Premontaggio': 'Pre montaggio',
+          'Montaggio': 'Montaggio',
+          'Upload esportato': 'Upload esportato',
+          'Revisione montaggio': 'Revisione',
+          'Programmazione': 'Programmazione',
+        };
+        const desc = `${taskInfo.emoji} ${labelMap[taskInfo.tipo] || taskInfo.tipo} ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`;
+
+        const newTask = await creaTaskWorkflow(c, assegnatoA, taskInfo.tipo, desc, 'Da fare');
+
+        if (newTask) {
+          taskCreatedId = newTask.id;
+          console.log('[FaseService] task workflow creato', { taskId: newTask.id, tipo: taskInfo.tipo });
+
+          // Se è Upload esportato, aggiungi nota con percorso Drive
+          if (taskInfo.tipo === 'Upload esportato') {
+            const slug = c.titolo.replace(/\s+/g, '-').slice(0, 40);
+            const folderPath = `SKORPIO_Clip/${c.cliente_nome}/${c.id_display}_${slug}/file_esportato/`;
+            const driveNote = c.link_drive
+              ? `📂 Carica il file esportato nella cartella "file_esportato/" su Google Drive:\n${c.link_drive}\n\nPercorso: ${folderPath}`
+              : `📂 Carica il file esportato nella sezione Riprese del CLP ${c.id_display}, zona "File esportato".\n\nPercorso Drive: ${folderPath}`;
+            await supabase.from('task').update({ note: driveNote }).eq('id', newTask.id);
+          }
+        }
+      } catch (e: any) {
+        errors.push('Errore creazione task workflow: ' + (e?.message || String(e)));
+        console.error('[FaseService] errore creazione task', e);
+      }
     }
   }
 
@@ -259,7 +288,8 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
   // ── 8. CREA task cleanup (se Pubblicato) ─────────────────────────────────
   if (nuovaFase === 'Pubblicato') {
     try {
-      await creaTaskCleanup(contenuto as unknown as Contenuto, team);
+      const teamForCleanup = team.length > 0 ? team : await getTeam();
+      await creaTaskCleanup(contenuto as unknown as Contenuto, teamForCleanup);
       cleanupTaskCreated = true;
       console.log('[FaseService] task cleanup creato');
     } catch (e: any) {
@@ -271,7 +301,6 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
   // ── 9. SYNC calendario ───────────────────────────────────────────────────
   if (contenuto.data_pubblicazione) {
     try {
-      // Check if a synthetic calendar event exists for this publication
       const { data: existingCal } = await supabase
         .from('calendario')
         .select('id')
@@ -280,7 +309,6 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
         .limit(1);
 
       if (existingCal && existingCal.length > 0) {
-        // Update existing calendar event
         await supabase
           .from('calendario')
           .update({
@@ -291,8 +319,6 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
           .eq('tipo', 'pubblicazione');
         calendarUpdated = true;
       }
-      // Note: synthetic publication events are generated at render-time in CalendarioTab
-      // so we don't need to create new calendar entries here
       console.log('[FaseService] calendario sync completato');
     } catch (e: any) {
       errors.push('Errore sync calendario: ' + (e?.message || String(e)));
@@ -300,7 +326,26 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
     }
   }
 
-  // ── 10. LOG ──────────────────────────────────────────────────────────────
+  } catch (rollbackError: any) {
+    // ── FIX D: ROLLBACK — riscrivi fase originale ──────────────────────────
+    console.error('[FaseService] ROLLBACK: errore durante step 4-9, ripristino fase', { oldFase, error: rollbackError });
+    await supabase.from('contenuti').update({ fase: oldFase }).eq('id', contenutoId);
+    errors.push(`ROLLBACK: ${rollbackError?.message || String(rollbackError)}`);
+
+    // Log con rollback=true — va sempre scritto
+    await logFaseChange({
+      success: false, oldFase, newFase: nuovaFase, errors,
+      contenutoId, source, userId, taskCreatedId,
+      calendarUpdated: false, reelIncremented: false, cleanupTaskCreated: false,
+    });
+
+    return {
+      success: false, oldFase, newFase: nuovaFase, errors,
+      taskCreated: taskCreatedId, driveFolder, calendarUpdated, reelIncremented, cleanupTaskCreated,
+    };
+  }
+
+  // ── 10. LOG (fuori dal try/catch — si scrive sempre) ───────────────────
   const result: FaseChangeResult = {
     success: true,
     oldFase,

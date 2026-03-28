@@ -6,7 +6,7 @@ import { useUpload } from '../context/UploadContext';
 import type { LogRipresa, Cliente, TeamMember, Contenuto, Task } from '../types';
 import { WORKFLOW_STEPS_ORDER } from '../lib/clpWorkflow';
 import { cambiaFaseCLP } from '../services/faseService';
-import { FASE_CONFIG } from '../config/faseConfig';
+import { FASE_CONFIG, TEAM_ASSIGNMENTS } from '../config/faseConfig';
 import { ClipFileUpload, FileStatusDot, formatBytes } from './ClipFileUpload';
 import { ClipReviewModal } from './ClipReviewModal';
 import { BulkUploadModal, AutoCleanupDialog } from './DriveStorageIndicator';
@@ -84,12 +84,14 @@ function shouldTriggerCleanup(field: 'stato' | 'fase', newValue: string): boolea
 
 const FASI_ORDER = ['Idea', 'Script', 'Girato', 'Pre montato', 'Montato', 'Revisionato', 'Programmato', 'Pubblicato'];
 
+// [UNIFIED - old] nomi hardcoded rimossi — ora usa TEAM_ASSIGNMENTS da faseConfig.ts
 const WORKFLOW_COMPACT_MAP: Record<string, { emoji: string; label: string; assegnato: string }> = {
-  'Girato':      { emoji: '🎬', label: 'Pre montaggio', assegnato: 'Luca' },
-  'Pre montato': { emoji: '✂️', label: 'Montaggio', assegnato: 'Alessandro' },
-  'Montato':     { emoji: '👁️', label: 'Revisione', assegnato: 'Elisa' },
-  'Revisionato': { emoji: '📅', label: 'Programmazione', assegnato: 'Elisa' },
-  'Programmato': { emoji: '📤', label: 'Pubblicazione', assegnato: 'Elisa' },
+  'Script':      { emoji: '📝', label: 'Scrittura script', assegnato: TEAM_ASSIGNMENTS['Scrittura script'] },
+  'Girato':      { emoji: '🎬', label: 'Pre montaggio', assegnato: TEAM_ASSIGNMENTS['Premontaggio'] },
+  'Pre montato': { emoji: '✂️', label: 'Montaggio', assegnato: TEAM_ASSIGNMENTS['Montaggio'] },
+  'Montato':     { emoji: '👁️', label: 'Revisione', assegnato: TEAM_ASSIGNMENTS['Revisione montaggio'] },
+  'Revisionato': { emoji: '📅', label: 'Programmazione', assegnato: TEAM_ASSIGNMENTS['Programmazione'] },
+  'Programmato': { emoji: '📤', label: 'Pubblicazione', assegnato: TEAM_ASSIGNMENTS['Programmazione'] },
   'Pubblicato':  { emoji: '✅', label: 'Pubblicato', assegnato: '' },
 };
 

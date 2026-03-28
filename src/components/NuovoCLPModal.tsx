@@ -207,9 +207,11 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
     hook: '',
     assegnato_riprese: '',
     assegnato_montaggio: '',
+    supervisione_giovanni: false,
   });
   const [saving, setSaving] = useState(false);
   const [driveWarning, setDriveWarning] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<{ titolo?: string; cliente_id?: string }>({});
 
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 
@@ -217,7 +219,14 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.titolo.trim()) return;
+    const errs: { titolo?: string; cliente_id?: string } = {};
+    if (!form.titolo.trim()) errs.titolo = 'Titolo obbligatorio';
+    if (!form.cliente_id) errs.cliente_id = 'Seleziona un cliente';
+    if (Object.keys(errs).length > 0) {
+      setValidationErrors(errs);
+      return;
+    }
+    setValidationErrors({});
     setSaving(true);
 
     const { data: seqData } = await supabase.rpc('generate_display_id', {
@@ -240,6 +249,7 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
       hook: form.hook,
       assegnato_riprese: form.assegnato_riprese,
       assegnato_montaggio: form.assegnato_montaggio,
+      supervisione_giovanni: form.supervisione_giovanni,
     };
 
     const { data, error } = await supabase
@@ -298,23 +308,27 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
             <input
               type="text"
               className="sk-input w-full"
+              style={validationErrors.titolo ? { borderColor: '#EF4444' } : undefined}
               value={form.titolo}
-              onChange={e => set('titolo', e.target.value)}
+              onChange={e => { set('titolo', e.target.value); setValidationErrors(prev => ({ ...prev, titolo: undefined })); }}
               placeholder="es: Tutorial skincare autunnale…"
-              required
               autoFocus
             />
+            {validationErrors.titolo && <p className="text-xs mt-1" style={{ color: '#EF4444' }}>{validationErrors.titolo}</p>}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             {/* Cliente — searchable */}
             <div>
-              <label className="sk-label">Cliente</label>
-              <ClienteDropdown
-                clienti={clienti}
-                value={form.cliente_id}
-                onChange={(id, nome) => setForm(prev => ({ ...prev, cliente_id: id, cliente_nome: nome }))}
-              />
+              <label className="sk-label">Cliente *</label>
+              <div style={validationErrors.cliente_id ? { border: '1px solid #EF4444', borderRadius: 8 } : undefined}>
+                <ClienteDropdown
+                  clienti={clienti}
+                  value={form.cliente_id}
+                  onChange={(id, nome) => { setForm(prev => ({ ...prev, cliente_id: id, cliente_nome: nome })); setValidationErrors(prev => ({ ...prev, cliente_id: undefined })); }}
+                />
+              </div>
+              {validationErrors.cliente_id && <p className="text-xs mt-1" style={{ color: '#EF4444' }}>{validationErrors.cliente_id}</p>}
             </div>
 
             {/* Fase */}
@@ -401,6 +415,19 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
               </select>
             </div>
           </div>
+
+          {/* Supervisione Giovanni */}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.supervisione_giovanni}
+              onChange={e => setForm(prev => ({ ...prev, supervisione_giovanni: e.target.checked }))}
+              className="rounded"
+            />
+            <span className="text-sm" style={{ color: 'hsl(var(--skorpio-text-secondary))' }}>
+              👁️ Supervisione Giovanni (aggiunge step revisione prima dell'upload)
+            </span>
+          </label>
 
           <div className="flex justify-end gap-3 pt-2">
             {driveWarning && (

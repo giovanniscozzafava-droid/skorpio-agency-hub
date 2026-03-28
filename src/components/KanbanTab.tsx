@@ -152,12 +152,14 @@ interface TaskCardProps {
   showFaseBadge?: boolean;
   /** Data di pubblicazione (per countdown Programmato) */
   pubDate?: { data: string | null; ora: string | null } | null;
+  /** Contatore revisioni CLP (se >= 3, mostra badge) */
+  revisionCount?: number;
   /** Vertical reorder callbacks */
   onDragOverTask?: (e: React.DragEvent) => void;
   dropIndicator?: 'above' | 'below' | null;
 }
 
-function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate, onDragOverTask, dropIndicator }: TaskCardProps) {
+function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate, revisionCount, onDragOverTask, dropIndicator }: TaskCardProps) {
   const scad = scadenzaInfo(task);
   const isScaduto = scad?.label.includes('SCADUTO');
   const member = team.find(m => m.nome === task.assegnato_a);
@@ -197,6 +199,12 @@ function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEn
           <span className="text-[9px] font-bold px-1 py-0.5 rounded inline-block"
             style={{ background: 'hsl(38 92% 50% / 0.15)', color: 'hsl(32 95% 40%)' }}>
             ⚡ Auto
+          </span>
+        )}
+        {(revisionCount ?? 0) >= 3 && (
+          <span className="text-[9px] font-bold px-1 py-0.5 rounded inline-block"
+            style={{ background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A' }}>
+            ⚠️ {revisionCount} revisioni
           </span>
         )}
       </div>
@@ -296,6 +304,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [clpFasi, setClpFasi] = useState<Record<string, string>>({});
   const [clpPubDates, setClpPubDates] = useState<Record<string, { data: string | null; ora: string | null }>>({});
+  const [clpRevisionCount, setClpRevisionCount] = useState<Record<string, number>>({});
   // Mobile: which column to show
   const [mobileCol, setMobileCol] = useState('Da fare');
   const [mobileCLPCol, setMobileCLPCol] = useState('Girato');
@@ -347,7 +356,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
         .order('created_at', { ascending: false }),
       supabase
         .from('contenuti')
-        .select('id, fase, data_pubblicazione, ora_pubblicazione'),
+        .select('id, fase, data_pubblicazione, ora_pubblicazione, revision_count'),
     ]);
 
     const nextTasks = taskData || [];
@@ -358,6 +367,9 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
     );
     setClpPubDates(
       Object.fromEntries((contenutiData || []).map(c => [c.id, { data: c.data_pubblicazione, ora: c.ora_pubblicazione }]))
+    );
+    setClpRevisionCount(
+      Object.fromEntries((contenutiData || []).map(c => [c.id, c.revision_count || 0]))
     );
     setLoading(false);
 
@@ -794,6 +806,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                           onClick={() => setSelectedTask(task)}
                           showFaseBadge={false}
                           pubDate={pub}
+                          revisionCount={task.id_contenuto ? clpRevisionCount[task.id_contenuto] : undefined}
                           onDragOverTask={(e) => handleDragOverTask(e, task.id)}
                           dropIndicator={dragOverTaskId === task.id ? dragOverPos : null}
                         />
@@ -889,6 +902,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                         onDragEnd={() => { setDragItem(null); setDragOverTaskId(null); setDragOverPos(null); }}
                         onClick={() => setSelectedTask(task)}
                         showFaseBadge={true}
+                        revisionCount={task.id_contenuto ? clpRevisionCount[task.id_contenuto] : undefined}
                         onDragOverTask={(e) => handleDragOverTask(e, task.id)}
                         dropIndicator={dragOverTaskId === task.id ? dragOverPos : null}
                       />

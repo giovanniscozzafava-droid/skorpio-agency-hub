@@ -250,7 +250,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
       onUpdate(data as Contenuto);
       setForm(data as Contenuto);
       // Ricalcola scadenze di TUTTI i task aperti collegati
-      const count = await ricalcolaScadenzeTask(contenuto.id, dataStr, oraStr);
+      const count = await ricalcolaScadenzeTask(contenuto.id, dataStr, oraStr, contenuto.tipo);
       addToast(`📅 Data salvata — ${count} scadenze task ricalcolate a ritroso`, 'success');
     }
     setSavingPub(false);
@@ -266,7 +266,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
     // [NEW - FaseService + data separati]
     const { cambiaFaseCLP } = await import('../services/faseService');
     console.log('[Step2c] CLPDetailPanel handleProgramma via FaseService', { id: contenuto.id, nuovaFase });
-    await cambiaFaseCLP({ contenutoId: contenuto.id, nuovaFase, source: 'contenuti', userId: 'detail-panel' });
+    await cambiaFaseCLP({ contenutoId: contenuto.id, nuovaFase, source: 'contenuti', userId: utente?.id || 'unknown' });
     // Aggiorna data/ora separatamente
     const { data, error } = await supabase
       .from('contenuti')
@@ -284,7 +284,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
 
       // Ricalcola scadenze di tutti i task aperti collegati
       if (dataStr) {
-        await ricalcolaScadenzeTask(contenuto.id, dataStr, oraStr);
+        await ricalcolaScadenzeTask(contenuto.id, dataStr, oraStr, contenuto.tipo);
       }
 
       // Completa task pubblicazione di Elisa (solo se Pubblicato, non Programmato)
@@ -362,7 +362,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
       // [OLD] await supabase.from('contenuti').update({ fase: 'Girato' }).eq('id', contenuto.id);
       const { cambiaFaseCLP: cambiaFaseClip } = await import('../services/faseService');
       console.log('[Step2c] CLPDetailPanel auto-Girato via FaseService', { id: contenuto.id });
-      await cambiaFaseClip({ contenutoId: contenuto.id, nuovaFase: 'Girato', source: 'contenuti', userId: 'detail-panel' });
+      await cambiaFaseClip({ contenutoId: contenuto.id, nuovaFase: 'Girato', source: 'contenuti', userId: utente?.id || 'unknown' });
       const { data: fresh } = await supabase.from('contenuti').select('*').eq('id', contenuto.id).single();
       if (fresh) {
         onUpdate(fresh as Contenuto);

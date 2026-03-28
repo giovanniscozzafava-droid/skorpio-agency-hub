@@ -301,6 +301,11 @@ export function ContenutiTab({ team, clienti }: ContentTabProps) {
                       >
                         {c.fase}
                       </span>
+                      {(c as any).revision_count >= 3 && (
+                        <span className="ml-1 text-[10px] font-bold px-1 py-0.5 rounded" style={{ background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A' }}>
+                          ⚠️ {(c as any).revision_count} revisioni
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <span className="text-xs" style={{ color: 'hsl(var(--skorpio-text-secondary))' }}>
