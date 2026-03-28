@@ -154,7 +154,9 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
   // ── FEAT 7: Supervisione Giovanni condizionale ───────────────────────────
   const needsSupervisione = nuovaFase === 'Montato' && contenuto.supervisione_giovanni === true;
 
-  // ── Steps 4-9 wrappati in try/catch per rollback (FIX D) ────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // STEP 4-5: SINCRONI — bloccano la risposta (critici per UX)
+  // ══════════════════════════════════════════════════════════════════════════
   try {
 
   // ── 4. COMPLETA il task precedente ───────────────────────────────────────
@@ -175,7 +177,6 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
   // ── 5. CREA il task workflow successivo ──────────────────────────────────
   const team = await getTeam();
 
-  // Se supervisione_giovanni è attiva e fase=Montato, crea task Supervisione invece di Upload
   if (needsSupervisione) {
     try {
       const c = contenuto as unknown as Contenuto;
@@ -211,7 +212,7 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
           taskCreatedId = newTask.id;
           console.log('[FaseService] task workflow creato', { taskId: newTask.id, tipo: taskInfo.tipo });
 
-          // Se è Upload esportato, aggiungi nota con percorso Drive
+          // Se è Upload esportato, aggiungi nota con percorso Drive (sincrono — serve subito nel task)
           if (taskInfo.tipo === 'Upload esportato') {
             const slug = c.titolo.replace(/\s+/g, '-').slice(0, 40);
             const folderPath = `SKORPIO_Clip/${c.cliente_nome}/${c.id_display}_${slug}/file_esportato/`;
@@ -228,111 +229,12 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
     }
   }
 
-  // ── 6. CREA cartella Google Drive (se fase = Montato) ────────────────────
-  if (nuovaFase === 'Montato' && !contenuto.link_drive) {
-    try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-      const res = await fetch(`${supabaseUrl}/functions/v1/create-drive-folder`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseKey}`,
-          'apikey': supabaseKey,
-        },
-        body: JSON.stringify({
-          contenuto_id: contenuto.id,
-          titolo: contenuto.titolo,
-          cliente_nome: contenuto.cliente_nome,
-          tipo: contenuto.tipo,
-          id_display: contenuto.id_display,
-          team_id: userId,
-        }),
-      });
-      const result = await res.json();
-      if (result.success) {
-        driveFolder = result.folder_id || 'created';
-        console.log('[FaseService] cartella Drive creata', { driveFolder });
-      } else {
-        errors.push('Drive folder creation failed: ' + JSON.stringify(result));
-      }
-    } catch (e: any) {
-      errors.push('Errore Drive folder: ' + (e?.message || String(e)));
-      console.error('[FaseService] errore Drive folder', e);
-    }
-  }
-
-  // ── 7. INCREMENTA contatore reel (se Pubblicato + Reel) ──────────────────
-  if (nuovaFase === 'Pubblicato' && oldFase !== 'Pubblicato' && contenuto.tipo === 'Reel' && contenuto.cliente_id) {
-    try {
-      const { data: cliente } = await supabase
-        .from('clienti')
-        .select('reel_fatti')
-        .eq('id', contenuto.cliente_id)
-        .single();
-
-      if (cliente) {
-        await supabase
-          .from('clienti')
-          .update({ reel_fatti: (cliente.reel_fatti ?? 0) + 1 })
-          .eq('id', contenuto.cliente_id);
-        reelIncremented = true;
-        console.log('[FaseService] reel incrementato', { clienteId: contenuto.cliente_id });
-      }
-    } catch (e: any) {
-      errors.push('Errore incremento reel: ' + (e?.message || String(e)));
-      console.error('[FaseService] errore incremento reel', e);
-    }
-  }
-
-  // ── 8. CREA task cleanup (se Pubblicato) ─────────────────────────────────
-  if (nuovaFase === 'Pubblicato') {
-    try {
-      const teamForCleanup = team.length > 0 ? team : await getTeam();
-      await creaTaskCleanup(contenuto as unknown as Contenuto, teamForCleanup);
-      cleanupTaskCreated = true;
-      console.log('[FaseService] task cleanup creato');
-    } catch (e: any) {
-      errors.push('Errore cleanup task: ' + (e?.message || String(e)));
-      console.error('[FaseService] errore cleanup', e);
-    }
-  }
-
-  // ── 9. SYNC calendario ───────────────────────────────────────────────────
-  if (contenuto.data_pubblicazione) {
-    try {
-      const { data: existingCal } = await supabase
-        .from('calendario')
-        .select('id')
-        .eq('contenuto_id', contenutoId)
-        .eq('tipo', 'pubblicazione')
-        .limit(1);
-
-      if (existingCal && existingCal.length > 0) {
-        await supabase
-          .from('calendario')
-          .update({
-            stato: nuovaFase === 'Pubblicato' ? 'Completato' : 'Pianificato',
-            tipo_contenuto: contenuto.tipo || '',
-          })
-          .eq('contenuto_id', contenutoId)
-          .eq('tipo', 'pubblicazione');
-        calendarUpdated = true;
-      }
-      console.log('[FaseService] calendario sync completato');
-    } catch (e: any) {
-      errors.push('Errore sync calendario: ' + (e?.message || String(e)));
-      console.error('[FaseService] errore calendario', e);
-    }
-  }
-
   } catch (rollbackError: any) {
     // ── FIX D: ROLLBACK — riscrivi fase originale ──────────────────────────
-    console.error('[FaseService] ROLLBACK: errore durante step 4-9, ripristino fase', { oldFase, error: rollbackError });
+    console.error('[FaseService] ROLLBACK: errore durante step 4-5, ripristino fase', { oldFase, error: rollbackError });
     await supabase.from('contenuti').update({ fase: oldFase }).eq('id', contenutoId);
     errors.push(`ROLLBACK: ${rollbackError?.message || String(rollbackError)}`);
 
-    // Log con rollback=true — va sempre scritto
     await logFaseChange({
       success: false, oldFase, newFase: nuovaFase, errors,
       contenutoId, source, userId, taskCreatedId,
@@ -345,16 +247,118 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
     };
   }
 
-  // ── 10. LOG (fuori dal try/catch — si scrive sempre) ───────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // STEP 6-9: ASINCRONI — fire and forget, non bloccano la risposta
+  // ══════════════════════════════════════════════════════════════════════════
+  const asyncSideEffects = async () => {
+    try {
+      // ── 6. CREA cartella Google Drive (se fase = Montato) ──────────────
+      if (nuovaFase === 'Montato' && !contenuto.link_drive) {
+        try {
+          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+          const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+          const res = await fetch(`${supabaseUrl}/functions/v1/create-drive-folder`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${supabaseKey}`,
+              'apikey': supabaseKey,
+            },
+            body: JSON.stringify({
+              contenuto_id: contenuto.id,
+              titolo: contenuto.titolo,
+              cliente_nome: contenuto.cliente_nome,
+              tipo: contenuto.tipo,
+              id_display: contenuto.id_display,
+              team_id: userId,
+            }),
+          });
+          const result = await res.json();
+          if (result.success) {
+            console.log('[FaseService][async] cartella Drive creata', { folder: result.folder_id });
+          } else {
+            console.warn('[FaseService][async] Drive folder failed:', result);
+          }
+        } catch (e) {
+          console.error('[FaseService][async] errore Drive folder:', e);
+        }
+      }
+
+      // ── 7. INCREMENTA contatore reel (se Pubblicato + Reel) ────────────
+      if (nuovaFase === 'Pubblicato' && oldFase !== 'Pubblicato' && contenuto.tipo === 'Reel' && contenuto.cliente_id) {
+        try {
+          const { data: cliente } = await supabase
+            .from('clienti')
+            .select('reel_fatti')
+            .eq('id', contenuto.cliente_id)
+            .single();
+
+          if (cliente) {
+            await supabase
+              .from('clienti')
+              .update({ reel_fatti: (cliente.reel_fatti ?? 0) + 1 })
+              .eq('id', contenuto.cliente_id);
+            console.log('[FaseService][async] reel incrementato', { clienteId: contenuto.cliente_id });
+          }
+        } catch (e) {
+          console.error('[FaseService][async] errore incremento reel:', e);
+        }
+      }
+
+      // ── 8. CREA task cleanup (se Pubblicato) ───────────────────────────
+      if (nuovaFase === 'Pubblicato') {
+        try {
+          const teamForCleanup = await getTeam();
+          await creaTaskCleanup(contenuto as unknown as Contenuto, teamForCleanup);
+          console.log('[FaseService][async] task cleanup creato');
+        } catch (e) {
+          console.error('[FaseService][async] errore cleanup task:', e);
+        }
+      }
+
+      // ── 9. SYNC calendario ─────────────────────────────────────────────
+      if (contenuto.data_pubblicazione) {
+        try {
+          const { data: existingCal } = await supabase
+            .from('calendario')
+            .select('id')
+            .eq('contenuto_id', contenutoId)
+            .eq('tipo', 'pubblicazione')
+            .limit(1);
+
+          if (existingCal && existingCal.length > 0) {
+            await supabase
+              .from('calendario')
+              .update({
+                stato: nuovaFase === 'Pubblicato' ? 'Completato' : 'Pianificato',
+                tipo_contenuto: contenuto.tipo || '',
+              })
+              .eq('contenuto_id', contenutoId)
+              .eq('tipo', 'pubblicazione');
+          }
+          console.log('[FaseService][async] calendario sync completato');
+        } catch (e) {
+          console.error('[FaseService][async] errore calendario:', e);
+        }
+      }
+    } catch (e) {
+      console.error('[FaseService][async] side effect non gestito:', e);
+    }
+  };
+
+  // Fire and forget — non blocca la risposta
+  asyncSideEffects();
+
+  // ── 10. LOG (sincrono — si scrive sempre) ──────────────────────────────
   const result: FaseChangeResult = {
     success: true,
     oldFase,
     newFase: nuovaFase,
     taskCreated: taskCreatedId,
-    driveFolder,
-    calendarUpdated,
-    reelIncremented,
-    cleanupTaskCreated,
+    driveFolder: undefined, // async — non disponibile subito
+    calendarUpdated: false, // async — non disponibile subito
+    reelIncremented: false, // async — non disponibile subito
+    cleanupTaskCreated: false, // async — non disponibile subito
     errors,
   };
 
@@ -365,9 +369,6 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
     userId,
     taskCreatedId,
   });
-
-  // Safety check
-  await verifyNoDataLoss(`after ${oldFase}→${nuovaFase}`);
 
   return result;
 }
