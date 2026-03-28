@@ -1,19 +1,15 @@
 /**
  * FaseService — Centralised CLP phase-change logic.
  *
- * This service AFFIANCA (does not replace) the existing clpWorkflow.ts.
- * Every module (Contenuti, Riprese, Kanban) should call cambiaFaseCLP()
- * instead of writing to contenuti.fase directly.
+ * V2: usa la stored procedure `cambio_fase_clp` per eseguire
+ * tutto il cambio fase in una singola query DB (1 roundtrip).
+ * I side effects non critici (Drive, calendario, cleanup) restano
+ * fire-and-forget lato client.
  */
 import { supabase } from '../lib/supabase';
 import type { Contenuto, FaseCLP, TeamMember } from '../types';
-import { FASE_ORDER, isTransitionValid, FASE_TO_TASK_TIPO } from '../config/faseConfig';
-import {
-  creaTaskWorkflow,
-  creaTaskCleanup,
-  calcolaDeadlineARitroso,
-  findMembro,
-} from '../lib/clpWorkflow';
+import { isTransitionValid } from '../config/faseConfig';
+import { creaTaskCleanup } from '../lib/clpWorkflow';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -44,216 +40,82 @@ async function getTeam(): Promise<TeamMember[]> {
   return (data || []) as TeamMember[];
 }
 
-async function logFaseChange(
-  result: FaseChangeResult & { contenutoId: string; source: string; userId: string; taskCreatedId?: string }
-) {
-  try {
-    await supabase.from('_fase_change_log').insert({
-      contenuto_id: result.contenutoId,
-      old_fase: result.oldFase,
-      new_fase: result.newFase,
-      source: result.source,
-      user_id: result.userId,
-      task_created_id: result.taskCreatedId || null,
-      drive_folder_created: !!result.driveFolder,
-      reel_incremented: !!result.reelIncremented,
-      cleanup_created: !!result.cleanupTaskCreated,
-      calendar_updated: !!result.calendarUpdated,
-      errors: result.errors.length > 0 ? result.errors : null,
-    });
-  } catch (e) {
-    console.error('[FaseService] log error:', e);
-  }
-}
+// [OLD - replaced by stored procedure]
+// async function logFaseChange(...) { ... }
+// async function verifyNoDataLoss(...) { ... }
 
-// ── Safety: verify record count didn't decrease ──────────────────────────────
-
-async function verifyNoDataLoss(tag: string): Promise<boolean> {
-  const { count } = await supabase
-    .from('contenuti')
-    .select('*', { count: 'exact', head: true });
-  
-  // We only log — the caller decides what to do
-  console.log(`[FaseService] ${tag} — contenuti count: ${count}`);
-  return true;
-}
-
-// ── Main function ─────────────────────────────────────────────────────────────
+// ── Main function (V2 — stored procedure) ─────────────────────────────────────
 
 export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChangeResult> {
-  const { contenutoId, nuovaFase, source, userId, taskIdCompletato } = params;
+  const { contenutoId, nuovaFase, source, userId } = params;
   const errors: string[] = [];
-  let taskCreatedId: string | undefined;
-  let driveFolder: string | undefined;
-  let reelIncremented = false;
-  let cleanupTaskCreated = false;
-  let calendarUpdated = false;
 
-  console.log('[FaseService] cambiaFaseCLP called', { contenutoId, nuovaFase, source, userId });
+  console.log('[FaseService] cambiaFaseCLP V2 (stored procedure)', { contenutoId, nuovaFase, source, userId });
 
-  // ── 1. LEGGI lo stato attuale ────────────────────────────────────────────
-  const { data: contenuto, error: fetchError } = await supabase
+  // ── 1. VALIDA la transizione lato client (fail-fast senza roundtrip) ────
+  // Serve un fetch veloce della fase corrente per la validazione client-side
+  const { data: currentRow, error: fetchErr } = await supabase
     .from('contenuti')
-    .select('*')
+    .select('fase')
     .eq('id', contenutoId)
     .single();
 
-  if (fetchError || !contenuto) {
-    console.error('[FaseService] contenuto non trovato', fetchError);
+  if (fetchErr || !currentRow) {
     return {
-      success: false,
-      oldFase: '',
-      newFase: nuovaFase,
-      errors: ['Contenuto non trovato: ' + (fetchError?.message || contenutoId)],
+      success: false, oldFase: '', newFase: nuovaFase,
+      errors: ['Contenuto non trovato: ' + (fetchErr?.message || contenutoId)],
     };
   }
 
-  const oldFase = contenuto.fase as string;
+  const oldFase = currentRow.fase as string;
 
-  // Se la fase è già uguale → return senza fare nulla
   if (oldFase === nuovaFase) {
-    console.log('[FaseService] fase già uguale, skip', { oldFase, nuovaFase });
     return { success: true, oldFase, newFase: nuovaFase, errors: [] };
   }
 
-  // ── 2. VALIDA la transizione ─────────────────────────────────────────────
   if (!isTransitionValid(oldFase, nuovaFase)) {
-    console.warn('[FaseService] transizione non valida', { oldFase, nuovaFase });
     return {
-      success: false,
-      oldFase,
-      newFase: nuovaFase,
+      success: false, oldFase, newFase: nuovaFase,
       errors: [`Transizione non permessa: ${oldFase} → ${nuovaFase}`],
     };
   }
 
-  // ── 3. SCRIVI la nuova fase ──────────────────────────────────────────────
-  const { error: updateError } = await supabase
-    .from('contenuti')
-    .update({ fase: nuovaFase, updated_at: new Date().toISOString() })
-    .eq('id', contenutoId);
+  // ── 2. CHIAMATA STORED PROCEDURE — 1 solo roundtrip DB ─────────────────
+  const { data: rpcResult, error: rpcError } = await supabase.rpc('cambio_fase_clp', {
+    p_contenuto_id: contenutoId,
+    p_nuova_fase: nuovaFase,
+    p_source: source,
+    p_user_id: userId,
+  });
 
-  if (updateError) {
-    console.error('[FaseService] errore update fase', updateError);
+  if (rpcError) {
+    console.error('[FaseService] RPC error:', rpcError);
     return {
-      success: false,
-      oldFase,
-      newFase: nuovaFase,
-      errors: ['Errore update fase: ' + updateError.message],
+      success: false, oldFase, newFase: nuovaFase,
+      errors: ['Errore stored procedure: ' + rpcError.message],
     };
   }
 
-  console.log('[FaseService] fase cambiata', { clpId: contenutoId, oldFase, newFase: nuovaFase, source });
-
-  // ── FEAT 3: Scartata → Idea reset ─────────────────────────────────────────
-  if (oldFase === 'Scartata' && nuovaFase === 'Idea') {
-    console.log('[Ripristino] CLP ripristinato da Scartata', { contenutoId });
-    await supabase.from('contenuti').update({ revision_count: 0 }).eq('id', contenutoId);
-  }
-
-  // ── FEAT 7: Supervisione Giovanni condizionale ───────────────────────────
-  const needsSupervisione = nuovaFase === 'Montato' && contenuto.supervisione_giovanni === true;
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // STEP 4-5: SINCRONI — bloccano la risposta (critici per UX)
-  // ══════════════════════════════════════════════════════════════════════════
-  try {
-
-  // ── 4. COMPLETA il task precedente ───────────────────────────────────────
-  if (taskIdCompletato) {
-    const { error: taskError } = await supabase
-      .from('task')
-      .update({ stato: 'Completato' })
-      .eq('id', taskIdCompletato);
-
-    if (taskError) {
-      errors.push('Errore completamento task: ' + taskError.message);
-      console.error('[FaseService] errore completamento task', taskError);
-    } else {
-      console.log('[FaseService] task completato', { taskIdCompletato });
-    }
-  }
-
-  // ── 5. CREA il task workflow successivo ──────────────────────────────────
-  const team = await getTeam();
-
-  if (needsSupervisione) {
-    try {
-      const c = contenuto as unknown as Contenuto;
-      const nomeGiovanni = findMembro(team, 'Giovanni');
-      const desc = `👁️ Supervisione ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`;
-      const newTask = await creaTaskWorkflow(c, nomeGiovanni, 'Supervisione', desc, 'Da fare');
-      if (newTask) {
-        taskCreatedId = newTask.id;
-        console.log('[FaseService] task supervisione creato', { taskId: newTask.id });
-      }
-    } catch (e: any) {
-      errors.push('Errore creazione task supervisione: ' + (e?.message || String(e)));
-    }
-  } else {
-    const taskInfo = FASE_TO_TASK_TIPO[nuovaFase];
-    if (taskInfo) {
-      try {
-        const c = contenuto as unknown as Contenuto;
-        const assegnatoA = findMembro(team, taskInfo.keyword);
-        const labelMap: Record<string, string> = {
-          'Scrittura script': 'Scrittura script',
-          'Premontaggio': 'Pre montaggio',
-          'Montaggio': 'Montaggio',
-          'Upload esportato': 'Upload esportato',
-          'Revisione montaggio': 'Revisione',
-          'Programmazione': 'Programmazione',
-        };
-        const desc = `${taskInfo.emoji} ${labelMap[taskInfo.tipo] || taskInfo.tipo} ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`;
-
-        const newTask = await creaTaskWorkflow(c, assegnatoA, taskInfo.tipo, desc, 'Da fare');
-
-        if (newTask) {
-          taskCreatedId = newTask.id;
-          console.log('[FaseService] task workflow creato', { taskId: newTask.id, tipo: taskInfo.tipo });
-
-          // Se è Upload esportato, aggiungi nota con percorso Drive (sincrono — serve subito nel task)
-          if (taskInfo.tipo === 'Upload esportato') {
-            const slug = c.titolo.replace(/\s+/g, '-').slice(0, 40);
-            const folderPath = `SKORPIO_Clip/${c.cliente_nome}/${c.id_display}_${slug}/file_esportato/`;
-            const driveNote = c.link_drive
-              ? `📂 Carica il file esportato nella cartella "file_esportato/" su Google Drive:\n${c.link_drive}\n\nPercorso: ${folderPath}`
-              : `📂 Carica il file esportato nella sezione Riprese del CLP ${c.id_display}, zona "File esportato".\n\nPercorso Drive: ${folderPath}`;
-            await supabase.from('task').update({ note: driveNote }).eq('id', newTask.id);
-          }
-        }
-      } catch (e: any) {
-        errors.push('Errore creazione task workflow: ' + (e?.message || String(e)));
-        console.error('[FaseService] errore creazione task', e);
-      }
-    }
-  }
-
-  } catch (rollbackError: any) {
-    // ── FIX D: ROLLBACK — riscrivi fase originale ──────────────────────────
-    console.error('[FaseService] ROLLBACK: errore durante step 4-5, ripristino fase', { oldFase, error: rollbackError });
-    await supabase.from('contenuti').update({ fase: oldFase }).eq('id', contenutoId);
-    errors.push(`ROLLBACK: ${rollbackError?.message || String(rollbackError)}`);
-
-    await logFaseChange({
-      success: false, oldFase, newFase: nuovaFase, errors,
-      contenutoId, source, userId, taskCreatedId,
-      calendarUpdated: false, reelIncremented: false, cleanupTaskCreated: false,
-    });
-
+  if (!rpcResult?.success) {
+    console.error('[FaseService] RPC returned failure:', rpcResult);
     return {
-      success: false, oldFase, newFase: nuovaFase, errors,
-      taskCreated: taskCreatedId, driveFolder, calendarUpdated, reelIncremented, cleanupTaskCreated,
+      success: false, oldFase, newFase: nuovaFase,
+      errors: [rpcResult?.error || 'Errore sconosciuto dalla stored procedure'],
     };
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // STEP 6-9: ASINCRONI — fire and forget, non bloccano la risposta
-  // ══════════════════════════════════════════════════════════════════════════
+  console.log('[FaseService] RPC success:', rpcResult);
+
+  // ── 3. SIDE EFFECTS ASINCRONI — fire and forget ────────────────────────
+  // La stored procedure ha già fatto: update fase, completamento task,
+  // creazione nuovo task, reel increment, revision_count, log.
+  // Restano solo: Drive folder, cleanup task, calendario sync.
+  const contenuto = rpcResult.contenuto;
+
   const asyncSideEffects = async () => {
     try {
-      // ── 6. CREA cartella Google Drive (se fase = Montato) ──────────────
-      if (nuovaFase === 'Montato' && !contenuto.link_drive) {
+      // ── Drive folder (se fase = Montato e non ha già link_drive) ───────
+      if (nuovaFase === 'Montato' && !contenuto?.link_drive) {
         try {
           const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
           const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -284,40 +146,19 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
         }
       }
 
-      // ── 7. INCREMENTA contatore reel (se Pubblicato + Reel) ────────────
-      if (nuovaFase === 'Pubblicato' && oldFase !== 'Pubblicato' && contenuto.tipo === 'Reel' && contenuto.cliente_id) {
-        try {
-          const { data: cliente } = await supabase
-            .from('clienti')
-            .select('reel_fatti')
-            .eq('id', contenuto.cliente_id)
-            .single();
-
-          if (cliente) {
-            await supabase
-              .from('clienti')
-              .update({ reel_fatti: (cliente.reel_fatti ?? 0) + 1 })
-              .eq('id', contenuto.cliente_id);
-            console.log('[FaseService][async] reel incrementato', { clienteId: contenuto.cliente_id });
-          }
-        } catch (e) {
-          console.error('[FaseService][async] errore incremento reel:', e);
-        }
-      }
-
-      // ── 8. CREA task cleanup (se Pubblicato) ───────────────────────────
+      // ── Cleanup task (se Pubblicato) ───────────────────────────────────
       if (nuovaFase === 'Pubblicato') {
         try {
-          const teamForCleanup = await getTeam();
-          await creaTaskCleanup(contenuto as unknown as Contenuto, teamForCleanup);
+          const team = await getTeam();
+          await creaTaskCleanup(contenuto as unknown as Contenuto, team);
           console.log('[FaseService][async] task cleanup creato');
         } catch (e) {
           console.error('[FaseService][async] errore cleanup task:', e);
         }
       }
 
-      // ── 9. SYNC calendario ─────────────────────────────────────────────
-      if (contenuto.data_pubblicazione) {
+      // ── Calendario sync ────────────────────────────────────────────────
+      if (contenuto?.data_pubblicazione) {
         try {
           const { data: existingCal } = await supabase
             .from('calendario')
@@ -341,34 +182,51 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
           console.error('[FaseService][async] errore calendario:', e);
         }
       }
+
+      // ── Upload esportato: aggiungi nota Drive al task ──────────────────
+      if (rpcResult.task_created === 'Upload esportato' && rpcResult.task_id) {
+        try {
+          const slug = (contenuto.titolo || '').replace(/\s+/g, '-').slice(0, 40);
+          const folderPath = `SKORPIO_Clip/${contenuto.cliente_nome}/${contenuto.id_display}_${slug}/file_esportato/`;
+          const driveNote = contenuto.link_drive
+            ? `📂 Carica il file esportato nella cartella "file_esportato/" su Google Drive:\n${contenuto.link_drive}\n\nPercorso: ${folderPath}`
+            : `📂 Carica il file esportato nella sezione Riprese del CLP ${contenuto.id_display}, zona "File esportato".\n\nPercorso Drive: ${folderPath}`;
+          await supabase.from('task').update({ note: driveNote }).eq('id', rpcResult.task_id);
+          console.log('[FaseService][async] nota Drive aggiunta al task Upload');
+        } catch (e) {
+          console.error('[FaseService][async] errore nota Drive:', e);
+        }
+      }
     } catch (e) {
       console.error('[FaseService][async] side effect non gestito:', e);
     }
   };
 
-  // Fire and forget — non blocca la risposta
+  // Fire and forget
   asyncSideEffects();
 
-  // ── 10. LOG (sincrono — si scrive sempre) ──────────────────────────────
-  const result: FaseChangeResult = {
+  // ── 4. RETURN ──────────────────────────────────────────────────────────
+  return {
     success: true,
-    oldFase,
-    newFase: nuovaFase,
-    taskCreated: taskCreatedId,
-    driveFolder: undefined, // async — non disponibile subito
-    calendarUpdated: false, // async — non disponibile subito
-    reelIncremented: false, // async — non disponibile subito
-    cleanupTaskCreated: false, // async — non disponibile subito
+    oldFase: rpcResult.old_fase,
+    newFase: rpcResult.new_fase,
+    taskCreated: rpcResult.task_created || undefined,
+    driveFolder: undefined,
+    calendarUpdated: false,
+    reelIncremented: !!rpcResult.task_created, // la SP lo fa
+    cleanupTaskCreated: false,
     errors,
   };
-
-  await logFaseChange({
-    ...result,
-    contenutoId,
-    source,
-    userId,
-    taskCreatedId,
-  });
-
-  return result;
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// [OLD - replaced by stored procedure]
+// Il codice originale faceva 5-6 query sequenziali:
+//   1. SELECT contenuto
+//   2. UPDATE contenuti SET fase
+//   3. UPDATE task SET stato='Completato'
+//   4. SELECT team
+//   5. INSERT task (nuovo)
+//   6. INSERT _fase_change_log
+// Ora tutto questo è in cambio_fase_clp() — 1 roundtrip.
+// ══════════════════════════════════════════════════════════════════════════════

@@ -101,6 +101,10 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
   const [pubOra, setPubOra] = useState(contenuto.ora_pubblicazione?.slice(0, 5) || '');
   const [pubCalOpen, setPubCalOpen] = useState(false);
   const [savingPub, setSavingPub] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{ tipo: 'riprogramma' | 'annulla'; open: boolean }>({ tipo: 'riprogramma', open: false });
+
+  // ─── Permessi programmazione ─────────────────────────────────────────────
+  const canEditProgrammazione = utente?.nome === 'Elisa' || utente?.nome === 'Giovanni' || utente?.ruolo === 'Admin';
 
   // ─── Riprese state ────────────────────────────────────────────────────────
   const [clips, setClips] = useState<LogRipresa[]>([]);
@@ -146,6 +150,22 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
     // Aggiorna il parent silenziosamente
     const { data } = await supabase.from('contenuti').select('*').eq('id', contenuto.id).single();
     if (data) onUpdate(data as Contenuto);
+    // Se il titolo cambia in fase Programmato, propaga a calendario e task
+    if (k === 'titolo' && form.fase === 'Programmato') {
+      const newDesc = `📱 Pubblica ${contenuto.id_display} – ${v}`;
+      await supabase.from('calendario').update({ descrizione: newDesc })
+        .eq('contenuto_id', contenuto.id).eq('tipo', 'pubblicazione');
+      // Aggiorna descrizione dei task aperti collegati
+      const { data: openTasks } = await supabase.from('task').select('id, tipo')
+        .eq('id_contenuto', contenuto.id).in('stato', ['Da fare', 'In lavorazione', 'In revisione']);
+      if (openTasks) {
+        for (const t of openTasks) {
+          const emoji = { 'Programmazione': '📅', 'Scrittura script': '📝', 'Premontaggio': '🎬', 'Montaggio': '✂️', 'Upload esportato': '📤', 'Revisione montaggio': '👁️' }[t.tipo || ''] || '';
+          const desc = `${emoji} ${t.tipo} ${contenuto.id_display} – ${v}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}`;
+          await supabase.from('task').update({ descrizione: desc }).eq('id', t.id);
+        }
+      }
+    }
   };
 
   // ─── WORKFLOW AUTOMATICO ──────────────────────────────────────────────────
@@ -317,6 +337,96 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
 
       await eseguiWorkflowFase(vecchiaFase, nuovaFase, data as Contenuto);
     }
+  };
+
+  // ─── RIPROGRAMMA (Programmato → Revisionato) ────────────────────────────────
+  const handleRiprogramma = async () => {
+    setConfirmDialog({ tipo: 'riprogramma', open: false });
+    setSavingPub(true);
+    const { cambiaFaseCLP } = await import('../services/faseService');
+    const result = await cambiaFaseCLP({
+      contenutoId: contenuto.id,
+      nuovaFase: 'Revisionato',
+      source: 'contenuti',
+      userId: utente?.id || 'unknown',
+    });
+    if (result.success) {
+      const { data } = await supabase.from('contenuti').select('*').eq('id', contenuto.id).single();
+      if (data) {
+        onUpdate(data as Contenuto);
+        setForm(data as Contenuto);
+        prevFaseRef.current = 'Revisionato' as FaseCLP;
+      }
+      addToast('🔄 Riprogrammato — il CLP torna in revisione', 'success');
+    } else {
+      addToast('❌ Errore: ' + (result.errors[0] || 'sconosciuto'), 'error');
+    }
+    setSavingPub(false);
+  };
+
+  // ─── ANNULLA PROGRAMMAZIONE (svuota data + Revisionato) ────────────────────
+  const handleAnnullaProgrammazione = async () => {
+    setConfirmDialog({ tipo: 'annulla', open: false });
+    setSavingPub(true);
+    // 1. Svuota data/ora pubblicazione
+    await supabase.from('contenuti').update({
+      data_pubblicazione: null,
+      ora_pubblicazione: null,
+    }).eq('id', contenuto.id);
+    // 2. Cancella evento pubblicazione dal calendario
+    await supabase.from('calendario').delete()
+      .eq('contenuto_id', contenuto.id)
+      .eq('tipo', 'pubblicazione');
+    // 3. Cambia fase a Revisionato
+    const { cambiaFaseCLP } = await import('../services/faseService');
+    const result = await cambiaFaseCLP({
+      contenutoId: contenuto.id,
+      nuovaFase: 'Revisionato',
+      source: 'contenuti',
+      userId: utente?.id || 'unknown',
+    });
+    if (result.success) {
+      const { data } = await supabase.from('contenuti').select('*').eq('id', contenuto.id).single();
+      if (data) {
+        onUpdate(data as Contenuto);
+        setForm(data as Contenuto);
+        prevFaseRef.current = 'Revisionato' as FaseCLP;
+        setPubDate(undefined);
+        setPubOra('');
+      }
+      addToast('❌ Programmazione annullata — il CLP torna in revisione senza data', 'success');
+    } else {
+      addToast('❌ Errore: ' + (result.errors[0] || 'sconosciuto'), 'error');
+    }
+    setSavingPub(false);
+  };
+
+  // ─── SALVA DATA PUB QUANDO PROGRAMMATO (aggiorna data senza cambiare fase) ─
+  const handleSalvaDataPubProgrammato = async () => {
+    if (!pubDate) return;
+    setSavingPub(true);
+    const dataStr = format(pubDate, 'yyyy-MM-dd');
+    const oraStr = pubOra || null;
+    // 1. Aggiorna contenuto
+    const { data, error } = await supabase
+      .from('contenuti')
+      .update({ data_pubblicazione: dataStr, ora_pubblicazione: oraStr })
+      .eq('id', contenuto.id)
+      .select()
+      .single();
+    if (!error && data) {
+      onUpdate(data as Contenuto);
+      setForm(data as Contenuto);
+      // 2. Aggiorna evento calendario
+      await supabase.from('calendario').update({
+        data: dataStr,
+        ora: oraStr,
+      }).eq('contenuto_id', contenuto.id).eq('tipo', 'pubblicazione');
+      // 3. Ricalcola scadenze task
+      const count = await ricalcolaScadenzeTask(contenuto.id, dataStr, oraStr, contenuto.tipo);
+      addToast(`📅 Data pubblicazione aggiornata a ${format(pubDate, 'dd/MM/yyyy')} ${oraStr || ''} — ${count} scadenze ricalcolate`, 'success');
+    }
+    setSavingPub(false);
   };
 
   const handleCreateDrive = async () => {
@@ -620,28 +730,53 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
             <LabelInput label="⏰ Scadenza" field="data_scadenza" type="date" />
           </div>
 
-          {/* ─── PUBBLICAZIONE (Elisa può impostare data in qualsiasi fase) ─── */}
+          {/* ─── PUBBLICAZIONE ─── */}
           {form.fase !== 'Scartata' && (
             <>
               <Section title="📱 PUBBLICAZIONE" />
               <div className="rounded-lg border p-3 space-y-3" style={{ background: 'hsl(271 80% 97%)', borderColor: 'hsl(271 60% 80%)' }}>
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'hsl(271 60% 45%)' }}>
                     🟣 Programma o pubblica
                   </span>
                   {form.fase === 'Programmato' && (
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: 'hsl(271 60% 80%)', color: 'hsl(271 60% 30%)' }}>
                         📅 Programmato
                       </span>
-                      <button
-                        onClick={() => handleProgramma('Pubblicato')}
-                        disabled={savingPub}
-                        className="text-xs px-2 py-0.5 rounded-full font-semibold transition-all hover:scale-105 disabled:opacity-40"
-                        style={{ background: 'hsl(142 60% 45%)', color: 'white' }}
-                      >
-                        {savingPub ? '⏳' : '🚀 Pubblica ora'}
-                      </button>
+                      {canEditProgrammazione && (
+                        <>
+                          <button
+                            onClick={() => handleProgramma('Pubblicato')}
+                            disabled={savingPub}
+                            className="text-xs px-2 py-0.5 rounded-full font-semibold transition-all hover:scale-105 disabled:opacity-40"
+                            style={{ background: 'hsl(142 60% 45%)', color: 'white' }}
+                          >
+                            {savingPub ? '⏳' : '🚀 Pubblica ora'}
+                          </button>
+                          <button
+                            onClick={() => setConfirmDialog({ tipo: 'riprogramma', open: true })}
+                            disabled={savingPub}
+                            className="text-xs px-2 py-0.5 rounded-full font-semibold transition-all hover:scale-105 disabled:opacity-40"
+                            style={{ background: 'hsl(38 92% 50%)', color: 'white' }}
+                          >
+                            🔄 Riprogramma
+                          </button>
+                          <button
+                            onClick={() => setConfirmDialog({ tipo: 'annulla', open: true })}
+                            disabled={savingPub}
+                            className="text-xs px-2 py-0.5 rounded-full font-semibold transition-all hover:scale-105 disabled:opacity-40"
+                            style={{ background: 'hsl(0 70% 50%)', color: 'white' }}
+                          >
+                            ❌ Annulla
+                          </button>
+                        </>
+                      )}
+                      {!canEditProgrammazione && (
+                        <span className="text-[10px] italic" style={{ color: 'hsl(271 40% 55%)' }} title="Solo Elisa o Giovanni possono modificare la programmazione">
+                          🔒 Solo Elisa o Giovanni
+                        </span>
+                      )}
                     </div>
                   )}
                   {form.fase === 'Pubblicato' && (
@@ -651,9 +786,43 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
                   )}
                 </div>
 
+                {/* Confirm dialog */}
+                {confirmDialog.open && (
+                  <div className="rounded-lg border p-3 space-y-2" style={{ background: confirmDialog.tipo === 'annulla' ? 'hsl(0 80% 97%)' : 'hsl(38 90% 97%)', borderColor: confirmDialog.tipo === 'annulla' ? 'hsl(0 60% 80%)' : 'hsl(38 70% 70%)' }}>
+                    <p className="text-xs font-semibold" style={{ color: confirmDialog.tipo === 'annulla' ? 'hsl(0 70% 40%)' : 'hsl(38 80% 35%)' }}>
+                      {confirmDialog.tipo === 'annulla'
+                        ? `❌ Vuoi annullare la programmazione di ${form.id_display}? La data e l'ora verranno rimosse e il CLP tornerà in revisione.`
+                        : `🔄 Vuoi riprogrammare ${form.id_display}? Tornerà in revisione mantenendo la data attuale.`}
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={confirmDialog.tipo === 'annulla' ? handleAnnullaProgrammazione : handleRiprogramma}
+                        disabled={savingPub}
+                        className="text-xs px-3 py-1.5 rounded-lg font-semibold transition-all disabled:opacity-40"
+                        style={{ background: confirmDialog.tipo === 'annulla' ? 'hsl(0 70% 50%)' : 'hsl(38 92% 50%)', color: 'white' }}
+                      >
+                        {savingPub ? '⏳…' : 'Conferma'}
+                      </button>
+                      <button
+                        onClick={() => setConfirmDialog({ ...confirmDialog, open: false })}
+                        className="text-xs px-3 py-1.5 rounded-lg font-semibold"
+                        style={{ background: 'hsl(var(--muted))', color: 'hsl(var(--muted-foreground))' }}
+                      >
+                        Annulla
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Data pubblicazione con datepicker */}
                 <div>
                   <label className="sk-label">📅 Data pubblicazione</label>
+                  {form.fase === 'Programmato' && !canEditProgrammazione ? (
+                    <div className="sk-input w-full text-sm flex items-center gap-2 opacity-60 cursor-not-allowed" title="Solo Elisa o Giovanni possono modificare la programmazione">
+                      <CalendarIcon className="h-3.5 w-3.5 flex-shrink-0" />
+                      {pubDate ? format(pubDate, 'dd/MM/yyyy') : '—'}
+                    </div>
+                  ) : (
                   <Popover open={pubCalOpen} onOpenChange={setPubCalOpen}>
                     <PopoverTrigger asChild>
                       <button
@@ -676,25 +845,32 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
                       />
                     </PopoverContent>
                   </Popover>
+                  )}
                 </div>
 
                 {/* Ora */}
                 <div>
                   <label className="sk-label">🕐 Ora pubblicazione</label>
-                  <input
-                    type="time"
-                    className="sk-input w-full text-sm"
-                    value={pubOra}
-                    onChange={e => setPubOra(e.target.value)}
-                  />
+                  {form.fase === 'Programmato' && !canEditProgrammazione ? (
+                    <div className="sk-input w-full text-sm opacity-60 cursor-not-allowed" title="Solo Elisa o Giovanni possono modificare la programmazione">
+                      {pubOra || '—'}
+                    </div>
+                  ) : (
+                    <input
+                      type="time"
+                      className="sk-input w-full text-sm"
+                      value={pubOra}
+                      onChange={e => setPubOra(e.target.value)}
+                    />
+                  )}
                 </div>
 
                 {/* Bottoni azione */}
                 <div className="flex gap-2 pt-1 flex-wrap">
-                  {/* Salva data (disponibile PRIMA della programmazione) */}
-                  {!['Programmato', 'Pubblicato'].includes(form.fase) && (
+                  {/* Salva data (PRIMA della programmazione + quando Programmato per Elisa/Giovanni) */}
+                  {!['Pubblicato'].includes(form.fase) && !(form.fase === 'Programmato' && !canEditProgrammazione) && (
                     <button
-                      onClick={handleSalvaDataPub}
+                      onClick={form.fase === 'Programmato' ? handleSalvaDataPubProgrammato : handleSalvaDataPub}
                       disabled={savingPub || !pubDate}
                       className="flex-1 text-xs px-3 py-2 rounded-lg font-semibold transition-all disabled:opacity-40"
                       style={{ background: 'hsl(214 80% 55%)', color: 'white' }}
@@ -714,8 +890,8 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
                       {savingPub ? '⏳…' : '📅 Programma'}
                     </button>
                   )}
-                  {/* Pubblica ora */}
-                  {!['Pubblicato'].includes(form.fase) && (
+                  {/* Pubblica ora (non quando Programmato — c'è già il bottone in alto) */}
+                  {!['Pubblicato', 'Programmato'].includes(form.fase) && (
                     <button
                       onClick={() => handleProgramma('Pubblicato')}
                       disabled={savingPub}

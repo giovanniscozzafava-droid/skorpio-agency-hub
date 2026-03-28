@@ -8,7 +8,7 @@ import { Avatar } from './Avatar';
 import { TaskDetailPanel } from './TaskDetailPanel';
 import { NuovoTaskModal } from './NuovoTaskModal';
 import { parseLocalDate } from '../lib/dateUtils';
-import { completaTaskEAvanzaFase } from '../lib/clpWorkflow';
+import { completaTaskEAvanzaFase, ricalcolaScadenzeTask } from '../lib/clpWorkflow';
 import { FASE_TIPO_MAP } from '../config/faseConfig';
 
 // ─── Countdown ────────────────────────────────────────────────────────────────
@@ -157,14 +157,23 @@ interface TaskCardProps {
   /** Vertical reorder callbacks */
   onDragOverTask?: (e: React.DragEvent) => void;
   dropIndicator?: 'above' | 'below' | null;
+  /** Callbacks for Programmato actions */
+  onRiprogramma?: () => void;
+  onEditPubDate?: (newDate: string, newOra: string | null) => void;
+  isProgrammato?: boolean;
+  canEditProgrammazione?: boolean;
 }
 
-function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate, revisionCount, onDragOverTask, dropIndicator }: TaskCardProps) {
+function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate, revisionCount, onDragOverTask, dropIndicator, onRiprogramma, onEditPubDate, isProgrammato, canEditProgrammazione }: TaskCardProps) {
   const scad = scadenzaInfo(task);
   const isScaduto = scad?.label.includes('SCADUTO');
   const member = team.find(m => m.nome === task.assegnato_a);
   const isAssignedToMe = task.assegnato_a === utente?.nome;
   const isAutoTask = task.assegnato_da?.includes('Sistema') || task.assegnato_da?.includes('⚡');
+  const [editingPubDate, setEditingPubDate] = useState(false);
+  const [editDate, setEditDate] = useState(pubDate?.data || '');
+  const [editOra, setEditOra] = useState(pubDate?.ora?.slice(0, 5) || '');
+  const [showMenu, setShowMenu] = useState(false);
 
   return (
     <div
@@ -252,10 +261,41 @@ function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEn
 
       {pubDate?.data ? (
         <div className="mt-1.5">
-          <p className="text-[9px] font-bold uppercase tracking-wider mb-0.5" style={{ color: '#7C3AED', opacity: 0.7 }}>
-            📡 Pubblicazione
-          </p>
-          <LiveClock scadenza={pubDate.data} ora={pubDate.ora} />
+          <div className="flex items-center justify-between">
+            <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: '#7C3AED', opacity: 0.7 }}>
+              📡 Pubblicazione
+            </p>
+            {isProgrammato && canEditProgrammazione && (
+              <button
+                onClick={e => { e.stopPropagation(); setEditingPubDate(v => !v); setEditDate(pubDate.data || ''); setEditOra(pubDate.ora?.slice(0, 5) || ''); }}
+                className="text-[10px] px-1 py-0.5 rounded hover:scale-110 transition-transform"
+                style={{ color: '#7C3AED' }}
+                title="Cambia data/ora"
+              >
+                ✏️
+              </button>
+            )}
+          </div>
+          {editingPubDate && isProgrammato && canEditProgrammazione ? (
+            <div className="mt-1 space-y-1" onClick={e => e.stopPropagation()}>
+              <input type="date" className="w-full text-[11px] px-1.5 py-1 rounded border" style={{ borderColor: '#C4B5FD' }} value={editDate} onChange={e => setEditDate(e.target.value)} />
+              <input type="time" className="w-full text-[11px] px-1.5 py-1 rounded border" style={{ borderColor: '#C4B5FD' }} value={editOra} onChange={e => setEditOra(e.target.value)} />
+              <div className="flex gap-1">
+                <button className="flex-1 text-[10px] px-2 py-1 rounded font-semibold" style={{ background: '#7C3AED', color: 'white' }} onClick={() => { onEditPubDate?.(editDate, editOra || null); setEditingPubDate(false); }}>Salva</button>
+                <button className="text-[10px] px-2 py-1 rounded" style={{ background: '#F1F5F9' }} onClick={() => setEditingPubDate(false)}>✕</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {isProgrammato && pubDate.data && (
+                <p className="text-[11px] font-bold mt-0.5" style={{ color: '#6D28D9' }}>
+                  {new Date(pubDate.data + 'T00:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+                  {pubDate.ora && <span className="ml-1 font-mono">{pubDate.ora.slice(0, 5)}</span>}
+                </p>
+              )}
+              <LiveClock scadenza={pubDate.data} ora={pubDate.ora} />
+            </>
+          )}
         </div>
       ) : task.scadenza ? (
         <LiveClock scadenza={task.scadenza} ora={task.ora} />
@@ -268,6 +308,29 @@ function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEn
           {task.ora && <span className="ml-1 opacity-70">{task.ora.slice(0, 5)}</span>}
         </div>
       ) : null}
+
+      {/* Menu ⋮ per Programmato */}
+      {isProgrammato && canEditProgrammazione && (
+        <div className="relative mt-1.5">
+          <button
+            onClick={e => { e.stopPropagation(); setShowMenu(v => !v); }}
+            className="text-xs px-1.5 py-0.5 rounded hover:bg-purple-100 transition-colors"
+            style={{ color: '#7C3AED' }}
+          >
+            ⋮
+          </button>
+          {showMenu && (
+            <div className="absolute right-0 top-full mt-1 rounded-lg border shadow-lg py-1 z-50" style={{ background: 'hsl(var(--background))', borderColor: 'hsl(var(--border))', minWidth: 160 }} onClick={e => e.stopPropagation()}>
+              <button
+                className="w-full text-left text-xs px-3 py-1.5 hover:bg-purple-50 transition-colors"
+                onClick={() => { setShowMenu(false); onRiprogramma?.(); }}
+              >
+                🔄 Riprogramma
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -305,9 +368,12 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   const [clpFasi, setClpFasi] = useState<Record<string, string>>({});
   const [clpPubDates, setClpPubDates] = useState<Record<string, { data: string | null; ora: string | null }>>({});
   const [clpRevisionCount, setClpRevisionCount] = useState<Record<string, number>>({});
+  const [riprogrammaConfirm, setRiprogrammaConfirm] = useState<{ taskId: string; contenutoId: string; desc: string } | null>(null);
   // Mobile: which column to show
   const [mobileCol, setMobileCol] = useState('Da fare');
   const [mobileCLPCol, setMobileCLPCol] = useState('Girato');
+
+  const canEditProgrammazione = utente?.nome === 'Elisa' || utente?.nome === 'Giovanni' || utente?.ruolo === 'Admin';
 
   const pendingEventsRef = useRef<RealtimeEvent[]>([]);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -641,6 +707,43 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
     setDragItem(null);
   };
 
+  // ── Riprogramma CLP (Programmato → Revisionato) ─────────────────────────
+  const handleRiprogrammaCLP = async (contenutoId: string) => {
+    setRiprogrammaConfirm(null);
+    addToast('⏳ Riprogrammazione in corso…', 'info');
+    const { cambiaFaseCLP } = await import('../services/faseService');
+    const result = await cambiaFaseCLP({
+      contenutoId,
+      nuovaFase: 'Revisionato',
+      source: 'kanban',
+      userId: utente?.id || 'unknown',
+    });
+    if (result.success) {
+      addToast('🔄 Riprogrammato — torna in revisione', 'success');
+      setTimeout(() => loadTasks(), 500);
+    } else {
+      addToast('❌ Errore: ' + (result.errors[0] || 'sconosciuto'), 'error');
+    }
+  };
+
+  // ── Modifica data pubblicazione inline (Kanban) ──────────────────────────
+  const handleEditPubDateKanban = async (contenutoId: string, newDate: string, newOra: string | null) => {
+    if (!newDate) return;
+    await supabase.from('contenuti').update({
+      data_pubblicazione: newDate,
+      ora_pubblicazione: newOra,
+    }).eq('id', contenutoId);
+    await supabase.from('calendario').update({
+      data: newDate,
+      ora: newOra,
+    }).eq('contenuto_id', contenutoId).eq('tipo', 'pubblicazione');
+    // Fetch tipo for lead time calc
+    const { data: c } = await supabase.from('contenuti').select('tipo').eq('id', contenutoId).single();
+    const count = await ricalcolaScadenzeTask(contenutoId, newDate, newOra, c?.tipo);
+    setClpPubDates(prev => ({ ...prev, [contenutoId]: { data: newDate, ora: newOra } }));
+    addToast(`📅 Data aggiornata — ${count} scadenze ricalcolate`, 'success');
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -791,8 +894,8 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                   </div>
                   <div className="kanban-col-body">
                     {colTasks.map(task => {
-                      const isProgrammato = col.stato === 'Programmato' || col.stato === 'Pubblicato';
-                      const pub = isProgrammato && task.id_contenuto ? clpPubDates[task.id_contenuto] : null;
+                      const isProgrammatoCol = col.stato === 'Programmato' || col.stato === 'Pubblicato';
+                      const pub = isProgrammatoCol && task.id_contenuto ? clpPubDates[task.id_contenuto] : null;
                       return (
                         <TaskCard
                           key={task.id}
@@ -809,6 +912,10 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                           revisionCount={task.id_contenuto ? clpRevisionCount[task.id_contenuto] : undefined}
                           onDragOverTask={(e) => handleDragOverTask(e, task.id)}
                           dropIndicator={dragOverTaskId === task.id ? dragOverPos : null}
+                          isProgrammato={col.stato === 'Programmato'}
+                          canEditProgrammazione={canEditProgrammazione}
+                          onRiprogramma={() => task.id_contenuto && setRiprogrammaConfirm({ taskId: task.id, contenutoId: task.id_contenuto, desc: task.descrizione.slice(0, 50) })}
+                          onEditPubDate={(d, o) => task.id_contenuto && handleEditPubDateKanban(task.id_contenuto, d, o)}
                         />
                       );
                     })}
@@ -822,6 +929,36 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Confirm dialog riprogramma */}
+      {riprogrammaConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => setRiprogrammaConfirm(null)}>
+          <div className="rounded-xl border shadow-xl p-5 max-w-sm w-full mx-4" style={{ background: 'hsl(var(--background))', borderColor: 'hsl(var(--border))' }} onClick={e => e.stopPropagation()}>
+            <p className="text-sm font-semibold mb-2" style={{ color: 'hsl(var(--foreground))' }}>
+              🔄 Riprogramma CLP
+            </p>
+            <p className="text-xs mb-4" style={{ color: 'hsl(var(--muted-foreground))' }}>
+              Vuoi riprogrammare "{riprogrammaConfirm.desc}"? Tornerà in revisione.
+            </p>
+            <div className="flex gap-2">
+              <button
+                className="flex-1 text-xs px-3 py-2 rounded-lg font-semibold"
+                style={{ background: 'hsl(38 92% 50%)', color: 'white' }}
+                onClick={() => handleRiprogrammaCLP(riprogrammaConfirm.contenutoId)}
+              >
+                Conferma
+              </button>
+              <button
+                className="text-xs px-3 py-2 rounded-lg font-semibold"
+                style={{ background: 'hsl(var(--muted))', color: 'hsl(var(--muted-foreground))' }}
+                onClick={() => setRiprogrammaConfirm(null)}
+              >
+                Annulla
+              </button>
+            </div>
           </div>
         </div>
       )}
