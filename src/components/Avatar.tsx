@@ -44,10 +44,10 @@ export const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
               width: '140%',
               height: '140%',
               objectFit: 'cover',
-              objectPosition: 'center 20%',
+              objectPosition: 'center 30%',
               display: 'block',
               marginLeft: '-20%',
-              marginTop: '-5%',
+              marginTop: '-10%',
             }}
           />
         ) : (
