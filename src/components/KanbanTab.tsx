@@ -9,6 +9,7 @@ import { TaskDetailPanel } from './TaskDetailPanel';
 import { NuovoTaskModal } from './NuovoTaskModal';
 import { parseLocalDate } from '../lib/dateUtils';
 import { completaTaskEAvanzaFase } from '../lib/clpWorkflow';
+import { FASE_TIPO_MAP } from '../config/faseConfig';
 
 // ─── Countdown ────────────────────────────────────────────────────────────────
 function getTargetDate(scadenza: string, ora: string | null): Date {
@@ -123,14 +124,8 @@ const FASE_NEXT: Record<string, string> = {
   'Programmato': 'Pubblicato',
 };
 
-// Tipo task che "vive" in quella colonna CLP
-const TIPO_PER_FASE: Record<string, string> = {
-  'Girato':      'Premontaggio',
-  'Pre montato': 'Montaggio',
-  'Montato':     'Upload esportato',
-  'Uploadato':   'Revisione montaggio',
-  'Revisionato': 'Programmazione',
-};
+// [UNIFIED - old] TIPO_PER_FASE locale rimosso — ora usa FASE_TIPO_MAP importato da config/faseConfig.ts
+const TIPO_PER_FASE = FASE_TIPO_MAP;
 
 function scadenzaInfo(task: Task): { label: string; colore: string; bg: string } | null {
   if (!task.scadenza) return null;

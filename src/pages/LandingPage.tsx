@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../integrations/supabase/client';
-import { lovable } from '../integrations/lovable/index';
 import { sounds } from '../lib/sounds';
 import fuyueLogo from '@/assets/fuyue-logo-white.svg';
 
@@ -269,9 +268,12 @@ export function LandingPage({ onAuthenticated }: LandingPageProps) {
 
   async function onGoogle() {
     reset(); setLoading(true);
-    const res = await lovable.auth.signInWithOAuth('google', { redirect_uri: window.location.origin });
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin },
+    });
     setLoading(false);
-    if (res && 'error' in res && res.error) setError('Errore con Google Sign-In. Riprova.');
+    if (error) setError('Errore con Google Sign-In. Riprova.');
   }
 
   const scrollToAuth = () => authRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });

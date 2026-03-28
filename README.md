@@ -1,3 +1,3 @@
-# Welcome to your Lovable project
+# SKORPIO — Agency Hub
 
-TODO: Document your project here
+Il sistema operativo della tua agenzia creativa.

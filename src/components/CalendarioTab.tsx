@@ -3,9 +3,16 @@ import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import { NuovoTaskModal } from './NuovoTaskModal';
 import { creaTaskWorkflow, completaTaskPerContenuto, findMembro } from '../lib/clpWorkflow';
+import { FASE_TO_TASK_TIPO } from '../config/faseConfig';
 import type { CalendarioEvent, Contenuto, MarketingEvent, TeamMember, Cliente, Task } from '../types';
 import { parseLocalDate, toDateStr, isSameDay, addDays } from '../lib/dateUtils';
 import { useIsMobile } from '../hooks/use-mobile';
+import { FASE_CONFIG } from '../config/faseConfig';
+
+// Derive FASE_COLORS from the single source of truth (FASE_CONFIG)
+const FASE_COLORS: Record<string, string> = Object.fromEntries(
+  Object.entries(FASE_CONFIG).map(([k, v]) => [k, v.color])
+);
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const GIORNI = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
@@ -37,11 +44,12 @@ const MARKETING_LABEL: Record<string, string> = {
   fest: '🎉', gm: '🌍', mkt: '🛒', sport: '⚽', cult: '🎭',
 };
 
-const FASE_COLORS: Record<string, string> = {
-  Idea: '#94A3B8', Script: '#F59E0B', Girato: '#22C55E', 'Pre montato': '#06B6D4',
-  Montato: '#8B5CF6', Revisione: '#EC4899', Programmato: '#7C3AED',
-  Pubblicato: '#3B82F6', Scartata: '#EF4444',
-};
+// [UNIFIED - old] FASE_COLORS locale rimosso — ora derivato da FASE_CONFIG centralizzato
+// const FASE_COLORS: Record<string, string> = {
+//   Idea: '#94A3B8', Script: '#F59E0B', Girato: '#22C55E', 'Pre montato': '#06B6D4',
+//   Montato: '#8B5CF6', Revisione: '#EC4899', Programmato: '#7C3AED',
+//   Pubblicato: '#3B82F6', Scartata: '#EF4444',
+// };
 
 const RICORRENZA_OPTIONS = [
   { value: '', label: 'Nessuna' },
@@ -2054,7 +2062,9 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
         }
       }
       // Sync with contenuti if linked
+      // [CalSync] Aggiorna data_pubblicazione da drag (non è un cambio fase)
       if (ev.contenuto_id) {
+        console.log('[CalSync] handleEventDrop — aggiorno data_pubblicazione', { contenutoId: ev.contenuto_id, newDateStr });
         await supabase.from('contenuti').update({ data_pubblicazione: newDateStr }).eq('id', ev.contenuto_id);
       }
 
@@ -2113,23 +2123,29 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
     const { data, error } = await supabase.from('calendario').insert(payload).select().single();
     if (!error && data) {
       setEventi(prev => [...prev, data as CalendarioEvent]);
+      // [CalSync] Aggiorna data_pubblicazione direttamente (non è un cambio fase)
+      console.log('[CalSync] handleSaveCLP — aggiorno data_pubblicazione', { contenutoId: contenuto.id, dataStr, oraStr });
       await supabase.from('contenuti').update({ data_pubblicazione: dataStr, ora_pubblicazione: oraStr }).eq('id', contenuto.id);
 
-      if (contenuto.fase === 'Girato') {
-        const nomeLuca = findMembro(team, 'Luca');
+      // [UNIFIED - old] Creazione task inline → ora usa creaTaskWorkflow centralizzato con keyword da faseConfig
+      // if (contenuto.fase === 'Girato') { ...inline duplicato... }
+      const taskInfo = FASE_TO_TASK_TIPO[contenuto.fase];
+      if (taskInfo) {
+        const assegnatoA = findMembro(team, taskInfo.keyword);
         const contenutoAggiornato = { ...contenuto, data_pubblicazione: dataStr, ora_pubblicazione: oraStr };
-        const newTask = await creaTaskWorkflow(contenutoAggiornato, nomeLuca, 'Premontaggio',
-          `🎬 Premontaggia ${contenuto.id_display} – ${contenuto.titolo}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}`,
+        const newTask = await creaTaskWorkflow(contenutoAggiornato, assegnatoA, taskInfo.tipo,
+          `${taskInfo.emoji} ${taskInfo.tipo} ${contenuto.id_display} – ${contenuto.titolo}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}`,
           'Da fare', dataStr, oraStr);
         if (newTask) {
-          addToast(`📋 Task premontaggio creato per ${nomeLuca}`, 'success');
+          addToast(`📋 Task ${taskInfo.tipo} creato per ${assegnatoA}`, 'success');
         } else {
+          // Task già esiste — aggiorna scadenza
           const { data: existingTask } = await supabase.from('task').select('id')
-            .eq('id_contenuto', contenuto.id).eq('tipo', 'Premontaggio')
+            .eq('id_contenuto', contenuto.id).eq('tipo', taskInfo.tipo)
             .neq('stato', 'Completato').neq('stato', 'Archiviato').single();
           if (existingTask) {
             await supabase.from('task').update({ scadenza: dataStr, ora: oraStr, priorita: '🔴 Alta' }).eq('id', existingTask.id);
-            addToast(`⏰ Scadenza task Luca aggiornata`, 'success');
+            addToast(`⏰ Scadenza task ${assegnatoA} aggiornata`, 'success');
           }
         }
       }

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Body -->
+  <ellipse cx="32" cy="38" rx="10" ry="7" fill="#1E293B"/>
+  <!-- Tail segments -->
+  <path d="M32 31 C32 26, 34 22, 36 18 C38 14, 38 10, 36 7" stroke="#1E293B" stroke-width="4" stroke-linecap="round" fill="none"/>
+  <!-- Stinger -->
+  <circle cx="36" cy="6" r="3" fill="#EF4444"/>
+  <!-- Left claw -->
+  <path d="M22 38 C18 34, 14 32, 10 34 C8 35, 7 37, 9 39" stroke="#1E293B" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+  <path d="M9 39 C7 37, 5 38, 6 40" stroke="#1E293B" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <!-- Right claw -->
+  <path d="M42 38 C46 34, 50 32, 54 34 C56 35, 57 37, 55 39" stroke="#1E293B" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+  <path d="M55 39 C57 37, 59 38, 58 40" stroke="#1E293B" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <!-- Legs left -->
+  <path d="M24 42 L16 48" stroke="#1E293B" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M23 44 L14 52" stroke="#1E293B" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M24 46 L16 56" stroke="#1E293B" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M26 47 L20 58" stroke="#1E293B" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Legs right -->
+  <path d="M40 42 L48 48" stroke="#1E293B" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M41 44 L50 52" stroke="#1E293B" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M40 46 L48 56" stroke="#1E293B" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M38 47 L44 58" stroke="#1E293B" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Eyes -->
+  <circle cx="29" cy="35" r="1.5" fill="#3B82F6"/>
+  <circle cx="35" cy="35" r="1.5" fill="#3B82F6"/>
+</svg>

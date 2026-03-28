@@ -64,3 +64,18 @@ export const FASE_TO_TASK_TIPO: Record<string, { tipo: string; keyword: string; 
   'Uploadato':    { tipo: 'Revisione montaggio',  keyword: 'Elisa',      emoji: '👁️' },
   'Revisionato':  { tipo: 'Programmazione',       keyword: 'Elisa',      emoji: '📅' },
 };
+
+/** Simple fase → tipo string mapping, derived from FASE_TO_TASK_TIPO */
+export const FASE_TIPO_MAP: Record<string, string> = Object.fromEntries(
+  Object.entries(FASE_TO_TASK_TIPO).map(([fase, { tipo }]) => [fase, tipo])
+);
+
+/** Centralised team member assignments per task type — single source of truth */
+export const TEAM_ASSIGNMENTS: Record<string, string> = {
+  'Premontaggio':        'Luca',
+  'Montaggio':           'Alessandro',
+  'Upload esportato':    'Alessandro',
+  'Revisione montaggio': 'Elisa',
+  'Programmazione':      'Elisa',
+  'Cleanup':             'Elisa',
+};

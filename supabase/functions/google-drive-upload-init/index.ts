@@ -188,7 +188,7 @@ serve(async (req) => {
           'Content-Type':            'application/json',
           'X-Upload-Content-Type':   mimeType,
           'X-Upload-Content-Length': String(fileSize),
-          'Origin':                  'https://skorpio-agency-hub.lovable.app',
+          'Origin':                  'https://skorpio-agency-hub.vercel.app',
         },
         body: JSON.stringify({
           name:    fileName,

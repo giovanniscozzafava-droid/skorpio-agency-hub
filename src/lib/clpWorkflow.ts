@@ -4,6 +4,7 @@
 import { supabase } from './supabase';
 import { toDateStr, addDays } from './dateUtils';
 import type { Contenuto, FaseCLP, TeamMember } from '../types';
+import { FASE_TO_TASK_TIPO, FASE_TIPO_MAP, FASE_ORDER as FASE_ORDER_CONFIG, TEAM_ASSIGNMENTS } from '../config/faseConfig';
 
 // ── Default lead times (giorni lavorativi prima della pubblicazione) ──────────
 export const DEFAULT_LEAD_TIMES: Record<string, number> = {
@@ -86,12 +87,13 @@ export interface WorkflowStep {
   descrizioneNext: (c: Contenuto) => string;
 }
 
+// [UNIFIED - old] assegnatoKeyword era hardcoded — ora usa TEAM_ASSIGNMENTS da faseConfig.ts
 export const WORKFLOW_MAP: Record<string, WorkflowStep> = {
   'Premontaggio': {
     faseCurrent: 'Girato',
     faseNext: 'Pre montato',
     tipoNext: 'Montaggio',
-    assegnatoKeyword: 'Alessandro',
+    assegnatoKeyword: TEAM_ASSIGNMENTS['Montaggio'],
     emojiNext: '✂️',
     descrizioneNext: c => `✂️ Montaggio ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
   },
@@ -99,7 +101,7 @@ export const WORKFLOW_MAP: Record<string, WorkflowStep> = {
     faseCurrent: 'Pre montato',
     faseNext: 'Montato',
     tipoNext: 'Upload esportato',
-    assegnatoKeyword: 'Alessandro',
+    assegnatoKeyword: TEAM_ASSIGNMENTS['Upload esportato'],
     emojiNext: '📤',
     descrizioneNext: c => `📤 Upload esportato ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
   },
@@ -107,7 +109,7 @@ export const WORKFLOW_MAP: Record<string, WorkflowStep> = {
     faseCurrent: 'Montato',
     faseNext: 'Uploadato',
     tipoNext: 'Revisione montaggio',
-    assegnatoKeyword: 'Elisa',
+    assegnatoKeyword: TEAM_ASSIGNMENTS['Revisione montaggio'],
     emojiNext: '👁️',
     descrizioneNext: c => `👁️ Revisione ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
   },
@@ -115,7 +117,7 @@ export const WORKFLOW_MAP: Record<string, WorkflowStep> = {
     faseCurrent: 'Uploadato',
     faseNext: 'Revisionato',
     tipoNext: 'Programmazione',
-    assegnatoKeyword: 'Elisa',
+    assegnatoKeyword: TEAM_ASSIGNMENTS['Programmazione'],
     emojiNext: '📅',
     descrizioneNext: c => `📅 Programmazione ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
   },
@@ -123,22 +125,23 @@ export const WORKFLOW_MAP: Record<string, WorkflowStep> = {
     faseCurrent: 'Revisionato',
     faseNext: 'Programmato',
     tipoNext: '',
-    assegnatoKeyword: 'Elisa',
+    assegnatoKeyword: TEAM_ASSIGNMENTS['Programmazione'],
     emojiNext: '',
     descrizioneNext: () => '',
   },
 };
 
 // ── Workflow ordered steps for timeline display ──────────────────────────────
+// [UNIFIED - old] assegnato hardcoded — ora usa TEAM_ASSIGNMENTS
 export const WORKFLOW_STEPS_ORDER = [
-  { fase: 'Girato', tipo: 'Premontaggio', label: 'Pre montaggio', emoji: '🎬', assegnato: 'Luca' },
-  { fase: 'Pre montato', tipo: 'Montaggio', label: 'Montaggio', emoji: '✂️', assegnato: 'Alessandro' },
-  { fase: 'Montato', tipo: 'Upload esportato', label: 'Upload esportato', emoji: '📤', assegnato: 'Alessandro' },
-  { fase: 'Uploadato', tipo: 'Revisione montaggio', label: 'Revisione', emoji: '👁️', assegnato: 'Elisa' },
-  { fase: 'Revisionato', tipo: 'Programmazione', label: 'Programmazione', emoji: '📅', assegnato: 'Elisa' },
-  { fase: 'Programmato', tipo: '', label: 'Pubblicazione', emoji: '📤', assegnato: 'Elisa' },
-  { fase: 'Pubblicato', tipo: 'Cleanup', label: 'Pubblicato', emoji: '✅', assegnato: '' },
-] as const;
+  { fase: 'Girato', tipo: 'Premontaggio', label: 'Pre montaggio', emoji: '🎬', assegnato: TEAM_ASSIGNMENTS['Premontaggio'] },
+  { fase: 'Pre montato', tipo: 'Montaggio', label: 'Montaggio', emoji: '✂️', assegnato: TEAM_ASSIGNMENTS['Montaggio'] },
+  { fase: 'Montato', tipo: 'Upload esportato', label: 'Upload esportato', emoji: '📤', assegnato: TEAM_ASSIGNMENTS['Upload esportato'] },
+  { fase: 'Uploadato', tipo: 'Revisione montaggio', label: 'Revisione', emoji: '👁️', assegnato: TEAM_ASSIGNMENTS['Revisione montaggio'] },
+  { fase: 'Revisionato', tipo: 'Programmazione', label: 'Programmazione', emoji: '📅', assegnato: TEAM_ASSIGNMENTS['Programmazione'] },
+  { fase: 'Programmato', tipo: '', label: 'Pubblicazione', emoji: '📤', assegnato: TEAM_ASSIGNMENTS['Programmazione'] },
+  { fase: 'Pubblicato', tipo: 'Cleanup', label: 'Pubblicato', emoji: '✅', assegnato: TEAM_ASSIGNMENTS['Cleanup'] },
+];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -230,7 +233,8 @@ export async function creaTaskWorkflow(
  * Crea task di Premontaggio per Luca quando vengono caricate clip su un CLP
  */
 export async function creaTaskPremontaggio(contenuto: Contenuto, team: TeamMember[], numClip: number): Promise<any> {
-  const nomeLuca = findMembro(team, 'Luca');
+  // [UNIFIED - old] const nomeLuca = findMembro(team, 'Luca');
+  const nomeLuca = findMembro(team, TEAM_ASSIGNMENTS['Premontaggio']);
   return creaTaskWorkflow(
     contenuto,
     nomeLuca,
@@ -260,8 +264,9 @@ export async function richiestaModifiche(
   await cambiaFaseRM({ contenutoId: contenuto.id, nuovaFase: 'Pre montato', source: 'workflow', userId: 'revisione' });
   await supabase.from('contenuti').update({ note_revisione: noteRevisione }).eq('id', contenuto.id);
 
-  // Crea nuovo task di Montaggio per Alessandro
-  const nomeAlessandro = findMembro(team, 'Alessandro');
+  // Crea nuovo task di Montaggio
+  // [UNIFIED - old] const nomeAlessandro = findMembro(team, 'Alessandro');
+  const nomeAlessandro = findMembro(team, TEAM_ASSIGNMENTS['Montaggio']);
   return creaTaskWorkflow(
     { ...contenuto, fase: 'Pre montato' as FaseCLP },
     nomeAlessandro,
@@ -288,8 +293,9 @@ export async function approvaRevisione(
   console.log('[Step2c] approvaRevisione via FaseService', { id: contenuto.id });
   await cambiaFaseAR({ contenutoId: contenuto.id, nuovaFase: 'Revisionato', source: 'workflow', userId: 'revisione' });
 
-  // Crea task Programmazione per Elisa
-  const nomeElisa = findMembro(team, 'Elisa');
+  // Crea task Programmazione
+  // [UNIFIED - old] const nomeElisa = findMembro(team, 'Elisa');
+  const nomeElisa = findMembro(team, TEAM_ASSIGNMENTS['Programmazione']);
   return creaTaskWorkflow(
     { ...contenuto, fase: 'Revisionato' as FaseCLP },
     nomeElisa,
@@ -355,10 +361,7 @@ export async function avanzaFaseDaTask(
   await supabase.from('task').update({ stato: 'Completato' }).eq('id', taskId);
 
   // Completa anche eventuali task orfani di fasi precedenti
-  const FASE_TIPO_MAP: Record<string, string> = {
-    'Girato': 'Premontaggio', 'Pre montato': 'Montaggio', 'Montato': 'Upload esportato',
-    'Uploadato': 'Revisione montaggio', 'Revisionato': 'Programmazione',
-  };
+  // [UNIFIED - old] FASE_TIPO_MAP locale rimosso — ora importato da config/faseConfig.ts
   for (let i = 0; i < targetIdx; i++) {
     const prevTipo = FASE_TIPO_MAP[FASE_SEQ[i]];
     if (prevTipo) {
@@ -427,33 +430,10 @@ export async function avanzaFaseDaTask(
     }
   }
 
+  // [UNIFIED - old] Drive trigger — ora lo fa FaseService.cambiaFaseCLP() (step 6)
   // 5. Se la fase è Montato → triggera Drive
-  let driveTriggered = false;
-  if (nuovaFase === 'Montato' && !contenuto.link_drive) {
-    driveTriggered = true;
-    try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-      await fetch(`${supabaseUrl}/functions/v1/create-drive-folder`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseKey}`,
-          'apikey': supabaseKey,
-        },
-        body: JSON.stringify({
-          contenuto_id: contenuto.id,
-          titolo: contenuto.titolo,
-          cliente_nome: contenuto.cliente_nome,
-          tipo: contenuto.tipo,
-          id_display: contenuto.id_display,
-          team_id: teamId,
-        }),
-      });
-    } catch (e) {
-      console.error('Errore Drive trigger:', e);
-    }
-  }
+  const driveTriggered = false; // Drive ora gestito da FaseService
+  // if (nuovaFase === 'Montato' && !contenuto.link_drive) { ...fetch create-drive-folder... }
 
   // 6. Se fase = Programmato e data+ora già passati → pubblica subito + cleanup
   if (nuovaFase === 'Programmato' && contenuto.data_pubblicazione && contenuto.ora_pubblicazione) {
@@ -521,51 +501,20 @@ export async function completaTaskEAvanzaFase(
   });
   console.log('[Step2c] risultato:', faseResult);
 
-  if (stepForNextTask.tipoNext) {
-    const assegnatoA = findMembro(team, stepForNextTask.assegnatoKeyword);
-    const newTask = await creaTaskWorkflow(
-      contenuto as Contenuto,
-      assegnatoA,
-      stepForNextTask.tipoNext,
-      stepForNextTask.descrizioneNext(contenuto as Contenuto),
-      'Da fare',
-    );
-    // Se è Upload esportato, aggiungi nota con percorso Drive
-    if (stepForNextTask.tipoNext === 'Upload esportato' && newTask) {
-      const slug = contenuto.titolo.replace(/\s+/g, '-').slice(0, 40);
-      const folderPath = `SKORPIO_Clip/${contenuto.cliente_nome}/${contenuto.id_display}_${slug}/file_esportato/`;
-      const driveNote = contenuto.link_drive
-        ? `📂 Carica il file esportato nella cartella "file_esportato/" su Google Drive:\n${contenuto.link_drive}\n\nPercorso: ${folderPath}`
-        : `📂 Carica il file esportato nella sezione Riprese del CLP ${contenuto.id_display}, zona "File esportato".\n\nPercorso Drive: ${folderPath}`;
-      await supabase.from('task').update({ note: driveNote }).eq('id', newTask.id);
-    }
-  }
+  // [UNIFIED - old] Creazione task successivo — ora lo fa FaseService.cambiaFaseCLP() (step 5)
+  // if (stepForNextTask.tipoNext) {
+  //   const assegnatoA = findMembro(team, stepForNextTask.assegnatoKeyword);
+  //   const newTask = await creaTaskWorkflow(
+  //     contenuto as Contenuto, assegnatoA, stepForNextTask.tipoNext,
+  //     stepForNextTask.descrizioneNext(contenuto as Contenuto), 'Da fare',
+  //   );
+  //   if (stepForNextTask.tipoNext === 'Upload esportato' && newTask) { ...drive note... }
+  // }
 
-  // Se faseNext = Montato → triggera Drive
-  if (step.faseNext === 'Montato' && !contenuto.link_drive) {
-    try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-      await fetch(`${supabaseUrl}/functions/v1/create-drive-folder`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseKey}`,
-          'apikey': supabaseKey,
-        },
-        body: JSON.stringify({
-          contenuto_id: contenuto.id,
-          titolo: contenuto.titolo,
-          cliente_nome: contenuto.cliente_nome,
-          tipo: contenuto.tipo,
-          id_display: contenuto.id_display,
-          team_id: teamId,
-        }),
-      });
-    } catch (e) {
-      console.error('Errore Drive trigger:', e);
-    }
-  }
+  // [UNIFIED - old] Drive trigger — ora lo fa FaseService.cambiaFaseCLP() (step 6)
+  // if (step.faseNext === 'Montato' && !contenuto.link_drive) {
+  //   try { await fetch(...create-drive-folder...); } catch (e) { ... }
+  // }
 
   // Se faseNext = Programmato e data+ora già passati → pubblica subito + cleanup
   if (faseNext === 'Programmato' && contenuto.data_pubblicazione && contenuto.ora_pubblicazione) {
@@ -659,7 +608,8 @@ export async function creaTaskCleanup(contenuto: Contenuto, team: any[]): Promis
 
   if (existing && existing.length > 0) return;
 
-  const nomeElisa = findMembro(team, 'Elisa');
+  // [UNIFIED - old] const nomeElisa = findMembro(team, 'Elisa');
+  const nomeElisa = findMembro(team, TEAM_ASSIGNMENTS['Cleanup']);
 
   const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
 
@@ -684,21 +634,9 @@ export async function creaTaskCleanup(contenuto: Contenuto, team: any[]): Promis
  * Chiamato all'avvio per recuperare CLPs entrati nel workflow prima dell'automazione.
  */
 export async function syncMissingWorkflowTasks(): Promise<number> {
+  // [UNIFIED - old] FASE_ORDER, FASE_TO_TIPO e FASE_TIPO_MAP locali rimossi — ora importati da config/faseConfig.ts
   const FASE_ORDER = ['Girato', 'Pre montato', 'Montato', 'Uploadato', 'Revisionato', 'Programmato', 'Pubblicato'];
-  const FASE_TO_TIPO: Record<string, { tipo: string; keyword: string; emoji: string }> = {
-    'Girato': { tipo: 'Premontaggio', keyword: 'Luca', emoji: '🎬' },
-    'Pre montato': { tipo: 'Montaggio', keyword: 'Alessandro', emoji: '✂️' },
-    'Montato': { tipo: 'Upload esportato', keyword: 'Alessandro', emoji: '📤' },
-    'Uploadato': { tipo: 'Revisione montaggio', keyword: 'Elisa', emoji: '👁️' },
-    'Revisionato': { tipo: 'Programmazione', keyword: 'Elisa', emoji: '📅' },
-  };
-  const FASE_TIPO_MAP: Record<string, string> = {
-    'Girato': 'Premontaggio',
-    'Pre montato': 'Montaggio',
-    'Montato': 'Upload esportato',
-    'Uploadato': 'Revisione montaggio',
-    'Revisionato': 'Programmazione',
-  };
+  const FASE_TO_TIPO = FASE_TO_TASK_TIPO;
 
   const { data: teamData } = await supabase.from('team').select('*');
   const team = (teamData || []) as TeamMember[];

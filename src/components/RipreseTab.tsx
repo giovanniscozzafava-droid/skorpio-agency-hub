@@ -6,6 +6,7 @@ import { useUpload } from '../context/UploadContext';
 import type { LogRipresa, Cliente, TeamMember, Contenuto, Task } from '../types';
 import { WORKFLOW_STEPS_ORDER } from '../lib/clpWorkflow';
 import { cambiaFaseCLP } from '../services/faseService';
+import { FASE_CONFIG } from '../config/faseConfig';
 import { ClipFileUpload, FileStatusDot, formatBytes } from './ClipFileUpload';
 import { ClipReviewModal } from './ClipReviewModal';
 import { BulkUploadModal, AutoCleanupDialog } from './DriveStorageIndicator';
@@ -60,11 +61,15 @@ const STATO_CFG: Record<string, { bg: string; text: string; border: string }> = 
   'Usata':     { bg: 'hsl(var(--clr-blue)/0.12)',    text: 'hsl(var(--clr-blue))',   border: 'hsl(var(--clr-blue)/0.35)' },
 };
 
-const FASE_COLORS: Record<string, string> = {
-  'Idea':         '#94A3B8', 'Script':     '#F59E0B', 'Girato':    '#22C55E',
-  'Pre montato':  '#06B6D4', 'Montato':    '#8B5CF6', 'Revisione': '#EC4899',
-  'Programmato':  '#7C3AED', 'Pubblicato': '#3B82F6', 'Scartata':  '#EF4444',
-};
+// [UNIFIED - old] FASE_COLORS locale rimosso — ora derivato da FASE_CONFIG centralizzato
+// const FASE_COLORS: Record<string, string> = {
+//   'Idea':         '#94A3B8', 'Script':     '#F59E0B', 'Girato':    '#22C55E',
+//   'Pre montato':  '#06B6D4', 'Montato':    '#8B5CF6', 'Revisione': '#EC4899',
+//   'Programmato':  '#7C3AED', 'Pubblicato': '#3B82F6', 'Scartata':  '#EF4444',
+// };
+const FASE_COLORS: Record<string, string> = Object.fromEntries(
+  Object.entries(FASE_CONFIG).map(([k, v]) => [k, v.color])
+);
 
 const FORMATI = ['Verticale 9:16', 'Orizzontale 16:9', 'Quadrato 1:1', 'Foto', 'Raw / LOG', 'Slow Motion', 'Drone', 'Altro'];
 

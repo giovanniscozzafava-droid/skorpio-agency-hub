@@ -6,21 +6,11 @@ import { parseLocalDate } from '../lib/dateUtils';
 import { CLPDetailPanel } from './CLPDetailPanel';
 import { NuovoCLPModal } from './NuovoCLPModal';
 import { cambiaFaseCLP } from '../services/faseService';
+import { FASE_CONFIG } from '../config/faseConfig';
 
 const FASI: FaseCLP[] = ['Idea', 'Script', 'Girato', 'Pre montato', 'Montato', 'Uploadato', 'Revisionato', 'Programmato', 'Pubblicato', 'Scartata'];
 
-export const FASE_CONFIG: Record<FaseCLP, { bg: string; text: string; border: string }> = {
-  'Idea':        { bg: '#F1F5F9', text: '#64748B', border: '#CBD5E1' },
-  'Script':      { bg: '#FEF3C7', text: '#D97706', border: '#FDE68A' },
-  'Girato':      { bg: '#DCFCE7', text: '#16A34A', border: '#BBF7D0' },
-  'Pre montato': { bg: '#CFFAFE', text: '#0E7490', border: '#A5F3FC' },
-  'Montato':     { bg: '#EDE9FE', text: '#7C3AED', border: '#DDD6FE' },
-  'Uploadato':   { bg: '#FEF9C3', text: '#A16207', border: '#FDE047' },
-  'Revisionato': { bg: '#FCE7F3', text: '#BE185D', border: '#FBCFE8' },
-  'Programmato': { bg: '#EDE9FE', text: '#6D28D9', border: '#C4B5FD' },
-  'Pubblicato':  { bg: '#DBEAFE', text: '#1D4ED8', border: '#BFDBFE' },
-  'Scartata':    { bg: '#FEE2E2', text: '#DC2626', border: '#FECACA' },
-};
+// [UNIFIED - old] FASE_CONFIG duplicato rimosso — ora importato da config/faseConfig.ts
 
 const CANALI = ['Instagram', 'Facebook', 'Instagram/Facebook', 'TikTok', 'LinkedIn', 'YouTube', 'Altro'];
 const TIPI = ['Reel', 'Post', 'Carosello', 'Story', 'Video', 'Short', 'Altro'];
@@ -79,7 +69,7 @@ export function ContenutiTab({ team, clienti }: ContentTabProps) {
     addToast('Contenuto eliminato', 'info');
   };
 
-  // ── VECCHIO handleFaseChange (commentato, non cancellato) ──
+  // [OLD - replaced by FaseService]
   // const handleFaseChange_OLD = async (contenuto: Contenuto, nuovaFase: FaseCLP) => {
   //   const { data, error } = await supabase
   //     .from('contenuti').update({ fase: nuovaFase }).eq('id', contenuto.id).select().single();
@@ -101,6 +91,7 @@ export function ContenutiTab({ team, clienti }: ContentTabProps) {
 
   // ── NUOVO: usa FaseService centralizzato ──
   const handleFaseChange = async (contenuto: Contenuto, nuovaFase: FaseCLP) => {
+    console.log('[Step2a]');
     console.log('[ContenutiTab] handleFaseChange via FaseService', { id: contenuto.id, oldFase: contenuto.fase, nuovaFase });
     const result = await cambiaFaseCLP({
       contenutoId: contenuto.id,
