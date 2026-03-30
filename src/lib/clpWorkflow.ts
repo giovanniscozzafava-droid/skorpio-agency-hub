@@ -273,7 +273,7 @@ export async function creaTaskPremontaggio(contenuto: Contenuto, team: TeamMembe
 
 /**
  * Revisione: Elisa richiede modifiche → CLP torna a "Pre montato", nuovo task per Alessandro
- * BYPASS SP — 3 query dirette al DB, zero intermediari
+ * Usa stored procedure dedicata — 1 sola chiamata DB
  */
 export async function richiestaModifiche(
   contenuto: Contenuto,
@@ -281,15 +281,15 @@ export async function richiestaModifiche(
   noteRevisione: string,
   userId?: string
 ): Promise<any> {
-  // BYPASS: usa stored procedure dedicata
-  const { data, error } = await supabase.rpc("richiesta_modifiche", {
+  const { data, error } = await supabase.rpc('richiesta_modifiche', {
     p_contenuto_id: contenuto.id,
     p_note_revisione: noteRevisione,
-    p_user_id: userId || "revisione",
+    p_user_id: userId || 'revisione',
   });
   if (error) throw new Error(error.message);
-  if (!data?.success) throw new Error(data?.error || "Errore sconosciuto");
-  return { ok: true };}
+  if (!data?.success) throw new Error(data?.error || 'Errore sconosciuto');
+  return { ok: true };
+}
 
 /**
  * Revisione: Elisa approva → CLP passa a Revisionato, crea task Programmazione
