@@ -146,6 +146,11 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
   };
 
   const saveField = async (k: keyof Contenuto, v: any) => {
+    // [BLOCKED - only faseService can write fase]
+    if (k === 'fase') {
+      console.warn('[CLPDetailPanel] Tentativo di scrivere fase direttamente — bloccato. Usa cambiaFaseCLP().');
+      return;
+    }
     await supabase.from('contenuti').update({ [k]: v }).eq('id', contenuto.id);
     // Aggiorna il parent silenziosamente
     const { data } = await supabase.from('contenuti').select('*').eq('id', contenuto.id).single();

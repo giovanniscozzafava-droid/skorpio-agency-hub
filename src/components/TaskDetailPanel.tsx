@@ -326,7 +326,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
       supabase.from('contenuti').update({
         data_pubblicazione: dataStr,
         ora_pubblicazione: oraStr,
-        fase: 'Programmato',
+        // [BLOCKED - only faseService can write fase] fase: 'Programmato',
       }).eq('id', task.id_contenuto),
     ]);
 
