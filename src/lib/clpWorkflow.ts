@@ -273,6 +273,7 @@ export async function creaTaskPremontaggio(contenuto: Contenuto, team: TeamMembe
 
 /**
  * Revisione: Elisa richiede modifiche → CLP torna a "Pre montato", nuovo task per Alessandro
+ * La SP gestisce: cambio fase + completamento vecchio task + creazione nuovo Montaggio
  */
 export async function richiestaModifiche(
   contenuto: Contenuto,
@@ -280,61 +281,60 @@ export async function richiestaModifiche(
   noteRevisione: string,
   userId?: string
 ): Promise<any> {
-  // Incrementa contatore revisioni
-  await supabase.from('contenuti').update({
-    revision_count: (contenuto as any).revision_count ? (contenuto as any).revision_count + 1 : 1,
-  }).eq('id', contenuto.id);
-
   // Completa il task di revisione corrente
   await completaTaskPerContenuto(contenuto.id, 'Revisione montaggio');
 
-  // [NEW - FaseService + note_revisione separato]
+  // Cambio fase via SP — gestisce tutto (fase + task nuovo + log)
   const { cambiaFaseCLP: cambiaFaseRM } = await import('../services/faseService');
-  console.log('[Step2c] richiestaModifiche via FaseService', { id: contenuto.id });
-  await cambiaFaseRM({ contenutoId: contenuto.id, nuovaFase: 'Pre montato', source: 'workflow', userId: userId || 'revisione', oldFase: contenuto.fase });
-  await supabase.from('contenuti').update({ note_revisione: noteRevisione }).eq('id', contenuto.id);
+  const result = await cambiaFaseRM({
+    contenutoId: contenuto.id,
+    nuovaFase: 'Pre montato',
+    source: 'workflow',
+    userId: userId || 'revisione',
+    oldFase: contenuto.fase,
+  });
 
-  // Crea nuovo task di Montaggio
-  // [UNIFIED - old] const nomeAlessandro = findMembro(team, 'Alessandro');
-  const nomeAlessandro = findMembro(team, TEAM_ASSIGNMENTS['Montaggio']);
-  return creaTaskWorkflow(
-    { ...contenuto, fase: 'Pre montato' as FaseCLP },
-    nomeAlessandro,
-    'Montaggio',
-    `🔄 Modifiche ${contenuto.id_display} – ${contenuto.titolo}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}\n📝 ${noteRevisione}`,
-    'Da fare',
-    null,
-    null,
-  );
+  if (!result.success) {
+    throw new Error('Cambio fase fallito: ' + result.errors.join(', '));
+  }
+
+  // Scrivi note revisione solo se la fase è cambiata
+  await supabase.from('contenuti').update({
+    note_revisione: noteRevisione,
+    revision_count: (contenuto as any).revision_count ? (contenuto as any).revision_count + 1 : 1,
+  }).eq('id', contenuto.id);
+
+  // Task Montaggio creato dalla SP (step 6) — non serve creaTaskWorkflow
+  return { ok: true, taskCreated: result.taskCreated };
 }
 
 /**
  * Revisione: Elisa approva → CLP passa a Revisionato, crea task Programmazione
+ * La SP gestisce: cambio fase + completamento vecchio task + creazione Programmazione
  */
 export async function approvaRevisione(
   contenuto: Contenuto,
   team: TeamMember[],
   userId?: string
 ): Promise<any> {
-  // Completa il task di revisione (NON resettare revision_count — serve per storico)
+  // Completa il task di revisione
   await completaTaskPerContenuto(contenuto.id, 'Revisione montaggio');
 
   const { cambiaFaseCLP: cambiaFaseAR } = await import('../services/faseService');
-  console.log('[Step2c] approvaRevisione via FaseService', { id: contenuto.id });
-  await cambiaFaseAR({ contenutoId: contenuto.id, nuovaFase: 'Revisionato', source: 'workflow', userId: userId || 'revisione', oldFase: contenuto.fase });
+  const result = await cambiaFaseAR({
+    contenutoId: contenuto.id,
+    nuovaFase: 'Revisionato',
+    source: 'workflow',
+    userId: userId || 'revisione',
+    oldFase: contenuto.fase,
+  });
 
-  // Crea task Programmazione
-  // [UNIFIED - old] const nomeElisa = findMembro(team, 'Elisa');
-  const nomeElisa = findMembro(team, TEAM_ASSIGNMENTS['Programmazione']);
-  return creaTaskWorkflow(
-    { ...contenuto, fase: 'Revisionato' as FaseCLP },
-    nomeElisa,
-    'Programmazione',
-    `📅 Programmazione ${contenuto.id_display} – ${contenuto.titolo}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}`,
-    'Da fare',
-    null,
-    null,
-  );
+  if (!result.success) {
+    throw new Error('Cambio fase fallito: ' + result.errors.join(', '));
+  }
+
+  // Task Programmazione creato dalla SP (step 6) — non serve creaTaskWorkflow
+  return { ok: true, taskCreated: result.taskCreated };
 }
 
 /**
