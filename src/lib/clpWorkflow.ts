@@ -281,57 +281,15 @@ export async function richiestaModifiche(
   noteRevisione: string,
   userId?: string
 ): Promise<any> {
-  // 1. Completa il task di revisione
-  await supabase.from('task')
-    .update({ stato: 'Completato', updated_at: new Date().toISOString() })
-    .eq('id_contenuto', contenuto.id)
-    .eq('tipo', 'Revisione montaggio')
-    .in('stato', ['Da fare', 'In lavorazione', 'In revisione']);
-
-  // 2. Cambia fase direttamente
-  await supabase.from('contenuti')
-    .update({
-      fase: 'Pre montato',
-      note_revisione: noteRevisione,
-      revision_count: ((contenuto as any).revision_count || 0) + 1,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', contenuto.id);
-
-  // 3. Crea task Montaggio (se non esiste già)
-  const { data: existing } = await supabase.from('task')
-    .select('id').eq('id_contenuto', contenuto.id)
-    .eq('tipo', 'Montaggio')
-    .in('stato', ['Da fare', 'In lavorazione', 'In revisione']);
-
-  if (!existing || existing.length === 0) {
-    const nomeAlessandro = findMembro(team, TEAM_ASSIGNMENTS['Montaggio']);
-    const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
-    await supabase.from('task').insert({
-      id_display: idData ?? `TSK${Date.now()}`,
-      tipo: 'Montaggio',
-      descrizione: `🔄 Modifiche ${contenuto.id_display} – ${contenuto.titolo}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}\n📝 ${noteRevisione}`,
-      stato: 'Da fare',
-      assegnato_a: nomeAlessandro,
-      assegnato_da: '⚡ Sistema',
-      cliente_id: contenuto.cliente_id,
-      cliente_nome: contenuto.cliente_nome || '',
-      id_contenuto: contenuto.id,
-      priorita: '🟡 Media',
-    });
-  }
-
-  // 4. Log
-  await supabase.from('_fase_change_log').insert({
-    contenuto_id: contenuto.id,
-    old_fase: contenuto.fase,
-    new_fase: 'Pre montato',
-    source: 'workflow',
-    user_id: userId || 'revisione',
+  // BYPASS: usa stored procedure dedicata
+  const { data, error } = await supabase.rpc("richiesta_modifiche", {
+    p_contenuto_id: contenuto.id,
+    p_note_revisione: noteRevisione,
+    p_user_id: userId || "revisione",
   });
-
-  return { ok: true };
-}
+  if (error) throw new Error(error.message);
+  if (!data?.success) throw new Error(data?.error || "Errore sconosciuto");
+  return { ok: true };}
 
 /**
  * Revisione: Elisa approva → CLP passa a Revisionato, crea task Programmazione
