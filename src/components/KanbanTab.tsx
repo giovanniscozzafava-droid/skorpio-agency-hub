@@ -476,18 +476,23 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
         setTimeout(() => setLiveActive(false), 800);
         if (payload.eventType === 'INSERT') {
           const newTask = payload.new as Task;
-          // ── FIX: non inserire task archiviati nella Kanban ──
           if (newTask.stato === 'Archiviato') return;
           setTasks(prev => {
             const next = prev.some(t => t.id === newTask.id) ? prev : [newTask, ...prev];
             tasksRef.current = next;
             return next;
           });
+          // [FIX] Aggiorna clpFasi subito — il nuovo task vive nella fase corrente del CLP
+          if (newTask.id_contenuto && newTask.tipo) {
+            const step = WORKFLOW_MAP[newTask.tipo];
+            if (step?.faseCurrent) {
+              setClpFasi(prev => ({ ...prev, [newTask.id_contenuto]: step.faseCurrent }));
+            }
+          }
           setNewTaskIds(prev => new Set(prev).add(newTask.id));
           setTimeout(() => setNewTaskIds(prev => { const next = new Set(prev); next.delete(newTask.id); return next; }), 3000);
           pendingEventsRef.current.push({ tipo: 'nuovo', task: newTask });
           scheduleFlush();
-          // [PERF] No loadTasks() — lo state è già aggiornato localmente
         } else if (payload.eventType === 'UPDATE') {
           const updatedTask = payload.new as Task;
           // ── FIX: se il task è diventato Archiviato, rimuovilo dallo state ──
