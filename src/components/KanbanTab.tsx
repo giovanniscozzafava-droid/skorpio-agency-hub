@@ -448,6 +448,22 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
     if (scaduti.length > 0) sounds.alert();
   }, []);
 
+  // [PERF] Reload leggero solo dei metadati contenuti (fasi, date pub) — debounced
+  const clpRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshClpMeta = useCallback(() => {
+    if (clpRefreshTimer.current) clearTimeout(clpRefreshTimer.current);
+    clpRefreshTimer.current = setTimeout(async () => {
+      const { data } = await supabase
+        .from('contenuti')
+        .select('id, fase, data_pubblicazione, ora_pubblicazione, revision_count');
+      if (data) {
+        setClpFasi(Object.fromEntries(data.map(c => [c.id, c.fase || ''])));
+        setClpPubDates(Object.fromEntries(data.map(c => [c.id, { data: c.data_pubblicazione, ora: c.ora_pubblicazione }])));
+        setClpRevisionCount(Object.fromEntries(data.map(c => [c.id, c.revision_count || 0])));
+      }
+    }, 1500);
+  }, []);
+
   useEffect(() => {
     loadTasks();
     const channel = supabase
@@ -468,7 +484,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
           setTimeout(() => setNewTaskIds(prev => { const next = new Set(prev); next.delete(newTask.id); return next; }), 3000);
           pendingEventsRef.current.push({ tipo: 'nuovo', task: newTask });
           scheduleFlush();
-          void loadTasks();
+          // [PERF] No loadTasks() — lo state è già aggiornato localmente
         } else if (payload.eventType === 'UPDATE') {
           const updatedTask = payload.new as Task;
           // ── FIX: se il task è diventato Archiviato, rimuovilo dallo state ──
@@ -479,7 +495,6 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
               return next;
             });
             setSelectedTask(prev => prev?.id === updatedTask.id ? null : prev);
-            void loadTasks();
             return;
           }
           const prevTask = tasksRef.current.find(t => t.id === updatedTask.id);
@@ -491,26 +506,28 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
           setSelectedTask(prev => prev?.id === updatedTask.id ? updatedTask : prev);
           if (updatedTask.stato === 'Completato' && prevTask?.stato !== 'Completato') {
             pendingEventsRef.current.push({ tipo: 'completato', task: updatedTask, fromStato: prevTask?.stato });
+            // Task completato → probabile cambio fase, aggiorna metadati CLP (debounced)
+            refreshClpMeta();
           } else if (prevTask && prevTask.stato !== updatedTask.stato) {
             pendingEventsRef.current.push({ tipo: 'spostato', task: updatedTask, fromStato: prevTask.stato });
           }
           scheduleFlush();
-          void loadTasks();
         } else if (payload.eventType === 'DELETE') {
           setTasks(prev => {
             const next = prev.filter(t => t.id !== (payload.old as Task).id);
             tasksRef.current = next;
             return next;
           });
-          void loadTasks();
+          // [PERF] No loadTasks() — lo state è già aggiornato localmente
         }
       })
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
       if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+      if (clpRefreshTimer.current) clearTimeout(clpRefreshTimer.current);
     };
-  }, [loadTasks, scheduleFlush]);
+  }, [loadTasks, scheduleFlush, refreshClpMeta]);
 
   // ── Task standard (senza CLP) ───────────────────────────────────────────────
   const matchesSearch = (t: Task) => {
@@ -711,8 +728,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
         setTasks(prev => prev.map(t => t.id === dragItem ? { ...t, stato: 'Completato' } : t));
         sounds.taskCompletato();
         addToast(`✅ ${task.tipo} completato → ${nuovaFase}`, 'success');
-        // Ricarica per avere il task successivo
-        setTimeout(() => loadTasks(), 800);
+        // [PERF] Il task successivo arriva via realtime, no reload necessario
       }
     } catch (e) {
       addToast('❌ Errore avanzamento', 'error');
@@ -733,7 +749,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
     });
     if (result.success) {
       addToast('🔄 Riprogrammato — torna in revisione', 'success');
-      setTimeout(() => loadTasks(), 500);
+      // [PERF] I task si aggiornano via realtime, no reload necessario
     } else {
       addToast('❌ Errore: ' + (result.errors[0] || 'sconosciuto'), 'error');
     }

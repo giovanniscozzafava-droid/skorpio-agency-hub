@@ -50,15 +50,18 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
   const { contenutoId, nuovaFase, source, userId } = params;
   const errors: string[] = [];
 
+  console.time('[FaseService] total');
   console.log('[FaseService] cambiaFaseCLP V2 (stored procedure)', { contenutoId, nuovaFase, source, userId });
 
   // ── 1. VALIDA la transizione lato client (fail-fast senza roundtrip) ────
   // Serve un fetch veloce della fase corrente per la validazione client-side
+  console.time('[FaseService] validate');
   const { data: currentRow, error: fetchErr } = await supabase
     .from('contenuti')
     .select('fase')
     .eq('id', contenutoId)
     .single();
+  console.timeEnd('[FaseService] validate');
 
   if (fetchErr || !currentRow) {
     return {
@@ -81,12 +84,14 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
   }
 
   // ── 2. CHIAMATA STORED PROCEDURE — 1 solo roundtrip DB ─────────────────
+  console.time('[FaseService] rpc');
   const { data: rpcResult, error: rpcError } = await supabase.rpc('cambio_fase_clp', {
     p_contenuto_id: contenutoId,
     p_nuova_fase: nuovaFase,
     p_source: source,
     p_user_id: userId,
   });
+  console.timeEnd('[FaseService] rpc');
 
   if (rpcError) {
     console.error('[FaseService] RPC error:', rpcError);
@@ -202,9 +207,11 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
     }
   };
 
-  // Fire and forget
-  asyncSideEffects();
+  // Fire and forget — non blocca il return
+  console.time('[FaseService] async-side-effects');
+  asyncSideEffects().finally(() => console.timeEnd('[FaseService] async-side-effects'));
 
+  console.timeEnd('[FaseService] total');
   // ── 4. RETURN ──────────────────────────────────────────────────────────
   return {
     success: true,
