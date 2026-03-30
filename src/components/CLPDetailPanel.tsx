@@ -291,7 +291,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
     // [NEW - FaseService + data separati]
     const { cambiaFaseCLP } = await import('../services/faseService');
     console.log('[Step2c] CLPDetailPanel handleProgramma via FaseService', { id: contenuto.id, nuovaFase });
-    await cambiaFaseCLP({ contenutoId: contenuto.id, nuovaFase, source: 'contenuti', userId: utente?.id || 'unknown' });
+    await cambiaFaseCLP({ contenutoId: contenuto.id, nuovaFase, source: 'contenuti', userId: utente?.id || 'unknown', oldFase: contenuto.fase });
     // Aggiorna data/ora separatamente
     const { data, error } = await supabase
       .from('contenuti')
@@ -354,14 +354,14 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
       nuovaFase: 'Revisionato',
       source: 'contenuti',
       userId: utente?.id || 'unknown',
+      oldFase: contenuto.fase,
     });
     if (result.success) {
-      const { data } = await supabase.from('contenuti').select('*').eq('id', contenuto.id).single();
-      if (data) {
-        onUpdate(data as Contenuto);
-        setForm(data as Contenuto);
-        prevFaseRef.current = 'Revisionato' as FaseCLP;
-      }
+      // Optimistic update — no re-fetch
+      const updated = { ...contenuto, fase: 'Revisionato' as FaseCLP, updated_at: new Date().toISOString() };
+      onUpdate(updated as Contenuto);
+      setForm(updated as Contenuto);
+      prevFaseRef.current = 'Revisionato' as FaseCLP;
       addToast('🔄 Riprogrammato — il CLP torna in revisione', 'success');
     } else {
       addToast('❌ Errore: ' + (result.errors[0] || 'sconosciuto'), 'error');
@@ -389,16 +389,16 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
       nuovaFase: 'Revisionato',
       source: 'contenuti',
       userId: utente?.id || 'unknown',
+      oldFase: contenuto.fase,
     });
     if (result.success) {
-      const { data } = await supabase.from('contenuti').select('*').eq('id', contenuto.id).single();
-      if (data) {
-        onUpdate(data as Contenuto);
-        setForm(data as Contenuto);
-        prevFaseRef.current = 'Revisionato' as FaseCLP;
-        setPubDate(undefined);
-        setPubOra('');
-      }
+      // Optimistic update — no re-fetch
+      const updated = { ...contenuto, fase: 'Revisionato' as FaseCLP, data_pubblicazione: null, ora_pubblicazione: null, updated_at: new Date().toISOString() };
+      onUpdate(updated as Contenuto);
+      setForm(updated as Contenuto);
+      prevFaseRef.current = 'Revisionato' as FaseCLP;
+      setPubDate(undefined);
+      setPubOra('');
       addToast('❌ Programmazione annullata — il CLP torna in revisione senza data', 'success');
     } else {
       addToast('❌ Errore: ' + (result.errors[0] || 'sconosciuto'), 'error');
@@ -477,25 +477,13 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
       // [OLD] await supabase.from('contenuti').update({ fase: 'Girato' }).eq('id', contenuto.id);
       const { cambiaFaseCLP: cambiaFaseClip } = await import('../services/faseService');
       console.log('[Step2c] CLPDetailPanel auto-Girato via FaseService', { id: contenuto.id });
-      await cambiaFaseClip({ contenutoId: contenuto.id, nuovaFase: 'Girato', source: 'contenuti', userId: utente?.id || 'unknown' });
-      const { data: fresh } = await supabase.from('contenuti').select('*').eq('id', contenuto.id).single();
-      if (fresh) {
-        onUpdate(fresh as Contenuto);
-        setForm(fresh as Contenuto);
+      await cambiaFaseClip({ contenutoId: contenuto.id, nuovaFase: 'Girato', source: 'contenuti', userId: utente?.id || 'unknown', oldFase: form.fase });
+      // Optimistic update — la SP ha già creato il task Premontaggio (step 5-6)
+      const updated = { ...contenuto, fase: 'Girato' as FaseCLP, updated_at: new Date().toISOString() };
+      onUpdate(updated as Contenuto);
+      setForm(updated as Contenuto);
 
-        // ── WORKFLOW: crea task Premontaggio per Luca ──────────────────────
-        const nomeLuca = findMembro(team, 'Luca');
-        const newTask = await creaTaskWorkflow(
-          fresh as any,
-          nomeLuca,
-          'Premontaggio',
-          `🎬 Premontaggia ${contenuto.id_display} – ${contenuto.titolo}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}`,
-          'Da fare',
-          fresh.data_pubblicazione ?? null,
-          fresh.ora_pubblicazione?.slice(0, 5) ?? null
-        );
-        if (newTask) addToast(`📋 Task premontaggio creato per ${nomeLuca}`, 'success');
-      }
+      // Task Premontaggio per Luca: creato automaticamente dalla SP (anti-duplicato)
       addToast('🎬 Fase aggiornata a Girato', 'success');
     }
 

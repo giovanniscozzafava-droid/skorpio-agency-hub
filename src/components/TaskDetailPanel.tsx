@@ -616,7 +616,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
       // [NEW - FaseService centralizzato]
       const { cambiaFaseCLP } = await import('../services/faseService');
       console.log('[Step2c] TaskDetailPanel upload esportato via FaseService', { id: task.id_contenuto });
-      await cambiaFaseCLP({ contenutoId: task.id_contenuto, nuovaFase: 'Uploadato', source: 'workflow', userId: utente?.id || 'unknown' });
+      await cambiaFaseCLP({ contenutoId: task.id_contenuto, nuovaFase: 'Uploadato', source: 'workflow', userId: utente?.id || 'unknown', oldFase: 'Montato' });
       await supabase.from('contenuti').update({ note_revisione: '' }).eq('id', task.id_contenuto);
       await supabase.from('task').update({ stato: 'Completato' }).eq('id', task.id);
 

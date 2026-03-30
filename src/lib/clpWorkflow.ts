@@ -291,7 +291,7 @@ export async function richiestaModifiche(
   // [NEW - FaseService + note_revisione separato]
   const { cambiaFaseCLP: cambiaFaseRM } = await import('../services/faseService');
   console.log('[Step2c] richiestaModifiche via FaseService', { id: contenuto.id });
-  await cambiaFaseRM({ contenutoId: contenuto.id, nuovaFase: 'Pre montato', source: 'workflow', userId: userId || 'revisione' });
+  await cambiaFaseRM({ contenutoId: contenuto.id, nuovaFase: 'Pre montato', source: 'workflow', userId: userId || 'revisione', oldFase: contenuto.fase });
   await supabase.from('contenuti').update({ note_revisione: noteRevisione }).eq('id', contenuto.id);
 
   // Crea nuovo task di Montaggio
@@ -321,7 +321,7 @@ export async function approvaRevisione(
 
   const { cambiaFaseCLP: cambiaFaseAR } = await import('../services/faseService');
   console.log('[Step2c] approvaRevisione via FaseService', { id: contenuto.id });
-  await cambiaFaseAR({ contenutoId: contenuto.id, nuovaFase: 'Revisionato', source: 'workflow', userId: userId || 'revisione' });
+  await cambiaFaseAR({ contenutoId: contenuto.id, nuovaFase: 'Revisionato', source: 'workflow', userId: userId || 'revisione', oldFase: contenuto.fase });
 
   // Crea task Programmazione
   // [UNIFIED - old] const nomeElisa = findMembro(team, 'Elisa');
@@ -380,7 +380,7 @@ export async function avanzaFaseDaTask(
   // [OLD] await supabase.from('contenuti').update({ fase: nuovaFase }).eq('id', contenutoId);
   const { cambiaFaseCLP: cambiaFaseAF } = await import('../services/faseService');
   console.log('[Step2c] avanzaFaseDaTask via FaseService', { contenutoId, nuovaFase });
-  await cambiaFaseAF({ contenutoId, nuovaFase, source: 'kanban', userId: teamId || 'workflow' });
+  await cambiaFaseAF({ contenutoId, nuovaFase, source: 'kanban', userId: teamId || 'workflow', oldFase: faseCurrent });
 
   // Se stiamo andando INDIETRO, non completare il task corrente
   if (!isForward) {
@@ -471,7 +471,7 @@ export async function avanzaFaseDaTask(
       // [OLD] await supabase.from('contenuti').update({ fase: 'Pubblicato' }).eq('id', contenutoId);
       const { cambiaFaseCLP: cambiaFase } = await import('../services/faseService');
       console.log('[Step2c] auto-publish via FaseService', { contenutoId });
-      await cambiaFase({ contenutoId, nuovaFase: 'Pubblicato', source: 'workflow', userId: teamId || 'workflow' });
+      await cambiaFase({ contenutoId, nuovaFase: 'Pubblicato', source: 'workflow', userId: teamId || 'workflow', oldFase: 'Programmato' });
       await creaTaskCleanup(contenuto as Contenuto, team as any[]);
       return { completatoTask: true, taskCreato: !!newTask, driveTriggered };
     }
@@ -527,6 +527,7 @@ export async function completaTaskEAvanzaFase(
     nuovaFase: faseNext,
     source: 'kanban',
     userId: teamId || 'workflow',
+    oldFase: contenuto.fase,
     taskIdCompletato: undefined, // task già completato sopra
   });
   console.log('[Step2c] risultato:', faseResult);
@@ -552,7 +553,7 @@ export async function completaTaskEAvanzaFase(
       // [OLD] await supabase.from('contenuti').update({ fase: 'Pubblicato' }).eq('id', contenutoId);
       const { cambiaFaseCLP: cambiaFase2 } = await import('../services/faseService');
       console.log('[Step2c] auto-publish via FaseService (completaTaskEAvanzaFase)', { contenutoId });
-      await cambiaFase2({ contenutoId, nuovaFase: 'Pubblicato', source: 'kanban', userId: teamId || 'workflow' });
+      await cambiaFase2({ contenutoId, nuovaFase: 'Pubblicato', source: 'kanban', userId: teamId || 'workflow', oldFase: 'Programmato' });
       await creaTaskCleanup(contenuto as Contenuto, team as any[]);
       return 'Pubblicato' as FaseCLP;
     }
@@ -607,7 +608,7 @@ export async function checkAutoPubblica(): Promise<number> {
   const { cambiaFaseCLP } = await import('../services/faseService');
   for (const id of ids) {
     console.log('[Step2c] checkAutoPubblica via FaseService', { id });
-    await cambiaFaseCLP({ contenutoId: id, nuovaFase: 'Pubblicato', source: 'workflow', userId: 'auto-publish' });
+    await cambiaFaseCLP({ contenutoId: id, nuovaFase: 'Pubblicato', source: 'workflow', userId: 'auto-publish', oldFase: 'Programmato' });
   }
 
   for (const c of daPublicare) {

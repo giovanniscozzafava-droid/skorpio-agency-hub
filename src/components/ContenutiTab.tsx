@@ -89,15 +89,15 @@ export function ContenutiTab({ team, clienti }: ContentTabProps) {
   //   }
   // };
 
-  // ── NUOVO: usa FaseService centralizzato ──
+  // ── V3: usa FaseService con oldFase + optimistic update ──
   const handleFaseChange = async (contenuto: Contenuto, nuovaFase: FaseCLP) => {
-    console.log('[Step2a]');
-    console.log('[ContenutiTab] handleFaseChange via FaseService', { id: contenuto.id, oldFase: contenuto.fase, nuovaFase });
+    console.log('[ContenutiTab] handleFaseChange V3', { id: contenuto.id, oldFase: contenuto.fase, nuovaFase });
     const result = await cambiaFaseCLP({
       contenutoId: contenuto.id,
       nuovaFase,
       source: 'contenuti',
       userId: utente?.id || 'unknown',
+      oldFase: contenuto.fase, // ← evita 1 SELECT
     });
 
     if (!result.success) {
@@ -105,12 +105,8 @@ export function ContenutiTab({ team, clienti }: ContentTabProps) {
       return;
     }
 
-    // Ricarica il contenuto aggiornato
-    const { data: fresh } = await supabase
-      .from('contenuti').select('*').eq('id', contenuto.id).single();
-    if (fresh) {
-      handleUpdate(fresh as Contenuto);
-    }
+    // Optimistic update — aggiorna localmente senza re-fetch
+    handleUpdate({ ...contenuto, fase: nuovaFase, updated_at: new Date().toISOString() } as Contenuto);
 
     // Feedback specifico
     if (result.reelIncremented) {

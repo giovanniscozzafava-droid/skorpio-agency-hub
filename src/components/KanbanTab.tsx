@@ -8,7 +8,7 @@ import { Avatar } from './Avatar';
 import { TaskDetailPanel } from './TaskDetailPanel';
 import { NuovoTaskModal } from './NuovoTaskModal';
 import { parseLocalDate } from '../lib/dateUtils';
-import { completaTaskEAvanzaFase, ricalcolaScadenzeTask } from '../lib/clpWorkflow';
+import { completaTaskEAvanzaFase, ricalcolaScadenzeTask, WORKFLOW_MAP } from '../lib/clpWorkflow';
 import { FASE_TIPO_MAP } from '../config/faseConfig';
 
 // ─── Countdown ────────────────────────────────────────────────────────────────
@@ -506,7 +506,14 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
           setSelectedTask(prev => prev?.id === updatedTask.id ? updatedTask : prev);
           if (updatedTask.stato === 'Completato' && prevTask?.stato !== 'Completato') {
             pendingEventsRef.current.push({ tipo: 'completato', task: updatedTask, fromStato: prevTask?.stato });
-            // Task completato → probabile cambio fase, aggiorna metadati CLP (debounced)
+            // [FIX] Aggiorna clpFasi SUBITO inferendo la nuova fase dal WORKFLOW_MAP
+            if (updatedTask.id_contenuto) {
+              const step = WORKFLOW_MAP[updatedTask.tipo];
+              if (step?.faseNext) {
+                setClpFasi(prev => ({ ...prev, [updatedTask.id_contenuto]: step.faseNext }));
+              }
+            }
+            // Conferma con il DB (debounced) per eventuali discrepanze
             refreshClpMeta();
           } else if (prevTask && prevTask.stato !== updatedTask.stato) {
             pendingEventsRef.current.push({ tipo: 'spostato', task: updatedTask, fromStato: prevTask.stato });
@@ -726,6 +733,10 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       if (nuovaFase) {
         // Completa il task corrente localmente
         setTasks(prev => prev.map(t => t.id === dragItem ? { ...t, stato: 'Completato' } : t));
+        // [FIX] Aggiorna clpFasi SUBITO — senza aspettare il debounce di 1.5s
+        // Senza questo, il task sparisce perché filteredCLP cerca faseReale === nuovaFase
+        // ma clpFasi ha ancora la vecchia fase
+        setClpFasi(prev => ({ ...prev, [task.id_contenuto!]: nuovaFase }));
         sounds.taskCompletato();
         addToast(`✅ ${task.tipo} completato → ${nuovaFase}`, 'success');
         // [PERF] Il task successivo arriva via realtime, no reload necessario
@@ -746,6 +757,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       nuovaFase: 'Revisionato',
       source: 'kanban',
       userId: utente?.id || 'unknown',
+      oldFase: 'Programmato', // ← riprogramma è sempre da Programmato
     });
     if (result.success) {
       addToast('🔄 Riprogrammato — torna in revisione', 'success');

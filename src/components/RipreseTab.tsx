@@ -412,6 +412,7 @@ function NuovaClipModal({ clienti, team, contenuti, onClose, onCreated, onClipUp
           nuovaFase: 'Girato',
           source: 'riprese',
           userId: utente?.id || 'unknown',
+          oldFase: clpData.fase, // ← già fetchato sopra, evita SELECT duplicato
         });
         console.log('[Step2b] risultato:', result);
         if (!result.success) {

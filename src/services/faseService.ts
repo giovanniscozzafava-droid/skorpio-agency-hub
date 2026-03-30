@@ -1,10 +1,11 @@
 /**
  * FaseService — Centralised CLP phase-change logic.
  *
- * V2: usa la stored procedure `cambio_fase_clp` per eseguire
- * tutto il cambio fase in una singola query DB (1 roundtrip).
- * I side effects non critici (Drive, calendario, cleanup) restano
- * fire-and-forget lato client.
+ * V3: 1 solo roundtrip DB.
+ * - Validazione client-side con oldFase passato dal chiamante (no SELECT)
+ * - Stored procedure fa tutto (update, task, log, reel)
+ * - Nessun re-fetch dopo RPC (optimistic update lato UI)
+ * - Side effects asincroni fire-and-forget
  */
 import { supabase } from '../lib/supabase';
 import type { Contenuto, FaseCLP, TeamMember } from '../types';
@@ -18,10 +19,13 @@ export interface FaseChangeResult {
   oldFase: string;
   newFase: string;
   taskCreated?: string;
+  taskAssigned?: string;
   driveFolder?: string;
   calendarUpdated?: boolean;
   reelIncremented?: boolean;
   cleanupTaskCreated?: boolean;
+  /** Dati contenuto dalla SP — usabili per optimistic update */
+  contenuto?: Record<string, unknown>;
   errors: string[];
 }
 
@@ -30,6 +34,8 @@ export interface CambiaFaseParams {
   nuovaFase: string;
   source: 'kanban' | 'contenuti' | 'riprese' | 'workflow';
   userId: string;
+  /** Fase corrente dal local state — evita 1 SELECT */
+  oldFase?: string;
   taskIdCompletato?: string;
 }
 
@@ -40,47 +46,31 @@ async function getTeam(): Promise<TeamMember[]> {
   return (data || []) as TeamMember[];
 }
 
-// [OLD - replaced by stored procedure]
-// async function logFaseChange(...) { ... }
-// async function verifyNoDataLoss(...) { ... }
-
-// ── Main function (V2 — stored procedure) ─────────────────────────────────────
+// ── Main function (V3 — 1 solo roundtrip) ───────────────────────────────────
 
 export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChangeResult> {
-  const { contenutoId, nuovaFase, source, userId } = params;
+  const { contenutoId, nuovaFase, source, userId, oldFase } = params;
   const errors: string[] = [];
 
   console.time('[FaseService] total');
-  console.log('[FaseService] cambiaFaseCLP V2 (stored procedure)', { contenutoId, nuovaFase, source, userId });
+  console.log('[FaseService] cambiaFaseCLP V3 (1 roundtrip)', { contenutoId, nuovaFase, source, userId, oldFase });
 
-  // ── 1. VALIDA la transizione lato client (fail-fast senza roundtrip) ────
-  // Serve un fetch veloce della fase corrente per la validazione client-side
-  console.time('[FaseService] validate');
-  const { data: currentRow, error: fetchErr } = await supabase
-    .from('contenuti')
-    .select('fase')
-    .eq('id', contenutoId)
-    .single();
-  console.timeEnd('[FaseService] validate');
+  // ── 1. VALIDAZIONE CLIENT-SIDE (0 roundtrip) ─────────────────────────────
+  // Se il chiamante passa oldFase (dal local state), validiamo senza query.
+  // Se non la passa, la SP farà comunque il check same-fase e validazione.
+  if (oldFase) {
+    if (oldFase === nuovaFase) {
+      console.timeEnd('[FaseService] total');
+      return { success: true, oldFase, newFase: nuovaFase, errors: [] };
+    }
 
-  if (fetchErr || !currentRow) {
-    return {
-      success: false, oldFase: '', newFase: nuovaFase,
-      errors: ['Contenuto non trovato: ' + (fetchErr?.message || contenutoId)],
-    };
-  }
-
-  const oldFase = currentRow.fase as string;
-
-  if (oldFase === nuovaFase) {
-    return { success: true, oldFase, newFase: nuovaFase, errors: [] };
-  }
-
-  if (!isTransitionValid(oldFase, nuovaFase)) {
-    return {
-      success: false, oldFase, newFase: nuovaFase,
-      errors: [`Transizione non permessa: ${oldFase} → ${nuovaFase}`],
-    };
+    if (!isTransitionValid(oldFase, nuovaFase)) {
+      console.timeEnd('[FaseService] total');
+      return {
+        success: false, oldFase, newFase: nuovaFase,
+        errors: [`Transizione non permessa: ${oldFase} → ${nuovaFase}`],
+      };
+    }
   }
 
   // ── 2. CHIAMATA STORED PROCEDURE — 1 solo roundtrip DB ─────────────────
@@ -95,26 +85,32 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
 
   if (rpcError) {
     console.error('[FaseService] RPC error:', rpcError);
+    console.timeEnd('[FaseService] total');
     return {
-      success: false, oldFase, newFase: nuovaFase,
+      success: false, oldFase: oldFase || '', newFase: nuovaFase,
       errors: ['Errore stored procedure: ' + rpcError.message],
     };
   }
 
   if (!rpcResult?.success) {
     console.error('[FaseService] RPC returned failure:', rpcResult);
+    console.timeEnd('[FaseService] total');
     return {
-      success: false, oldFase, newFase: nuovaFase,
+      success: false, oldFase: oldFase || '', newFase: nuovaFase,
       errors: [rpcResult?.error || 'Errore sconosciuto dalla stored procedure'],
     };
+  }
+
+  // SP ha anche un no-op per same-fase (changed=false)
+  if (rpcResult.changed === false) {
+    console.log('[FaseService] No-op: fase già uguale');
+    console.timeEnd('[FaseService] total');
+    return { success: true, oldFase: rpcResult.old_fase, newFase: rpcResult.new_fase, errors: [] };
   }
 
   console.log('[FaseService] RPC success:', rpcResult);
 
   // ── 3. SIDE EFFECTS ASINCRONI — fire and forget ────────────────────────
-  // La stored procedure ha già fatto: update fase, completamento task,
-  // creazione nuovo task, reel increment, revision_count, log.
-  // Restano solo: Drive folder, cleanup task, calendario sync.
   const contenuto = rpcResult.contenuto;
 
   const asyncSideEffects = async () => {
@@ -208,32 +204,29 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
   };
 
   // Fire and forget — non blocca il return
-  console.time('[FaseService] async-side-effects');
-  asyncSideEffects().finally(() => console.timeEnd('[FaseService] async-side-effects'));
+  asyncSideEffects().catch(e => console.error('[FaseService][async] unhandled:', e));
 
   console.timeEnd('[FaseService] total');
+
   // ── 4. RETURN ──────────────────────────────────────────────────────────
   return {
     success: true,
     oldFase: rpcResult.old_fase,
     newFase: rpcResult.new_fase,
     taskCreated: rpcResult.task_created || undefined,
+    taskAssigned: rpcResult.task_assigned || undefined,
     driveFolder: undefined,
     calendarUpdated: false,
-    reelIncremented: !!rpcResult.task_created, // la SP lo fa
+    reelIncremented: (nuovaFase === 'Pubblicato' && contenuto?.tipo === 'Reel'),
     cleanupTaskCreated: false,
+    contenuto: contenuto || undefined,
     errors,
   };
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// [OLD - replaced by stored procedure]
-// Il codice originale faceva 5-6 query sequenziali:
-//   1. SELECT contenuto
-//   2. UPDATE contenuti SET fase
-//   3. UPDATE task SET stato='Completato'
-//   4. SELECT team
-//   5. INSERT task (nuovo)
-//   6. INSERT _fase_change_log
-// Ora tutto questo è in cambio_fase_clp() — 1 roundtrip.
+// CHANGELOG:
+// V1: 5-6 query sequenziali (SELECT, UPDATE, UPDATE task, SELECT team, INSERT task, INSERT log)
+// V2: 1 RPC + 1 SELECT pre-validazione + 1 SELECT post-refresh = 3 roundtrip
+// V3: 1 RPC. Validazione client-side con oldFase. Optimistic update lato UI.
 // ══════════════════════════════════════════════════════════════════════════════
