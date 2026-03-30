@@ -378,6 +378,7 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   const pendingEventsRef = useRef<RealtimeEvent[]>([]);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMyAction = useRef(false);
+  const isDropping = useRef(false); // Blocca realtime durante drop — previene race condition
   const tasksRef = useRef<Task[]>([]);
 
   const flushNotifications = useCallback(() => {
@@ -469,6 +470,8 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
     const channel = supabase
       .channel('kanban-realtime-v2')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'task' }, payload => {
+        // ── GUARD: se stiamo facendo un drop, ignora realtime (loadTasks farà il refresh) ──
+        if (isDropping.current) return;
         setLiveActive(true);
         setTimeout(() => setLiveActive(false), 800);
         if (payload.eventType === 'INSERT') {
@@ -681,19 +684,24 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
   };
 
   // ── Drag standard (stato → stato) ──────────────────────────────────────────
+  // PRINCIPIO: scrivi sul DB → ricarica tutto. Zero optimistic update = zero bug.
   const handleDropStandard = async (nuovoStato: string) => {
     if (!dragItem) return;
     setDropTarget(null);
     const task = tasks.find(t => t.id === dragItem);
     if (!task || task.stato === nuovoStato || task.stato === 'Archiviato') return;
-    isMyAction.current = true;
-    setTasks(prev => prev.map(t => t.id === dragItem ? { ...t, stato: nuovoStato as Task['stato'] } : t));
-    const { error } = await supabase.from('task').update({ stato: nuovoStato }).eq('id', dragItem).neq('stato', 'Archiviato');
+    setDragItem(null);
+    isDropping.current = true; // Blocca realtime
+
+    const { error } = await supabase
+      .from('task')
+      .update({ stato: nuovoStato })
+      .eq('id', task.id)
+      .neq('stato', 'Archiviato');
+
     if (error) {
       sounds.errore();
       addToast('Errore nel salvataggio', 'error');
-      isMyAction.current = false;
-      loadTasks();
     } else if (nuovoStato === 'Completato') {
       sounds.taskCompletato();
       addToast('✅ Task completato!', 'success');
@@ -701,16 +709,17 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       sounds.drop();
       addToast(`↕️ Spostato → ${nuovoStato}`, 'info');
     }
-    setDragItem(null);
+    await loadTasks();
+    isDropping.current = false; // Riattiva realtime
   };
 
   // ── Drag CLP (fase → fase successiva = completa task + avanza CLP) ──────────
+  // PRINCIPIO: chiama workflow → ricarica tutto. Nessun aggiornamento locale manuale.
   const handleDropCLP = async (faseCLP: string) => {
     if (!dragItem) return;
     setDropTarget(null);
     const task = tasks.find(t => t.id === dragItem);
     if (!task) return;
-    // La colonna di destinazione deve essere la fase successiva
     const faseCorrente = Object.entries(TIPO_PER_FASE).find(([, tipo]) => tipo === task.tipo)?.[0];
     const fasePrevista = faseCorrente ? FASE_NEXT[faseCorrente] : null;
     if (fasePrevista && fasePrevista !== faseCLP) {
@@ -719,8 +728,8 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       return;
     }
     if (!task.id_contenuto) return;
-
-    isMyAction.current = true;
+    setDragItem(null);
+    isDropping.current = true; // Blocca realtime
     addToast('⏳ Avanzamento in corso…', 'info');
 
     try {
@@ -731,25 +740,21 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
         utente?.id
       );
       if (nuovaFase) {
-        // Completa il task corrente localmente
-        setTasks(prev => prev.map(t => t.id === dragItem ? { ...t, stato: 'Completato' } : t));
-        // [FIX] Aggiorna clpFasi SUBITO — senza aspettare il debounce di 1.5s
-        // Senza questo, il task sparisce perché filteredCLP cerca faseReale === nuovaFase
-        // ma clpFasi ha ancora la vecchia fase
-        setClpFasi(prev => ({ ...prev, [task.id_contenuto!]: nuovaFase }));
         sounds.taskCompletato();
         addToast(`✅ ${task.tipo} completato → ${nuovaFase}`, 'success');
-        // [PERF] Il task successivo arriva via realtime, no reload necessario
       }
-    } catch (e) {
-      addToast('❌ Errore avanzamento', 'error');
+    } catch (e: any) {
+      sounds.errore();
+      addToast('❌ ' + (e?.message || 'Errore avanzamento'), 'error');
     }
-    setDragItem(null);
+    await loadTasks();
+    isDropping.current = false; // Riattiva realtime
   };
 
   // ── Riprogramma CLP (Programmato → Revisionato) ─────────────────────────
   const handleRiprogrammaCLP = async (contenutoId: string) => {
     setRiprogrammaConfirm(null);
+    isDropping.current = true;
     addToast('⏳ Riprogrammazione in corso…', 'info');
     const { cambiaFaseCLP } = await import('../services/faseService');
     const result = await cambiaFaseCLP({
@@ -757,14 +762,15 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       nuovaFase: 'Revisionato',
       source: 'kanban',
       userId: utente?.id || 'unknown',
-      oldFase: 'Programmato', // ← riprogramma è sempre da Programmato
+      oldFase: 'Programmato',
     });
     if (result.success) {
       addToast('🔄 Riprogrammato — torna in revisione', 'success');
-      // [PERF] I task si aggiornano via realtime, no reload necessario
     } else {
       addToast('❌ Errore: ' + (result.errors[0] || 'sconosciuto'), 'error');
     }
+    await loadTasks();
+    isDropping.current = false;
   };
 
   // ── Modifica data pubblicazione inline (Kanban) ──────────────────────────
