@@ -457,6 +457,8 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
         setTimeout(() => setLiveActive(false), 800);
         if (payload.eventType === 'INSERT') {
           const newTask = payload.new as Task;
+          // ── FIX: non inserire task archiviati nella Kanban ──
+          if (newTask.stato === 'Archiviato') return;
           setTasks(prev => {
             const next = prev.some(t => t.id === newTask.id) ? prev : [newTask, ...prev];
             tasksRef.current = next;
@@ -469,6 +471,17 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
           void loadTasks();
         } else if (payload.eventType === 'UPDATE') {
           const updatedTask = payload.new as Task;
+          // ── FIX: se il task è diventato Archiviato, rimuovilo dallo state ──
+          if (updatedTask.stato === 'Archiviato') {
+            setTasks(prev => {
+              const next = prev.filter(t => t.id !== updatedTask.id);
+              tasksRef.current = next;
+              return next;
+            });
+            setSelectedTask(prev => prev?.id === updatedTask.id ? null : prev);
+            void loadTasks();
+            return;
+          }
           const prevTask = tasksRef.current.find(t => t.id === updatedTask.id);
           setTasks(prev => {
             const next = prev.map(t => t.id === updatedTask.id ? updatedTask : t);
@@ -648,10 +661,10 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
     if (!dragItem) return;
     setDropTarget(null);
     const task = tasks.find(t => t.id === dragItem);
-    if (!task || task.stato === nuovoStato) return;
+    if (!task || task.stato === nuovoStato || task.stato === 'Archiviato') return;
     isMyAction.current = true;
     setTasks(prev => prev.map(t => t.id === dragItem ? { ...t, stato: nuovoStato as Task['stato'] } : t));
-    const { error } = await supabase.from('task').update({ stato: nuovoStato }).eq('id', dragItem);
+    const { error } = await supabase.from('task').update({ stato: nuovoStato }).eq('id', dragItem).neq('stato', 'Archiviato');
     if (error) {
       sounds.errore();
       addToast('Errore nel salvataggio', 'error');
