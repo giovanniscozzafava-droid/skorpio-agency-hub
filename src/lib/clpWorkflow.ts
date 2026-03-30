@@ -273,7 +273,7 @@ export async function creaTaskPremontaggio(contenuto: Contenuto, team: TeamMembe
 
 /**
  * Revisione: Elisa richiede modifiche → CLP torna a "Pre montato", nuovo task per Alessandro
- * La SP gestisce: cambio fase + completamento vecchio task + creazione nuovo Montaggio
+ * BYPASS SP — 3 query dirette al DB, zero intermediari
  */
 export async function richiestaModifiche(
   contenuto: Contenuto,
@@ -281,31 +281,56 @@ export async function richiestaModifiche(
   noteRevisione: string,
   userId?: string
 ): Promise<any> {
-  // Completa il task di revisione corrente
-  await completaTaskPerContenuto(contenuto.id, 'Revisione montaggio');
+  // 1. Completa il task di revisione
+  await supabase.from('task')
+    .update({ stato: 'Completato', updated_at: new Date().toISOString() })
+    .eq('id_contenuto', contenuto.id)
+    .eq('tipo', 'Revisione montaggio')
+    .in('stato', ['Da fare', 'In lavorazione', 'In revisione']);
 
-  // Cambio fase via SP — gestisce tutto (fase + task nuovo + log)
-  const { cambiaFaseCLP: cambiaFaseRM } = await import('../services/faseService');
-  const result = await cambiaFaseRM({
-    contenutoId: contenuto.id,
-    nuovaFase: 'Pre montato',
-    source: 'workflow',
-    userId: userId || 'revisione',
-    oldFase: contenuto.fase,
-  });
+  // 2. Cambia fase direttamente
+  await supabase.from('contenuti')
+    .update({
+      fase: 'Pre montato',
+      note_revisione: noteRevisione,
+      revision_count: ((contenuto as any).revision_count || 0) + 1,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', contenuto.id);
 
-  if (!result.success) {
-    throw new Error('Cambio fase fallito: ' + result.errors.join(', '));
+  // 3. Crea task Montaggio (se non esiste già)
+  const { data: existing } = await supabase.from('task')
+    .select('id').eq('id_contenuto', contenuto.id)
+    .eq('tipo', 'Montaggio')
+    .in('stato', ['Da fare', 'In lavorazione', 'In revisione']);
+
+  if (!existing || existing.length === 0) {
+    const nomeAlessandro = findMembro(team, TEAM_ASSIGNMENTS['Montaggio']);
+    const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
+    await supabase.from('task').insert({
+      id_display: idData ?? `TSK${Date.now()}`,
+      tipo: 'Montaggio',
+      descrizione: `🔄 Modifiche ${contenuto.id_display} – ${contenuto.titolo}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}\n📝 ${noteRevisione}`,
+      stato: 'Da fare',
+      assegnato_a: nomeAlessandro,
+      assegnato_da: '⚡ Sistema',
+      cliente_id: contenuto.cliente_id,
+      cliente_nome: contenuto.cliente_nome || '',
+      id_contenuto: contenuto.id,
+      priorita: '🟡 Media',
+    });
   }
 
-  // Scrivi note revisione solo se la fase è cambiata
-  await supabase.from('contenuti').update({
-    note_revisione: noteRevisione,
-    revision_count: (contenuto as any).revision_count ? (contenuto as any).revision_count + 1 : 1,
-  }).eq('id', contenuto.id);
+  // 4. Log
+  await supabase.from('_fase_change_log').insert({
+    contenuto_id: contenuto.id,
+    old_fase: contenuto.fase,
+    new_fase: 'Pre montato',
+    source: 'workflow',
+    user_id: userId || 'revisione',
+  });
 
-  // Task Montaggio creato dalla SP (step 6) — non serve creaTaskWorkflow
-  return { ok: true, taskCreated: result.taskCreated };
+  return { ok: true };
 }
 
 /**
