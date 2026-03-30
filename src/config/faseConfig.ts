@@ -34,12 +34,12 @@ export const FASE_TRANSITIONS: Record<string, string[]> = {
   'Script':       ['Girato', 'Scartata'],
   'Girato':       ['Pre montato', 'Scartata'],
   'Pre montato':  ['Montato', 'Scartata'],
-  'Montato':      ['Uploadato', 'Scartata'],
-  'Uploadato':    ['Revisionato', 'Scartata'],
+  'Montato':      ['Uploadato', 'Pre montato', 'Scartata'], // Pre montato = richiesta modifiche
+  'Uploadato':    ['Revisionato', 'Pre montato', 'Scartata'], // Pre montato = richiesta modifiche
   'Revisionato':  ['Programmato', 'Pre montato', 'Scartata'], // Pre montato = richiesta modifiche
-  'Programmato':  ['Pubblicato', 'Revisionato', 'Scartata'], // Revisionato = riprogramma
+  'Programmato':  ['Pubblicato', 'Revisionato', 'Pre montato', 'Scartata'], // può tornare indietro
   'Pubblicato':   ['Scartata'],
-  'Scartata':     ['Idea'], // può tornare a Idea (ripristino)
+  'Scartata':     ['Idea'],
 };
 
 /** Check if a phase transition is valid */
