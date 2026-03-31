@@ -1,3 +1,9 @@
+/**
+ * KanbanTab — RISCRITTO DA ZERO
+ * Principio: DB è l'unica fonte di verità.
+ * Ogni azione → scrivi sul DB → loadTasks() → render.
+ * Realtime → loadTasks(). Fine.
+ */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '../lib/supabase';
@@ -8,803 +14,279 @@ import { Avatar } from './Avatar';
 import { TaskDetailPanel } from './TaskDetailPanel';
 import { NuovoTaskModal } from './NuovoTaskModal';
 import { parseLocalDate } from '../lib/dateUtils';
-import { completaTaskEAvanzaFase, ricalcolaScadenzeTask, WORKFLOW_MAP } from '../lib/clpWorkflow';
+import { completaTaskEAvanzaFase, ricalcolaScadenzeTask } from '../lib/clpWorkflow';
 import { FASE_TIPO_MAP } from '../config/faseConfig';
 
-// ─── Countdown ────────────────────────────────────────────────────────────────
-function getTargetDate(scadenza: string, ora: string | null): Date {
-  return new Date(`${scadenza}T${ora ? ora.slice(0, 5) : '23:59'}:00`);
-}
-
-function isScadenzaOggi(scadenza: string): boolean {
-  const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  return scadenza === today;
-}
-
-function formatCountdownHuman(
-  diff: number,
-  scadenzaOggi = false,
-  hasOra = false,
-): { text: string; icon: string; level: 'ok' | 'warn' | 'urgent' | 'scaduto' } {
-  if (diff <= 0) {
-    const elapsed = Math.abs(diff);
-    const d = Math.floor(elapsed / 86400000);
-    const h = Math.floor((elapsed % 86400000) / 3600000);
-    if (d > 0) return { text: `SCADUTO da ${d}g`, icon: '🔴', level: 'scaduto' };
-    return { text: `SCADUTO da ${h}h`, icon: '🔴', level: 'scaduto' };
-  }
-  const d = Math.floor(diff / 86400000);
-  const h = Math.floor((diff % 86400000) / 3600000);
-  const m = Math.floor((diff % 3600000) / 60000);
-  if (d > 7) return { text: `📅 ${d} giorni`, icon: '📅', level: 'ok' };
-  if (scadenzaOggi && !hasOra) return { text: `oggi · ${h}h ${m}min`, icon: '🔴', level: 'urgent' };
-  if (d >= 1) return { text: `⏰ ${d}g ${h}h`, icon: '⏰', level: 'warn' };
-  if (h >= 1) return { text: `🔴 ${h}h ${m}min`, icon: '🔴', level: 'urgent' };
-  return { text: `🔴 ${m}min`, icon: '🔴', level: 'urgent' };
-}
-
-function LiveClock({ scadenza, ora }: { scadenza: string; ora: string | null }) {
-  const [diff, setDiff] = useState(() => getTargetDate(scadenza, ora).getTime() - Date.now());
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      setDiff(getTargetDate(scadenza, ora).getTime() - Date.now());
-    }, 60000);
-    return () => clearInterval(id);
-  }, [scadenza, ora]);
-
-  const { text, level } = formatCountdownHuman(diff, isScadenzaOggi(scadenza), !!ora);
-
-  const styles = {
-    ok:      { bg: 'hsl(214 80% 55% / 0.10)', color: 'hsl(214 70% 44%)', border: 'hsl(214 80% 55% / 0.25)' },
-    warn:    { bg: 'hsl(38 92% 50% / 0.12)',  color: 'hsl(32 95% 35%)',  border: 'hsl(38 92% 50% / 0.35)' },
-    urgent:  { bg: 'hsl(0 80% 55% / 0.12)',   color: 'hsl(0 70% 42%)',   border: 'hsl(0 80% 55% / 0.40)' },
-    scaduto: { bg: 'hsl(0 80% 55% / 0.14)',   color: 'hsl(0 70% 38%)',   border: 'hsl(0 80% 55% / 0.50)' },
-  }[level];
-
-  return (
-    <div
-      className={`mt-2 flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-semibold${level === 'urgent' ? ' animate-pulse' : ''}`}
-      style={{ background: styles.bg, border: `1px solid ${styles.border}`, color: styles.color }}
-    >
-      <span className="uppercase tracking-wide" style={{ fontSize: '0.65rem' }}>
-        {level === 'scaduto' ? 'SCADUTO' : level === 'urgent' ? 'URGENTE' : level === 'warn' ? 'IN SCADENZA' : 'SCADE TRA'}
-      </span>
-      <span className="font-mono tabular-nums" style={{ fontSize: '0.72rem' }}>
-        {text.replace(/^[🔴⏰📅]\s*/, '')}
-      </span>
-    </div>
-  );
-}
-
-// ─── Colonne standard (task senza CLP) ───────────────────────────────────────
 const COLONNE = [
-  { stato: 'Da fare',       colore: '#F59E0B', bg: '#FFFBEB', border: '#F59E0B', icona: '📋' },
+  { stato: 'Da fare',        colore: '#F59E0B', bg: '#FFFBEB', border: '#F59E0B', icona: '📋' },
   { stato: 'In lavorazione', colore: '#3B82F6', bg: '#EFF6FF', border: '#3B82F6', icona: '⚡' },
-  { stato: 'In revisione',  colore: '#8B5CF6', bg: '#F5F3FF', border: '#8B5CF6', icona: '🔍' },
-  { stato: 'Completato',    colore: '#22C55E', bg: '#F0FDF4', border: '#22C55E', icona: '✅' },
-  { stato: 'Non accettato', colore: '#EF4444', bg: '#FEF2F2', border: '#EF4444', icona: '❌' },
+  { stato: 'In revisione',   colore: '#8B5CF6', bg: '#F5F3FF', border: '#8B5CF6', icona: '🔍' },
+  { stato: 'Completato',     colore: '#22C55E', bg: '#F0FDF4', border: '#22C55E', icona: '✅' },
+  { stato: 'Non accettato',  colore: '#EF4444', bg: '#FEF2F2', border: '#EF4444', icona: '❌' },
 ] as const;
 
-// ─── Colonne workflow CLP ─────────────────────────────────────────────────────
-// Ogni colonna = fase del CLP. Il task appare nella colonna corrispondente al suo tipo.
 const COLONNE_CLP = [
-  { stato: 'Girato',      tipo: 'Premontaggio',        colore: '#8B5CF6', bg: 'hsl(270 60% 97%)', border: '#8B5CF6', icona: '🎬', label: 'Girato — Premontaggio' },
-  { stato: 'Pre montato', tipo: 'Montaggio',            colore: '#3B82F6', bg: 'hsl(214 80% 97%)', border: '#3B82F6', icona: '✂️', label: 'Pre montato — Montaggio' },
-  { stato: 'Montato',     tipo: 'Upload esportato',     colore: '#F59E0B', bg: 'hsl(38 92% 97%)',  border: '#F59E0B', icona: '📤', label: 'Montato — Upload' },
-  { stato: 'Uploadato',   tipo: 'Revisione montaggio',  colore: '#EC4899', bg: 'hsl(328 80% 97%)', border: '#EC4899', icona: '🔍', label: 'Uploadato — Revisione' },
-  { stato: 'Revisionato', tipo: 'Programmazione',       colore: '#7C3AED', bg: 'hsl(263 70% 97%)', border: '#7C3AED', icona: '📅', label: 'Revisionato — Programmazione' },
+  { stato: 'Girato',      tipo: 'Premontaggio',        colore: '#8B5CF6', bg: 'hsl(270 60% 97%)', border: '#8B5CF6', icona: '🎬', label: 'Girato' },
+  { stato: 'Pre montato', tipo: 'Montaggio',            colore: '#3B82F6', bg: 'hsl(214 80% 97%)', border: '#3B82F6', icona: '✂️', label: 'Pre montato' },
+  { stato: 'Montato',     tipo: 'Upload esportato',     colore: '#F59E0B', bg: 'hsl(38 92% 97%)',  border: '#F59E0B', icona: '📤', label: 'Montato' },
+  { stato: 'Uploadato',   tipo: 'Revisione montaggio',  colore: '#EC4899', bg: 'hsl(328 80% 97%)', border: '#EC4899', icona: '🔍', label: 'Uploadato' },
+  { stato: 'Revisionato', tipo: 'Programmazione',       colore: '#7C3AED', bg: 'hsl(263 70% 97%)', border: '#7C3AED', icona: '📅', label: 'Revisionato' },
   { stato: 'Programmato', tipo: '',                     colore: '#6D28D9', bg: 'hsl(263 60% 97%)', border: '#6D28D9', icona: '📡', label: 'Programmato' },
   { stato: 'Pubblicato',  tipo: '',                     colore: '#22C55E', bg: 'hsl(142 76% 97%)', border: '#22C55E', icona: '✅', label: 'Pubblicato' },
 ] as const;
 
-const PRIORITA_COLOR: Record<string, string> = {
-  '🔴 Alta': '#EF4444',
-  '🟡 Media': '#F59E0B',
-  '🟢 Bassa': '#22C55E',
-};
+const PRIORITA_COLOR: Record<string, string> = { '🔴 Alta': '#EF4444', '🟡 Media': '#F59E0B', '🟢 Bassa': '#22C55E' };
 
-// Mappa tipo task → info fase corrente (per badge nella card standard)
 const TIPO_TO_FASE: Record<string, { label: string; bg: string; color: string; border: string }> = {
-  'Premontaggio':        { label: '🎬 Girato',       bg: 'hsl(270 60% 55% / 0.10)', color: 'hsl(270 50% 45%)', border: 'hsl(270 60% 55% / 0.30)' },
-  'Montaggio':           { label: '✂️ Pre montato',   bg: 'hsl(214 80% 55% / 0.10)', color: 'hsl(214 70% 44%)', border: 'hsl(214 80% 55% / 0.28)' },
-  'Upload esportato':    { label: '📤 Montato',       bg: 'hsl(38 92% 55% / 0.10)',  color: 'hsl(38 80% 35%)',  border: 'hsl(38 92% 55% / 0.28)' },
-  'Revisione montaggio': { label: '🔍 Uploadato',     bg: 'hsl(328 80% 55% / 0.10)', color: 'hsl(328 65% 40%)', border: 'hsl(328 80% 55% / 0.28)' },
-  'Programmazione':      { label: '📅 Revisionato',   bg: 'hsl(263 70% 55% / 0.10)', color: 'hsl(263 55% 40%)', border: 'hsl(263 70% 55% / 0.28)' },
+  'Premontaggio':        { label: '🎬 Girato',     bg: 'hsl(270 60% 55%/0.1)', color: 'hsl(270 50% 45%)', border: 'hsl(270 60% 55%/0.3)' },
+  'Montaggio':           { label: '✂️ Pre montato', bg: 'hsl(214 80% 55%/0.1)', color: 'hsl(214 70% 44%)', border: 'hsl(214 80% 55%/0.28)' },
+  'Upload esportato':    { label: '📤 Montato',     bg: 'hsl(38 92% 55%/0.1)',  color: 'hsl(38 80% 35%)',  border: 'hsl(38 92% 55%/0.28)' },
+  'Revisione montaggio': { label: '🔍 Uploadato',   bg: 'hsl(328 80% 55%/0.1)', color: 'hsl(328 65% 40%)', border: 'hsl(328 80% 55%/0.28)' },
+  'Programmazione':      { label: '📅 Revisionato', bg: 'hsl(263 70% 55%/0.1)', color: 'hsl(263 55% 40%)', border: 'hsl(263 70% 55%/0.28)' },
 };
 
-// Fase successiva per il drag CLP
 const FASE_NEXT: Record<string, string> = {
-  'Girato':      'Pre montato',
-  'Pre montato': 'Montato',
-  'Montato':     'Uploadato',
-  'Uploadato':   'Revisionato',
-  'Revisionato': 'Programmato',
-  'Programmato': 'Pubblicato',
+  'Girato': 'Pre montato', 'Pre montato': 'Montato', 'Montato': 'Uploadato',
+  'Uploadato': 'Revisionato', 'Revisionato': 'Programmato', 'Programmato': 'Pubblicato',
 };
 
-// [UNIFIED - old] TIPO_PER_FASE locale rimosso — ora usa FASE_TIPO_MAP importato da config/faseConfig.ts
 const TIPO_PER_FASE = FASE_TIPO_MAP;
 
-function scadenzaInfo(task: Task): { label: string; colore: string; bg: string } | null {
-  if (!task.scadenza) return null;
-  const oggi = new Date(); oggi.setHours(0,0,0,0);
-  const scad = parseLocalDate(task.scadenza); scad.setHours(0,0,0,0);
-  const diff = Math.floor((scad.getTime() - oggi.getTime()) / 86400000);
-  if (diff < 0) return { label: '⚠ SCADUTO', colore: '#EF4444', bg: '#FEF2F2' };
-  if (diff === 0) return { label: '⏰ OGGI', colore: '#D97706', bg: '#FEF3C7' };
-  if (diff === 1) return { label: '⏰ DOMANI', colore: '#D97706', bg: '#FEF3C7' };
-  return { label: `📅 ${scad.toLocaleDateString('it-IT', { day:'2-digit', month:'2-digit' })}`, colore: '#64748B', bg: '#F1F5F9' };
+function getTargetDate(scadenza: string, ora: string | null): Date {
+  return new Date(`${scadenza}T${ora ? ora.slice(0, 5) : '23:59'}:00`);
 }
 
-// ─── Task card (condivisa tra le due board) ───────────────────────────────────
-interface TaskCardProps {
-  task: Task;
-  team: TeamMember[];
-  utente: TeamMember | null;
-  isNew: boolean;
-  draggingId: string | null;
-  onDragStart: () => void;
-  onDragEnd: () => void;
-  onClick: () => void;
-  /** Se true, mostra il badge fase CLP (solo board standard) */
-  showFaseBadge?: boolean;
-  /** Data di pubblicazione (per countdown Programmato) */
-  pubDate?: { data: string | null; ora: string | null } | null;
-  /** Contatore revisioni CLP (se >= 3, mostra badge) */
-  revisionCount?: number;
-  /** Vertical reorder callbacks */
-  onDragOverTask?: (e: React.DragEvent) => void;
-  dropIndicator?: 'above' | 'below' | null;
-  /** Callbacks for Programmato actions */
-  onRiprogramma?: () => void;
-  onEditPubDate?: (newDate: string, newOra: string | null) => void;
-  isProgrammato?: boolean;
-  canEditProgrammazione?: boolean;
+function LiveClock({ scadenza, ora }: { scadenza: string; ora: string | null }) {
+  const [diff, setDiff] = useState(() => getTargetDate(scadenza, ora).getTime() - Date.now());
+  useEffect(() => { const id = setInterval(() => setDiff(getTargetDate(scadenza, ora).getTime() - Date.now()), 60000); return () => clearInterval(id); }, [scadenza, ora]);
+  const abs = Math.abs(diff);
+  const d = Math.floor(abs / 86400000), h = Math.floor((abs % 86400000) / 3600000), m = Math.floor((abs % 3600000) / 60000);
+  const isScaduto = diff <= 0;
+  const text = isScaduto ? (d > 0 ? `da ${d}g` : `da ${h}h`) : d > 7 ? `${d}gg` : d >= 1 ? `${d}g ${h}h` : h >= 1 ? `${h}h ${m}min` : `${m}min`;
+  const level = isScaduto ? 'scaduto' : d > 7 ? 'ok' : d >= 1 ? 'warn' : 'urgent';
+  const s = { ok: { bg: 'hsl(214 80% 55%/0.1)', c: 'hsl(214 70% 44%)', b: 'hsl(214 80% 55%/0.25)' }, warn: { bg: 'hsl(38 92% 50%/0.12)', c: 'hsl(32 95% 35%)', b: 'hsl(38 92% 50%/0.35)' }, urgent: { bg: 'hsl(0 80% 55%/0.12)', c: 'hsl(0 70% 42%)', b: 'hsl(0 80% 55%/0.4)' }, scaduto: { bg: 'hsl(0 80% 55%/0.14)', c: 'hsl(0 70% 38%)', b: 'hsl(0 80% 55%/0.5)' } }[level];
+  return (
+    <div className={`mt-2 flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-semibold${level === 'urgent' ? ' animate-pulse' : ''}`} style={{ background: s.bg, border: `1px solid ${s.b}`, color: s.c }}>
+      <span className="uppercase tracking-wide" style={{ fontSize: '0.65rem' }}>{isScaduto ? 'SCADUTO' : level === 'urgent' ? 'URGENTE' : level === 'warn' ? 'IN SCADENZA' : 'SCADE TRA'}</span>
+      <span className="font-mono tabular-nums" style={{ fontSize: '0.72rem' }}>{text}</span>
+    </div>
+  );
 }
 
-function TaskCard({ task, team, utente, isNew, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate, revisionCount, onDragOverTask, dropIndicator, onRiprogramma, onEditPubDate, isProgrammato, canEditProgrammazione }: TaskCardProps) {
-  const scad = scadenzaInfo(task);
-  const isScaduto = scad?.label.includes('SCADUTO');
+// ── TaskCard ──────────────────────────────────────────────────────────────────
+
+function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate, revisionCount, isProgrammato, canEditProgrammazione, onRiprogramma, onEditPubDate }: {
+  task: Task; team: TeamMember[]; utente: TeamMember | null; draggingId: string | null;
+  onDragStart: () => void; onDragEnd: () => void; onClick: () => void;
+  showFaseBadge?: boolean; pubDate?: { data: string | null; ora: string | null } | null; revisionCount?: number;
+  isProgrammato?: boolean; canEditProgrammazione?: boolean; onRiprogramma?: () => void; onEditPubDate?: (d: string, o: string | null) => void;
+}) {
   const member = team.find(m => m.nome === task.assegnato_a);
-  const isAssignedToMe = task.assegnato_a === utente?.nome;
-  const isAutoTask = task.assegnato_da?.includes('Sistema') || task.assegnato_da?.includes('⚡');
-  const [editingPubDate, setEditingPubDate] = useState(false);
-  const [editDate, setEditDate] = useState(pubDate?.data || '');
-  const [editOra, setEditOra] = useState(pubDate?.ora?.slice(0, 5) || '');
+  const isAuto = task.assegnato_da?.includes('Sistema') || task.assegnato_da?.includes('⚡');
+  const [editPub, setEditPub] = useState(false);
+  const [eDate, setEDate] = useState(pubDate?.data || '');
+  const [eOra, setEOra] = useState(pubDate?.ora?.slice(0, 5) || '');
   const [showMenu, setShowMenu] = useState(false);
 
+  const scadInfo = (() => {
+    if (!task.scadenza) return null;
+    const oggi = new Date(); oggi.setHours(0,0,0,0);
+    const scad = parseLocalDate(task.scadenza); scad.setHours(0,0,0,0);
+    const diff = Math.floor((scad.getTime() - oggi.getTime()) / 86400000);
+    if (diff < 0) return { label: '⚠ SCADUTO', color: '#EF4444', bg: '#FEF2F2' };
+    if (diff === 0) return { label: '⏰ OGGI', color: '#D97706', bg: '#FEF3C7' };
+    if (diff === 1) return { label: '⏰ DOMANI', color: '#D97706', bg: '#FEF3C7' };
+    return { label: `📅 ${scad.toLocaleDateString('it-IT', { day:'2-digit', month:'2-digit' })}`, color: '#64748B', bg: '#F1F5F9' };
+  })();
+
   return (
-    <div
-      key={task.id}
-      className={`task-card ${draggingId === task.id ? 'dragging' : ''}`}
-      draggable
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      onDragOver={onDragOverTask}
-      onClick={onClick}
-      style={{
-        borderLeft: `3px solid ${PRIORITA_COLOR[task.priorita] || '#64748B'}`,
-        ...(isScaduto ? { borderColor: '#EF4444' } : {}),
-        ...(isNew ? {
-          outline: '2px solid #3B82F6',
-          outlineOffset: '1px',
-          animation: 'taskHighlight 3s ease-out forwards',
-        } : {}),
-        ...(isAssignedToMe ? { boxShadow: '0 0 0 1px rgba(59,130,246,0.2)' } : {}),
-        ...(dropIndicator === 'above' ? { borderTop: '3px solid hsl(var(--primary))' } : {}),
-        ...(dropIndicator === 'below' ? { borderBottom: '3px solid hsl(var(--primary))' } : {}),
-      }}
-    >
+    <div className={`task-card ${draggingId === task.id ? 'dragging' : ''}`} draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onClick={onClick}
+      style={{ borderLeft: `3px solid ${PRIORITA_COLOR[task.priorita] || '#64748B'}`, ...(scadInfo?.label.includes('SCADUTO') ? { borderColor: '#EF4444' } : {}) }}>
       <div className="flex items-center gap-1.5 mb-1">
-        {isNew && (
-          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded inline-block"
-            style={{ background: '#DBEAFE', color: '#1D4ED8' }}>
-            NUOVO
-          </span>
-        )}
-        {isAutoTask && (
-          <span className="text-[9px] font-bold px-1 py-0.5 rounded inline-block"
-            style={{ background: 'hsl(38 92% 50% / 0.15)', color: 'hsl(32 95% 40%)' }}>
-            ⚡ Auto
-          </span>
-        )}
-        {(revisionCount ?? 0) >= 3 && (
-          <span className="text-[9px] font-bold px-1 py-0.5 rounded inline-block"
-            style={{ background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A' }}>
-            ⚠️ {revisionCount} revisioni
-          </span>
-        )}
+        {isAuto && <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: 'hsl(38 92% 50%/0.15)', color: 'hsl(32 95% 40%)' }}>⚡ Auto</span>}
+        {(revisionCount ?? 0) >= 3 && <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A' }}>⚠️ {revisionCount} rev</span>}
       </div>
-
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div
-          className="w-2 h-2 rounded-full mt-1 flex-shrink-0"
-          style={{ backgroundColor: PRIORITA_COLOR[task.priorita] || '#64748B' }}
-        />
-        <p className="text-sm font-medium flex-1 leading-snug" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
-          {task.descrizione.length > 80 ? task.descrizione.slice(0, 80) + '…' : task.descrizione}
-        </p>
+      <div className="flex items-start gap-2 mb-2">
+        <div className="w-2 h-2 rounded-full mt-1 flex-shrink-0" style={{ backgroundColor: PRIORITA_COLOR[task.priorita] || '#64748B' }} />
+        <p className="text-sm font-medium flex-1 leading-snug" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>{task.descrizione.length > 80 ? task.descrizione.slice(0, 80) + '…' : task.descrizione}</p>
       </div>
-
       <div className="flex items-center justify-between gap-1 mt-2">
         <div className="flex items-center gap-1 min-w-0">
-          <span className="text-xs font-mono" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
-            {task.id_display}
-          </span>
-          {showFaseBadge && task.tipo && (() => {
-            const fase = TIPO_TO_FASE[task.tipo];
-            return fase ? (
-              <span
-                className="text-xs px-1.5 py-0.5 rounded font-medium"
-                style={{ background: fase.bg, color: fase.color, border: `1px solid ${fase.border}` }}
-              >
-                {fase.label}
-              </span>
-            ) : (
-              <span className="text-xs px-1.5 py-0.5 rounded"
-                style={{ background: 'hsl(210 40% 96%)', color: '#64748B' }}>
-                {task.tipo}
-              </span>
-            );
-          })()}
+          <span className="text-xs font-mono" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>{task.id_display}</span>
+          {showFaseBadge && task.tipo && (() => { const f = TIPO_TO_FASE[task.tipo]; return f ? <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ background: f.bg, color: f.color, border: `1px solid ${f.border}` }}>{f.label}</span> : null; })()}
         </div>
         {member && <Avatar nome={member.nome} colore={member.colore} size={20} avatarUrl={member.avatar_url} />}
       </div>
-
-      {task.cliente_nome && (
-        <p className="text-xs mt-1 truncate" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
-          👤 {task.cliente_nome.slice(0, 22)}
-        </p>
-      )}
+      {task.cliente_nome && <p className="text-xs mt-1 truncate" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>👤 {task.cliente_nome.slice(0, 22)}</p>}
 
       {pubDate?.data ? (
         <div className="mt-1.5">
           <div className="flex items-center justify-between">
-            <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: '#7C3AED', opacity: 0.7 }}>
-              📡 Pubblicazione
-            </p>
-            {isProgrammato && canEditProgrammazione && (
-              <button
-                onClick={e => { e.stopPropagation(); setEditingPubDate(v => !v); setEditDate(pubDate.data || ''); setEditOra(pubDate.ora?.slice(0, 5) || ''); }}
-                className="text-[10px] px-1 py-0.5 rounded hover:scale-110 transition-transform"
-                style={{ color: '#7C3AED' }}
-                title="Cambia data/ora"
-              >
-                ✏️
-              </button>
-            )}
+            <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: '#7C3AED', opacity: 0.7 }}>📡 Pubblicazione</p>
+            {isProgrammato && canEditProgrammazione && <button onClick={e => { e.stopPropagation(); setEditPub(v => !v); setEDate(pubDate.data || ''); setEOra(pubDate.ora?.slice(0, 5) || ''); }} className="text-[10px] px-1 py-0.5 rounded" style={{ color: '#7C3AED' }}>✏️</button>}
           </div>
-          {editingPubDate && isProgrammato && canEditProgrammazione ? (
+          {editPub && isProgrammato && canEditProgrammazione ? (
             <div className="mt-1 space-y-1" onClick={e => e.stopPropagation()}>
-              <input type="date" className="w-full text-[11px] px-1.5 py-1 rounded border" style={{ borderColor: '#C4B5FD' }} value={editDate} onChange={e => setEditDate(e.target.value)} />
-              <input type="time" className="w-full text-[11px] px-1.5 py-1 rounded border" style={{ borderColor: '#C4B5FD' }} value={editOra} onChange={e => setEditOra(e.target.value)} />
+              <input type="date" className="w-full text-[11px] px-1.5 py-1 rounded border" style={{ borderColor: '#C4B5FD' }} value={eDate} onChange={e => setEDate(e.target.value)} />
+              <input type="time" className="w-full text-[11px] px-1.5 py-1 rounded border" style={{ borderColor: '#C4B5FD' }} value={eOra} onChange={e => setEOra(e.target.value)} />
               <div className="flex gap-1">
-                <button className="flex-1 text-[10px] px-2 py-1 rounded font-semibold" style={{ background: '#7C3AED', color: 'white' }} onClick={() => { onEditPubDate?.(editDate, editOra || null); setEditingPubDate(false); }}>Salva</button>
-                <button className="text-[10px] px-2 py-1 rounded" style={{ background: '#F1F5F9' }} onClick={() => setEditingPubDate(false)}>✕</button>
+                <button className="flex-1 text-[10px] px-2 py-1 rounded font-semibold" style={{ background: '#7C3AED', color: 'white' }} onClick={() => { onEditPubDate?.(eDate, eOra || null); setEditPub(false); }}>Salva</button>
+                <button className="text-[10px] px-2 py-1 rounded" style={{ background: '#F1F5F9' }} onClick={() => setEditPub(false)}>✕</button>
               </div>
             </div>
           ) : (
             <>
-              {isProgrammato && pubDate.data && (
-                <p className="text-[11px] font-bold mt-0.5" style={{ color: '#6D28D9' }}>
-                  {new Date(pubDate.data + 'T00:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: '2-digit', month: '2-digit' })}
-                  {pubDate.ora && <span className="ml-1 font-mono">{pubDate.ora.slice(0, 5)}</span>}
-                </p>
-              )}
+              {isProgrammato && pubDate.data && <p className="text-[11px] font-bold mt-0.5" style={{ color: '#6D28D9' }}>{new Date(pubDate.data + 'T00:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: '2-digit', month: '2-digit' })}{pubDate.ora && <span className="ml-1 font-mono">{pubDate.ora.slice(0, 5)}</span>}</p>}
               <LiveClock scadenza={pubDate.data} ora={pubDate.ora} />
             </>
           )}
         </div>
-      ) : task.scadenza ? (
-        <LiveClock scadenza={task.scadenza} ora={task.ora} />
-      ) : scad ? (
-        <div
-          className="inline-flex items-center text-xs px-1.5 py-0.5 rounded mt-1.5 font-medium"
-          style={{ background: scad.bg, color: scad.colore }}
-        >
-          {scad.label}
-          {task.ora && <span className="ml-1 opacity-70">{task.ora.slice(0, 5)}</span>}
-        </div>
+      ) : task.scadenza ? <LiveClock scadenza={task.scadenza} ora={task.ora} /> : scadInfo ? (
+        <div className="inline-flex items-center text-xs px-1.5 py-0.5 rounded mt-1.5 font-medium" style={{ background: scadInfo.bg, color: scadInfo.color }}>{scadInfo.label}</div>
       ) : null}
 
-      {/* Menu ⋮ per Programmato */}
       {isProgrammato && canEditProgrammazione && (
         <div className="relative mt-1.5">
-          <button
-            onClick={e => { e.stopPropagation(); setShowMenu(v => !v); }}
-            className="text-xs px-1.5 py-0.5 rounded hover:bg-purple-100 transition-colors"
-            style={{ color: '#7C3AED' }}
-          >
-            ⋮
-          </button>
-          {showMenu && (
-            <div className="absolute right-0 top-full mt-1 rounded-lg border shadow-lg py-1 z-50" style={{ background: 'hsl(var(--background))', borderColor: 'hsl(var(--border))', minWidth: 160 }} onClick={e => e.stopPropagation()}>
-              <button
-                className="w-full text-left text-xs px-3 py-1.5 hover:bg-purple-50 transition-colors"
-                onClick={() => { setShowMenu(false); onRiprogramma?.(); }}
-              >
-                🔄 Riprogramma
-              </button>
-            </div>
-          )}
+          <button onClick={e => { e.stopPropagation(); setShowMenu(v => !v); }} className="text-xs px-1.5 py-0.5 rounded hover:bg-purple-100" style={{ color: '#7C3AED' }}>⋮</button>
+          {showMenu && <div className="absolute right-0 top-full mt-1 rounded-lg border shadow-lg py-1 z-50" style={{ background: 'hsl(var(--background))', borderColor: 'hsl(var(--border))', minWidth: 160 }} onClick={e => e.stopPropagation()}>
+            <button className="w-full text-left text-xs px-3 py-1.5 hover:bg-purple-50" onClick={() => { setShowMenu(false); onRiprogramma?.(); }}>🔄 Riprogramma</button>
+          </div>}
         </div>
       )}
     </div>
   );
 }
 
-// ─── Props ────────────────────────────────────────────────────────────────────
-interface KanbanTabProps {
-  team: TeamMember[];
-  clienti: Cliente[];
-  personaView: string | null;
-}
+// ── MAIN COMPONENT ────────────────────────────────────────────────────────────
 
-interface RealtimeEvent {
-  tipo: 'nuovo' | 'spostato' | 'completato';
-  task: Task;
-  fromStato?: string;
-}
-
-// ─── Main component ───────────────────────────────────────────────────────────
-export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
+export function KanbanTab({ team, clienti, personaView }: { team: TeamMember[]; clienti: Cliente[]; personaView: string | null }) {
   const { utente, addToast } = useApp();
   const isMobile = useIsMobile();
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [clpFasi, setClpFasi] = useState<Record<string, string>>({});
+  const [clpPubDates, setClpPubDates] = useState<Record<string, { data: string | null; ora: string | null }>>({});
+  const [clpRevisionCount, setClpRevisionCount] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showNuovoTask, setShowNuovoTask] = useState(false);
   const [dragItem, setDragItem] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
-  const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
-  const [dragOverPos, setDragOverPos] = useState<'above' | 'below' | null>(null);
-  const [liveActive, setLiveActive] = useState(false);
-  const [newTaskIds, setNewTaskIds] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
   const [filtraOggi, setFiltraOggi] = useState(false);
   const [boardMode, setBoardMode] = useState<'standard' | 'clp' | 'both'>('both');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [clpFasi, setClpFasi] = useState<Record<string, string>>({});
-  const [clpPubDates, setClpPubDates] = useState<Record<string, { data: string | null; ora: string | null }>>({});
-  const [clpRevisionCount, setClpRevisionCount] = useState<Record<string, number>>({});
-  const [riprogrammaConfirm, setRiprogrammaConfirm] = useState<{ taskId: string; contenutoId: string; desc: string } | null>(null);
-  // Mobile: which column to show
   const [mobileCol, setMobileCol] = useState('Da fare');
   const [mobileCLPCol, setMobileCLPCol] = useState('Girato');
-
+  const [riprogrammaConfirm, setRiprogrammaConfirm] = useState<{ taskId: string; contenutoId: string; desc: string } | null>(null);
+  const busy = useRef(false);
   const canEditProgrammazione = utente?.nome === 'Elisa' || utente?.nome === 'Giovanni' || utente?.ruolo === 'Admin';
 
-  const pendingEventsRef = useRef<RealtimeEvent[]>([]);
-  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isMyAction = useRef(false);
-  const isDropping = useRef(false); // Blocca realtime durante drop — previene race condition
-  const tasksRef = useRef<Task[]>([]);
-
-  const flushNotifications = useCallback(() => {
-    const events = pendingEventsRef.current;
-    pendingEventsRef.current = [];
-    if (events.length === 0) return;
-    const assignedToMe = events.filter(e => e.task.assegnato_a === utente?.nome);
-    const nuovi = events.filter(e => e.tipo === 'nuovo');
-    const spostati = events.filter(e => e.tipo === 'spostato');
-    const completati = events.filter(e => e.tipo === 'completato');
-    if (assignedToMe.some(e => e.tipo === 'nuovo')) sounds.nuovoTask();
-    else if (completati.length > 0) sounds.taskCompletato();
-    else if (spostati.length > 0) sounds.messaggio();
-    if (nuovi.length > 0) {
-      const miei = nuovi.filter(e => e.task.assegnato_a === utente?.nome);
-      if (miei.length > 0) {
-        addToast(miei.length === 1 ? `📥 Nuovo task assegnato a te: "${miei[0].task.descrizione.slice(0, 40)}"` : `📥 ${miei.length} nuovi task assegnati a te`, 'success');
-      } else {
-        addToast(nuovi.length === 1 ? `📋 Nuovo task: "${nuovi[0].task.descrizione.slice(0, 40)}"` : `📋 ${nuovi.length} nuovi task aggiunti`, 'info');
-      }
-    }
-    if (spostati.length > 0 && !isMyAction.current) {
-      addToast(spostati.length === 1 ? `↕️ Task spostato → ${spostati[0].task.stato}` : `↕️ ${spostati.length} task spostati da un membro del team`, 'info');
-    }
-    if (completati.length > 0) {
-      addToast(completati.length === 1 ? `✅ Task completato: "${completati[0].task.descrizione.slice(0, 35)}"` : `✅ ${completati.length} task completati`, 'success');
-    }
-    isMyAction.current = false;
-  }, [utente, addToast]);
-
-  const scheduleFlush = useCallback(() => {
-    if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
-    flushTimerRef.current = setTimeout(flushNotifications, 1500);
-  }, [flushNotifications]);
-
+  // ── L'UNICA FUNZIONE CHE LEGGE DAL DB ────────────────────────────────────
   const loadTasks = useCallback(async () => {
-    const [{ data: taskData }, { data: contenutiData }] = await Promise.all([
-      supabase
-        .from('task')
-        .select('*')
-        .neq('stato', 'Archiviato')
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('contenuti')
-        .select('id, fase, data_pubblicazione, ora_pubblicazione, revision_count'),
-    ]);
-
-    const nextTasks = taskData || [];
-    setTasks(nextTasks);
-    tasksRef.current = nextTasks;
-    setClpFasi(
-      Object.fromEntries((contenutiData || []).map(c => [c.id, c.fase || '']))
-    );
-    setClpPubDates(
-      Object.fromEntries((contenutiData || []).map(c => [c.id, { data: c.data_pubblicazione, ora: c.ora_pubblicazione }]))
-    );
-    setClpRevisionCount(
-      Object.fromEntries((contenutiData || []).map(c => [c.id, c.revision_count || 0]))
-    );
+    if (busy.current) return;
+    busy.current = true;
+    try {
+      const [{ data: td }, { data: cd }] = await Promise.all([
+        supabase.from('task').select('*').neq('stato', 'Archiviato').order('created_at', { ascending: false }),
+        supabase.from('contenuti').select('id, fase, data_pubblicazione, ora_pubblicazione, revision_count'),
+      ]);
+      setTasks(td || []);
+      setClpFasi(Object.fromEntries((cd || []).map(c => [c.id, c.fase || ''])));
+      setClpPubDates(Object.fromEntries((cd || []).map(c => [c.id, { data: c.data_pubblicazione, ora: c.ora_pubblicazione }])));
+      setClpRevisionCount(Object.fromEntries((cd || []).map(c => [c.id, c.revision_count || 0])));
+    } catch (e) { console.error('[Kanban] loadTasks:', e); }
     setLoading(false);
-
-    const oggi = new Date(); oggi.setHours(0, 0, 0, 0);
-    const scaduti = nextTasks.filter(t => {
-      if (!t.scadenza) return false;
-      const s = parseLocalDate(t.scadenza);
-      return s < oggi && t.stato !== 'Completato';
-    });
-    if (scaduti.length > 0) sounds.alert();
+    busy.current = false;
   }, []);
 
-  // [PERF] Reload leggero solo dei metadati contenuti (fasi, date pub) — debounced
-  const clpRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const refreshClpMeta = useCallback(() => {
-    if (clpRefreshTimer.current) clearTimeout(clpRefreshTimer.current);
-    clpRefreshTimer.current = setTimeout(async () => {
-      const { data } = await supabase
-        .from('contenuti')
-        .select('id, fase, data_pubblicazione, ora_pubblicazione, revision_count');
-      if (data) {
-        setClpFasi(Object.fromEntries(data.map(c => [c.id, c.fase || ''])));
-        setClpPubDates(Object.fromEntries(data.map(c => [c.id, { data: c.data_pubblicazione, ora: c.ora_pubblicazione }])));
-        setClpRevisionCount(Object.fromEntries(data.map(c => [c.id, c.revision_count || 0])));
-      }
-    }, 1500);
-  }, []);
-
+  // ── REALTIME: qualsiasi cambiamento → ricarica tutto ─────────────────────
   useEffect(() => {
     loadTasks();
-    const channel = supabase
-      .channel('kanban-realtime-v2')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'task' }, payload => {
-        // ── GUARD: se stiamo facendo un drop, ignora realtime (loadTasks farà il refresh) ──
-        if (isDropping.current) return;
-        setLiveActive(true);
-        setTimeout(() => setLiveActive(false), 800);
-        if (payload.eventType === 'INSERT') {
-          const newTask = payload.new as Task;
-          if (newTask.stato === 'Archiviato') return;
-          setTasks(prev => {
-            const next = prev.some(t => t.id === newTask.id) ? prev : [newTask, ...prev];
-            tasksRef.current = next;
-            return next;
-          });
-          // [FIX] Aggiorna clpFasi subito — il nuovo task vive nella fase corrente del CLP
-          if (newTask.id_contenuto && newTask.tipo) {
-            const step = WORKFLOW_MAP[newTask.tipo];
-            if (step?.faseCurrent) {
-              setClpFasi(prev => ({ ...prev, [newTask.id_contenuto]: step.faseCurrent }));
-            }
-          }
-          setNewTaskIds(prev => new Set(prev).add(newTask.id));
-          setTimeout(() => setNewTaskIds(prev => { const next = new Set(prev); next.delete(newTask.id); return next; }), 3000);
-          pendingEventsRef.current.push({ tipo: 'nuovo', task: newTask });
-          scheduleFlush();
-        } else if (payload.eventType === 'UPDATE') {
-          const updatedTask = payload.new as Task;
-          // ── FIX: se il task è diventato Archiviato, rimuovilo dallo state ──
-          if (updatedTask.stato === 'Archiviato') {
-            setTasks(prev => {
-              const next = prev.filter(t => t.id !== updatedTask.id);
-              tasksRef.current = next;
-              return next;
-            });
-            setSelectedTask(prev => prev?.id === updatedTask.id ? null : prev);
-            return;
-          }
-          const prevTask = tasksRef.current.find(t => t.id === updatedTask.id);
-          setTasks(prev => {
-            const next = prev.map(t => t.id === updatedTask.id ? updatedTask : t);
-            tasksRef.current = next;
-            return next;
-          });
-          setSelectedTask(prev => prev?.id === updatedTask.id ? updatedTask : prev);
-          if (updatedTask.stato === 'Completato' && prevTask?.stato !== 'Completato') {
-            pendingEventsRef.current.push({ tipo: 'completato', task: updatedTask, fromStato: prevTask?.stato });
-            // [FIX] Aggiorna clpFasi SUBITO inferendo la nuova fase dal WORKFLOW_MAP
-            if (updatedTask.id_contenuto) {
-              const step = WORKFLOW_MAP[updatedTask.tipo];
-              if (step?.faseNext) {
-                setClpFasi(prev => ({ ...prev, [updatedTask.id_contenuto]: step.faseNext }));
-              }
-            }
-            // Conferma con il DB (debounced) per eventuali discrepanze
-            refreshClpMeta();
-          } else if (prevTask && prevTask.stato !== updatedTask.stato) {
-            pendingEventsRef.current.push({ tipo: 'spostato', task: updatedTask, fromStato: prevTask.stato });
-          }
-          scheduleFlush();
-        } else if (payload.eventType === 'DELETE') {
-          setTasks(prev => {
-            const next = prev.filter(t => t.id !== (payload.old as Task).id);
-            tasksRef.current = next;
-            return next;
-          });
-          // [PERF] No loadTasks() — lo state è già aggiornato localmente
-        }
-      })
+    const ch = supabase.channel('kanban-v3')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'task' }, () => loadTasks())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'contenuti' }, () => loadTasks())
       .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
-      if (clpRefreshTimer.current) clearTimeout(clpRefreshTimer.current);
-    };
-  }, [loadTasks, scheduleFlush, refreshClpMeta]);
+    return () => { supabase.removeChannel(ch); };
+  }, [loadTasks]);
 
-  // ── Task standard (senza CLP) ───────────────────────────────────────────────
-  const matchesSearch = (t: Task) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      t.descrizione.toLowerCase().includes(q) ||
-      (t.cliente_nome || '').toLowerCase().includes(q) ||
-      (t.id_display || '').toLowerCase().includes(q) ||
-      (t.id_contenuto || '').toLowerCase().includes(q) ||
-      (t.assegnato_a || '').toLowerCase().includes(q) ||
-      (t.tipo || '').toLowerCase().includes(q)
-    );
-  };
+  // ── FILTRI ───────────────────────────────────────────────────────────────
+  const matchSearch = (t: Task) => !searchQuery.trim() || (t.descrizione + t.cliente_nome + t.id_display + t.id_contenuto + t.assegnato_a + t.tipo).toLowerCase().includes(searchQuery.toLowerCase());
 
-  const filteredStandard = (stato: string) => {
-    const now = Date.now();
-    const in24h = now + 24 * 3600000;
-    const filtered = tasks.filter(t => {
-      if (t.stato !== stato) return false;
-      if (t.id_contenuto && t.id_contenuto.trim() !== '') return false;
-      if (personaView && t.assegnato_a !== personaView) return false;
-      if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
-      if (!matchesSearch(t)) return false;
-      if (filtraOggi) {
-        if (!t.scadenza) return false;
-        const ms = getTargetDate(t.scadenza, t.ora).getTime();
-        if (ms > in24h || ms < now - 86400000) return false;
-      }
-      return true;
-    });
-    return filtered.sort((a, b) => {
-      const pa = a.posizione ?? 0;
-      const pb = b.posizione ?? 0;
-      if (pa !== pb) return pa - pb;
-      // fallback: scadenza
-      const score = (t: Task) => {
-        if (!t.scadenza) return 2_000_000_000_000;
-        const ms = getTargetDate(t.scadenza, t.ora).getTime();
-        if (ms < Date.now()) return 3_000_000_000_000 + (Date.now() - ms);
-        return ms;
-      };
-      return score(a) - score(b);
-    });
-  };
+  const filteredStandard = (stato: string) => tasks.filter(t => {
+    if (t.stato !== stato || (t.id_contenuto && t.id_contenuto.trim())) return false;
+    if (personaView && t.assegnato_a !== personaView) return false;
+    if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
+    if (!matchSearch(t)) return false;
+    if (filtraOggi && t.scadenza) { const ms = getTargetDate(t.scadenza, t.ora).getTime(); if (ms > Date.now() + 86400000 || ms < Date.now() - 86400000) return false; }
+    else if (filtraOggi) return false;
+    return true;
+  }).sort((a, b) => (a.posizione ?? 0) - (b.posizione ?? 0));
 
-  // ── Task CLP: mappa fase CLP → tipo task attivo ─────────────────────────────
   const filteredCLP = (faseCLP: string) => {
-    const tipoColonna = TIPO_PER_FASE[faseCLP];
+    const tipoCol = TIPO_PER_FASE[faseCLP];
     return tasks.filter(t => {
-      if (!t.id_contenuto || t.id_contenuto.trim() === '') return false;
-      if (!matchesSearch(t)) return false;
-
-      const faseReale = clpFasi[t.id_contenuto];
-      if (!faseReale) return false;
-
-      // Programmato e Pubblicato: visibili a TUTTI (nessun filtro persona)
-      if (faseCLP === 'Programmato') {
-        return faseReale === 'Programmato' && t.tipo === 'Programmazione';
-      }
-
-      if (faseCLP === 'Pubblicato') {
-        return faseReale === 'Pubblicato' && (t.tipo === 'Cleanup' || (t.stato === 'Completato' && t.tipo === 'Programmazione'));
-      }
-
-      // Per le altre colonne, filtra per persona
+      if (!t.id_contenuto?.trim() || !matchSearch(t)) return false;
+      const fase = clpFasi[t.id_contenuto];
+      if (!fase) return false;
+      if (faseCLP === 'Programmato') return fase === 'Programmato' && t.tipo === 'Programmazione';
+      if (faseCLP === 'Pubblicato') return fase === 'Pubblicato' && (t.tipo === 'Cleanup' || (t.stato === 'Completato' && t.tipo === 'Programmazione'));
       if (personaView && t.assegnato_a !== personaView) return false;
       if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
-
-      return faseReale === faseCLP && tipoColonna === t.tipo && t.stato !== 'Completato';
+      return fase === faseCLP && tipoCol === t.tipo && t.stato !== 'Completato';
     }).sort((a, b) => (a.posizione ?? 0) - (b.posizione ?? 0));
   };
 
-  // ── Drag over task (vertical reorder indicator) ─────────────────────────────
-  const handleDragOverTask = (e: React.DragEvent, taskId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!dragItem || dragItem === taskId) {
-      setDragOverTaskId(null);
-      setDragOverPos(null);
-      return;
-    }
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const midY = rect.top + rect.height / 2;
-    const pos = e.clientY < midY ? 'above' : 'below';
-    setDragOverTaskId(taskId);
-    setDragOverPos(pos);
-  };
-
-  // ── Drop on task (vertical reorder within column) ───────────────────────────
-  const handleDropOnTask = async (targetTaskId: string, columnTasks: Task[]) => {
-    if (!dragItem || dragItem === targetTaskId) return;
-    const draggedTask = tasks.find(t => t.id === dragItem);
-    const targetTask = tasks.find(t => t.id === targetTaskId);
-    if (!draggedTask || !targetTask) return;
-
-    // Only reorder within same column
-    const isCLP_dragged = draggedTask.id_contenuto && draggedTask.id_contenuto.trim() !== '';
-    const isCLP_target = targetTask.id_contenuto && targetTask.id_contenuto.trim() !== '';
-    let sameColumn = false;
-    if (isCLP_dragged && isCLP_target) {
-      // CLP: same column = same fase + same tipo
-      const faseDragged = clpFasi[draggedTask.id_contenuto || ''];
-      const faseTarget = clpFasi[targetTask.id_contenuto || ''];
-      sameColumn = faseDragged === faseTarget && draggedTask.tipo === targetTask.tipo;
-    } else if (!isCLP_dragged && !isCLP_target) {
-      // Standard: same stato
-      sameColumn = draggedTask.stato === targetTask.stato;
-    }
-    if (!sameColumn) return;
-
-    setDragOverTaskId(null);
-    setDragOverPos(null);
-    setDropTarget(null);
-
-    // Build new order
-    const ordered = columnTasks.filter(t => t.id !== dragItem);
-    const targetIdx = ordered.findIndex(t => t.id === targetTaskId);
-    const insertIdx = dragOverPos === 'above' ? targetIdx : targetIdx + 1;
-    ordered.splice(insertIdx, 0, draggedTask);
-
-    // Update posizione locally
-    const updates: { id: string; posizione: number }[] = [];
-    ordered.forEach((t, i) => {
-      updates.push({ id: t.id, posizione: i });
-    });
-
-    isMyAction.current = true;
-    setTasks(prev => {
-      const copy = [...prev];
-      for (const u of updates) {
-        const idx = copy.findIndex(t => t.id === u.id);
-        if (idx >= 0) copy[idx] = { ...copy[idx], posizione: u.posizione };
-      }
-      return copy;
-    });
-
-    // Save to DB
-    for (const u of updates) {
-      await supabase.from('task').update({ posizione: u.posizione } as any).eq('id', u.id);
-    }
-    sounds.drop();
-    setDragItem(null);
-  };
-
-  // ── Drag standard (stato → stato) ──────────────────────────────────────────
-  // PRINCIPIO: scrivi sul DB → ricarica tutto. Zero optimistic update = zero bug.
+  // ── HANDLERS: azione → DB → loadTasks() ──────────────────────────────────
   const handleDropStandard = async (nuovoStato: string) => {
     if (!dragItem) return;
     setDropTarget(null);
     const task = tasks.find(t => t.id === dragItem);
-    if (!task || task.stato === nuovoStato || task.stato === 'Archiviato') return;
+    if (!task || task.stato === nuovoStato || task.stato === 'Archiviato') { setDragItem(null); return; }
     setDragItem(null);
-    isDropping.current = true; // Blocca realtime
-
-    const { error } = await supabase
-      .from('task')
-      .update({ stato: nuovoStato })
-      .eq('id', task.id)
-      .neq('stato', 'Archiviato');
-
-    if (error) {
-      sounds.errore();
-      addToast('Errore nel salvataggio', 'error');
-    } else if (nuovoStato === 'Completato') {
-      sounds.taskCompletato();
-      addToast('✅ Task completato!', 'success');
-    } else {
-      sounds.drop();
-      addToast(`↕️ Spostato → ${nuovoStato}`, 'info');
-    }
+    const { error } = await supabase.from('task').update({ stato: nuovoStato }).eq('id', task.id);
+    if (error) { sounds.errore(); addToast('Errore', 'error'); }
+    else if (nuovoStato === 'Completato') { sounds.taskCompletato(); addToast('✅ Task completato!', 'success'); }
+    else { sounds.drop(); addToast(`↕️ → ${nuovoStato}`, 'info'); }
     await loadTasks();
-    isDropping.current = false; // Riattiva realtime
   };
 
-  // ── Drag CLP (fase → fase successiva = completa task + avanza CLP) ──────────
-  // PRINCIPIO: chiama workflow → ricarica tutto. Nessun aggiornamento locale manuale.
   const handleDropCLP = async (faseCLP: string) => {
     if (!dragItem) return;
     setDropTarget(null);
     const task = tasks.find(t => t.id === dragItem);
-    if (!task) return;
-    const faseCorrente = Object.entries(TIPO_PER_FASE).find(([, tipo]) => tipo === task.tipo)?.[0];
-    const fasePrevista = faseCorrente ? FASE_NEXT[faseCorrente] : null;
-    if (fasePrevista && fasePrevista !== faseCLP) {
-      addToast(`⚠️ Puoi spostare solo alla fase successiva: ${fasePrevista}`, 'warn');
-      setDragItem(null);
-      return;
-    }
-    if (!task.id_contenuto) return;
+    if (!task?.id_contenuto) { setDragItem(null); return; }
+    const faseCorr = Object.entries(TIPO_PER_FASE).find(([, tipo]) => tipo === task.tipo)?.[0];
+    const fasePrev = faseCorr ? FASE_NEXT[faseCorr] : null;
+    if (fasePrev && fasePrev !== faseCLP) { addToast(`⚠️ Solo alla fase successiva: ${fasePrev}`, 'warn'); setDragItem(null); return; }
     setDragItem(null);
-    isDropping.current = true; // Blocca realtime
-    addToast('⏳ Avanzamento in corso…', 'info');
-
+    addToast('⏳ Avanzamento…', 'info');
     try {
-      const nuovaFase = await completaTaskEAvanzaFase(
-        task.tipo,
-        task.id_contenuto,
-        team,
-        utente?.id
-      );
-      if (nuovaFase) {
-        sounds.taskCompletato();
-        addToast(`✅ ${task.tipo} completato → ${nuovaFase}`, 'success');
-      }
-    } catch (e: any) {
-      sounds.errore();
-      addToast('❌ ' + (e?.message || 'Errore avanzamento'), 'error');
-    }
+      const nf = await completaTaskEAvanzaFase(task.tipo, task.id_contenuto, team, utente?.id);
+      if (nf) { sounds.taskCompletato(); addToast(`✅ ${task.tipo} → ${nf}`, 'success'); }
+    } catch (e: any) { sounds.errore(); addToast('❌ ' + (e?.message || 'Errore'), 'error'); }
     await loadTasks();
-    isDropping.current = false; // Riattiva realtime
   };
 
-  // ── Riprogramma CLP (Programmato → Revisionato) ─────────────────────────
-  const handleRiprogrammaCLP = async (contenutoId: string) => {
+  const handleRiprogramma = async (contenutoId: string) => {
     setRiprogrammaConfirm(null);
-    isDropping.current = true;
-    addToast('⏳ Riprogrammazione in corso…', 'info');
+    addToast('⏳ Riprogrammazione…', 'info');
     const { cambiaFaseCLP } = await import('../services/faseService');
-    const result = await cambiaFaseCLP({
-      contenutoId,
-      nuovaFase: 'Revisionato',
-      source: 'kanban',
-      userId: utente?.id || 'unknown',
-      oldFase: 'Programmato',
-    });
-    if (result.success) {
-      addToast('🔄 Riprogrammato — torna in revisione', 'success');
-    } else {
-      addToast('❌ Errore: ' + (result.errors[0] || 'sconosciuto'), 'error');
-    }
+    const r = await cambiaFaseCLP({ contenutoId, nuovaFase: 'Revisionato', source: 'kanban', userId: utente?.id || 'unknown', oldFase: 'Programmato' });
+    addToast(r.success ? '🔄 Riprogrammato' : '❌ ' + (r.errors[0] || 'Errore'), r.success ? 'success' : 'error');
     await loadTasks();
-    isDropping.current = false;
   };
 
-  // ── Modifica data pubblicazione inline (Kanban) ──────────────────────────
-  const handleEditPubDateKanban = async (contenutoId: string, newDate: string, newOra: string | null) => {
+  const handleEditPubDate = async (contenutoId: string, newDate: string, newOra: string | null) => {
     if (!newDate) return;
-    await supabase.from('contenuti').update({
-      data_pubblicazione: newDate,
-      ora_pubblicazione: newOra,
-    }).eq('id', contenutoId);
-    await supabase.from('calendario').update({
-      data: newDate,
-      ora: newOra,
-    }).eq('contenuto_id', contenutoId).eq('tipo', 'pubblicazione');
-    // Fetch tipo for lead time calc
+    await supabase.from('contenuti').update({ data_pubblicazione: newDate, ora_pubblicazione: newOra }).eq('id', contenutoId);
+    await supabase.from('calendario').update({ data: newDate, ora: newOra }).eq('contenuto_id', contenutoId).eq('tipo', 'pubblicazione');
     const { data: c } = await supabase.from('contenuti').select('tipo').eq('id', contenutoId).single();
     const count = await ricalcolaScadenzeTask(contenutoId, newDate, newOra, c?.tipo);
-    setClpPubDates(prev => ({ ...prev, [contenutoId]: { data: newDate, ora: newOra } }));
     addToast(`📅 Data aggiornata — ${count} scadenze ricalcolate`, 'success');
+    await loadTasks();
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="sk-spinner" style={{ color: '#3B82F6' }} />
-      </div>
-    );
-  }
-
-  const showStandard = boardMode === 'standard' || boardMode === 'both';
+  if (loading) return <div className="flex items-center justify-center h-64"><div className="sk-spinner" style={{ color: '#3B82F6' }} /></div>;
+  const showStd = boardMode === 'standard' || boardMode === 'both';
   const showCLP = boardMode === 'clp' || boardMode === 'both';
 
   return (
@@ -812,171 +294,57 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <h2 className="font-bold text-lg" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
-            Kanban Board
-          </h2>
-          {/* Live indicator */}
-          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium"
-            style={{ background: liveActive ? '#DCFCE7' : '#F1F5F9', color: liveActive ? '#16A34A' : '#94A3B8', transition: 'all 0.3s' }}>
-            <span className="w-1.5 h-1.5 rounded-full"
-              style={{ backgroundColor: liveActive ? '#22C55E' : '#94A3B8', boxShadow: liveActive ? '0 0 0 3px #BBF7D0' : 'none', transition: 'all 0.3s' }} />
-            LIVE
+          <h2 className="font-bold text-lg" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>Kanban Board</h2>
+          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: '#DCFCE7', color: '#16A34A' }}>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#22C55E', boxShadow: '0 0 0 3px #BBF7D0' }} /> LIVE
           </div>
-          {/* Filtro oggi */}
-          <button
-            onClick={() => setFiltraOggi(f => !f)}
-            className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold transition-all"
-            style={filtraOggi
-              ? { background: '#FEE2E2', color: '#DC2626', border: '1px solid rgba(220,38,38,0.4)' }
-              : { background: '#F1F5F9', color: '#64748B', border: '1px solid #E2E8F0' }}
-          >
-            ⏰ {isMobile ? '' : 'In scadenza oggi '}{filtraOggi && '×'}
+          <button onClick={() => setFiltraOggi(f => !f)} className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold"
+            style={filtraOggi ? { background: '#FEE2E2', color: '#DC2626', border: '1px solid rgba(220,38,38,0.4)' } : { background: '#F1F5F9', color: '#64748B', border: '1px solid #E2E8F0' }}>
+            ⏰ {!isMobile && 'In scadenza oggi '}{filtraOggi && '×'}
           </button>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          {/* Search */}
           <div className="relative flex-1 sm:flex-none">
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs" style={{ color: 'hsl(var(--muted-foreground))' }}>🔍</span>
-            <input
-              type="text"
-              placeholder="Cerca task..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="pl-8 pr-3 py-1.5 rounded-lg text-xs border outline-none transition-colors w-full sm:w-44"
-              style={{
-                background: 'hsl(var(--background))',
-                borderColor: searchQuery ? 'hsl(var(--primary))' : 'hsl(var(--border))',
-                color: 'hsl(var(--foreground))',
-              }}
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-xs"
-                style={{ color: 'hsl(var(--muted-foreground))' }}
-              >✕</button>
-            )}
+            <input type="text" placeholder="Cerca task..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+              className="pl-8 pr-3 py-1.5 rounded-lg text-xs border outline-none w-full sm:w-44"
+              style={{ background: 'hsl(var(--background))', borderColor: searchQuery ? 'hsl(var(--primary))' : 'hsl(var(--border))', color: 'hsl(var(--foreground))' }} />
+            {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs">✕</button>}
           </div>
-          {/* Selector board */}
           <div className="flex rounded-lg overflow-hidden border border-border text-xs flex-shrink-0">
             {(['both', 'standard', 'clp'] as const).map(mode => (
-              <button
-                key={mode}
-                onClick={() => setBoardMode(mode)}
-                className="px-2.5 py-1 font-medium transition-colors"
-                style={boardMode === mode
-                  ? { background: 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))' }
-                  : { background: 'hsl(var(--background))', color: 'hsl(var(--muted-foreground))' }}
-              >
+              <button key={mode} onClick={() => setBoardMode(mode)} className="px-2.5 py-1 font-medium"
+                style={boardMode === mode ? { background: 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))' } : { background: 'hsl(var(--background))', color: 'hsl(var(--muted-foreground))' }}>
                 {mode === 'both' ? 'Tutte' : mode === 'standard' ? 'Task' : '🎬 CLP'}
               </button>
             ))}
           </div>
-          {/* New task button — hidden on mobile (FAB instead) */}
-          <button onClick={() => setShowNuovoTask(true)} className="sk-btn-primary text-sm hidden sm:inline-flex">
-            + Nuovo Task
-          </button>
+          <button onClick={() => setShowNuovoTask(true)} className="sk-btn-primary text-sm hidden sm:inline-flex">+ Nuovo Task</button>
         </div>
       </div>
 
-      {/* Board CLP */}
+      {/* BOARD CLP */}
       {showCLP && (
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-2 flex-wrap">
-            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(var(--muted-foreground))' }}>
-              🎬 Workflow Produzione CLP
-            </span>
+            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(var(--muted-foreground))' }}>🎬 Workflow Produzione CLP</span>
             <div className="flex-1 h-px hidden sm:block" style={{ background: 'hsl(var(--border))' }} />
-            <span className="text-[10px] text-muted-foreground italic hidden sm:inline">
-              Trascina sulla colonna successiva per completare lo step
-            </span>
           </div>
-
-          {/* Mobile: column tabs */}
-          {isMobile && (
-            <div className="flex gap-1 overflow-x-auto pb-2 mb-2 -mx-1 px-1" style={{ WebkitOverflowScrolling: 'touch' }}>
-              {COLONNE_CLP.map(col => {
-                const count = filteredCLP(col.stato).length;
-                return (
-                  <button
-                    key={col.stato}
-                    onClick={() => setMobileCLPCol(col.stato)}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex-shrink-0 transition-all min-h-[36px]"
-                    style={{
-                      background: mobileCLPCol === col.stato ? col.colore : `${col.colore}15`,
-                      color: mobileCLPCol === col.stato ? '#fff' : col.colore,
-                      border: `1px solid ${col.colore}${mobileCLPCol === col.stato ? '' : '40'}`,
-                    }}
-                  >
-                    {col.icona} {col.stato} <span className="opacity-70">({count})</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
+          {isMobile && <div className="flex gap-1 overflow-x-auto pb-2 mb-2">{COLONNE_CLP.map(col => <button key={col.stato} onClick={() => setMobileCLPCol(col.stato)} className="px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex-shrink-0" style={{ background: mobileCLPCol === col.stato ? col.colore : `${col.colore}15`, color: mobileCLPCol === col.stato ? '#fff' : col.colore }}>{col.icona} {col.stato} ({filteredCLP(col.stato).length})</button>)}</div>}
           <div className={isMobile ? '' : 'flex gap-3 overflow-x-auto pb-2'}>
             {COLONNE_CLP.filter(col => !isMobile || col.stato === mobileCLPCol).map(col => {
-              const colTasks = filteredCLP(col.stato);
-              const isDrop = dropTarget === `clp__${col.stato}`;
+              const ct = filteredCLP(col.stato);
               return (
-                <div
-                  key={col.stato}
-                  className={`kanban-col ${isDrop ? 'kanban-drop-target' : ''}`}
+                <div key={col.stato} className={`kanban-col ${dropTarget === `clp__${col.stato}` ? 'kanban-drop-target' : ''}`}
                   style={{ background: col.bg, border: `1px solid ${col.border}30`, minWidth: isMobile ? '100%' : 180 }}
-                  onDragOver={e => { e.preventDefault(); setDropTarget(`clp__${col.stato}`); }}
-                  onDragLeave={() => { setDropTarget(null); setDragOverTaskId(null); setDragOverPos(null); }}
-                  onDrop={() => {
-                    if (dragOverTaskId && colTasks.some(t => t.id === dragOverTaskId)) {
-                      handleDropOnTask(dragOverTaskId, colTasks);
-                    } else {
-                      handleDropCLP(col.stato);
-                    }
-                  }}
-                >
+                  onDragOver={e => { e.preventDefault(); setDropTarget(`clp__${col.stato}`); }} onDragLeave={() => setDropTarget(null)} onDrop={() => handleDropCLP(col.stato)}>
                   <div className="kanban-col-header" style={{ borderBottom: `2px solid ${col.border}40` }}>
-                    <div className="flex items-center gap-1.5">
-                      <span>{col.icona}</span>
-                      <span className="text-xs font-semibold" style={{ color: col.colore }}>{col.stato}</span>
-                    </div>
-                    <span className="text-xs font-bold px-1.5 py-0.5 rounded-full"
-                      style={{ background: `${col.colore}20`, color: col.colore }}>
-                      {colTasks.length}
-                    </span>
+                    <div className="flex items-center gap-1.5"><span>{col.icona}</span><span className="text-xs font-semibold" style={{ color: col.colore }}>{col.stato}</span></div>
+                    <span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ background: `${col.colore}20`, color: col.colore }}>{ct.length}</span>
                   </div>
                   <div className="kanban-col-body">
-                    {colTasks.map(task => {
-                      const isProgrammatoCol = col.stato === 'Programmato' || col.stato === 'Pubblicato';
-                      const pub = isProgrammatoCol && task.id_contenuto ? clpPubDates[task.id_contenuto] : null;
-                      return (
-                        <TaskCard
-                          key={task.id}
-                          task={task}
-                          team={team}
-                          utente={utente}
-                          isNew={newTaskIds.has(task.id)}
-                          draggingId={dragItem}
-                          onDragStart={() => setDragItem(task.id)}
-                          onDragEnd={() => { setDragItem(null); setDragOverTaskId(null); setDragOverPos(null); }}
-                          onClick={() => setSelectedTask(task)}
-                          showFaseBadge={false}
-                          pubDate={pub}
-                          revisionCount={task.id_contenuto ? clpRevisionCount[task.id_contenuto] : undefined}
-                          onDragOverTask={(e) => handleDragOverTask(e, task.id)}
-                          dropIndicator={dragOverTaskId === task.id ? dragOverPos : null}
-                          isProgrammato={col.stato === 'Programmato'}
-                          canEditProgrammazione={canEditProgrammazione}
-                          onRiprogramma={() => task.id_contenuto && setRiprogrammaConfirm({ taskId: task.id, contenutoId: task.id_contenuto, desc: task.descrizione.slice(0, 50) })}
-                          onEditPubDate={(d, o) => task.id_contenuto && handleEditPubDateKanban(task.id_contenuto, d, o)}
-                        />
-                      );
-                    })}
-                    {colTasks.length === 0 && (
-                      <div className="flex items-center justify-center h-12 text-xs rounded-lg"
-                        style={{ color: 'hsl(var(--muted-foreground))', border: `1px dashed ${col.border}40` }}>
-                        Nessun task
-                      </div>
-                    )}
+                    {ct.map(t => <TaskCard key={t.id} task={t} team={team} utente={utente} draggingId={dragItem} onDragStart={() => setDragItem(t.id)} onDragEnd={() => setDragItem(null)} onClick={() => setSelectedTask(t)} showFaseBadge={false} pubDate={t.id_contenuto ? clpPubDates[t.id_contenuto] : null} revisionCount={t.id_contenuto ? clpRevisionCount[t.id_contenuto] : undefined} isProgrammato={col.stato === 'Programmato'} canEditProgrammazione={canEditProgrammazione} onRiprogramma={() => t.id_contenuto && setRiprogrammaConfirm({ taskId: t.id, contenutoId: t.id_contenuto, desc: t.descrizione.slice(0, 50) })} onEditPubDate={(d, o) => t.id_contenuto && handleEditPubDate(t.id_contenuto, d, o)} />)}
+                    {ct.length === 0 && <div className="flex items-center justify-center h-12 text-xs rounded-lg" style={{ color: 'hsl(var(--muted-foreground))', border: `1px dashed ${col.border}40` }}>Nessun task</div>}
                   </div>
                 </div>
               );
@@ -985,123 +353,39 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
         </div>
       )}
 
-      {/* Confirm dialog riprogramma */}
+      {/* Conferma riprogramma */}
       {riprogrammaConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => setRiprogrammaConfirm(null)}>
-          <div className="rounded-xl border shadow-xl p-5 max-w-sm w-full mx-4" style={{ background: 'hsl(var(--background))', borderColor: 'hsl(var(--border))' }} onClick={e => e.stopPropagation()}>
-            <p className="text-sm font-semibold mb-2" style={{ color: 'hsl(var(--foreground))' }}>
-              🔄 Riprogramma CLP
-            </p>
-            <p className="text-xs mb-4" style={{ color: 'hsl(var(--muted-foreground))' }}>
-              Vuoi riprogrammare "{riprogrammaConfirm.desc}"? Tornerà in revisione.
-            </p>
+          <div className="rounded-xl border shadow-xl p-5 max-w-sm w-full mx-4" style={{ background: 'hsl(var(--background))' }} onClick={e => e.stopPropagation()}>
+            <p className="text-sm font-semibold mb-2">🔄 Riprogramma CLP</p>
+            <p className="text-xs mb-4" style={{ color: 'hsl(var(--muted-foreground))' }}>Vuoi riprogrammare "{riprogrammaConfirm.desc}"?</p>
             <div className="flex gap-2">
-              <button
-                className="flex-1 text-xs px-3 py-2 rounded-lg font-semibold"
-                style={{ background: 'hsl(38 92% 50%)', color: 'white' }}
-                onClick={() => handleRiprogrammaCLP(riprogrammaConfirm.contenutoId)}
-              >
-                Conferma
-              </button>
-              <button
-                className="text-xs px-3 py-2 rounded-lg font-semibold"
-                style={{ background: 'hsl(var(--muted))', color: 'hsl(var(--muted-foreground))' }}
-                onClick={() => setRiprogrammaConfirm(null)}
-              >
-                Annulla
-              </button>
+              <button className="flex-1 text-xs px-3 py-2 rounded-lg font-semibold" style={{ background: 'hsl(38 92% 50%)', color: 'white' }} onClick={() => handleRiprogramma(riprogrammaConfirm.contenutoId)}>Conferma</button>
+              <button className="text-xs px-3 py-2 rounded-lg font-semibold" style={{ background: 'hsl(var(--muted))' }} onClick={() => setRiprogrammaConfirm(null)}>Annulla</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Board standard */}
-      {showStandard && (
+      {/* BOARD STANDARD */}
+      {showStd && (
         <div>
-          {boardMode === 'both' && (
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(var(--muted-foreground))' }}>
-                📋 Task generali
-              </span>
-              <div className="flex-1 h-px" style={{ background: 'hsl(var(--border))' }} />
-            </div>
-          )}
-
-          {/* Mobile: column tabs */}
-          {isMobile && (
-            <div className="flex gap-1 overflow-x-auto pb-2 mb-2 -mx-1 px-1" style={{ WebkitOverflowScrolling: 'touch' }}>
-              {COLONNE.map(col => {
-                const count = filteredStandard(col.stato).length;
-                return (
-                  <button
-                    key={col.stato}
-                    onClick={() => setMobileCol(col.stato)}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex-shrink-0 transition-all min-h-[36px]"
-                    style={{
-                      background: mobileCol === col.stato ? col.colore : `${col.colore}15`,
-                      color: mobileCol === col.stato ? '#fff' : col.colore,
-                      border: `1px solid ${col.colore}${mobileCol === col.stato ? '' : '40'}`,
-                    }}
-                  >
-                    {col.icona} {col.stato} <span className="opacity-70">({count})</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
+          {boardMode === 'both' && <div className="flex items-center gap-2 mb-2"><span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(var(--muted-foreground))' }}>📋 Task generali</span><div className="flex-1 h-px" style={{ background: 'hsl(var(--border))' }} /></div>}
+          {isMobile && <div className="flex gap-1 overflow-x-auto pb-2 mb-2">{COLONNE.map(col => <button key={col.stato} onClick={() => setMobileCol(col.stato)} className="px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex-shrink-0" style={{ background: mobileCol === col.stato ? col.colore : `${col.colore}15`, color: mobileCol === col.stato ? '#fff' : col.colore }}>{col.icona} {col.stato} ({filteredStandard(col.stato).length})</button>)}</div>}
           <div className={isMobile ? '' : 'flex gap-4 overflow-x-auto pb-4'}>
             {COLONNE.filter(col => !isMobile || col.stato === mobileCol).map(col => {
-              const colTasks = filteredStandard(col.stato);
+              const ct = filteredStandard(col.stato);
               return (
-                <div
-                  key={col.stato}
-                  className={`kanban-col ${dropTarget === col.stato ? 'kanban-drop-target' : ''}`}
+                <div key={col.stato} className={`kanban-col ${dropTarget === col.stato ? 'kanban-drop-target' : ''}`}
                   style={{ background: col.bg, border: `1px solid ${col.border}30`, minWidth: isMobile ? '100%' : undefined }}
-                  onDragOver={e => { e.preventDefault(); setDropTarget(col.stato); }}
-                  onDragLeave={() => { setDropTarget(null); setDragOverTaskId(null); setDragOverPos(null); }}
-                  onDrop={() => {
-                    if (dragOverTaskId && colTasks.some(t => t.id === dragOverTaskId)) {
-                      handleDropOnTask(dragOverTaskId, colTasks);
-                    } else {
-                      handleDropStandard(col.stato);
-                    }
-                  }}
-                >
+                  onDragOver={e => { e.preventDefault(); setDropTarget(col.stato); }} onDragLeave={() => setDropTarget(null)} onDrop={() => handleDropStandard(col.stato)}>
                   <div className="kanban-col-header" style={{ borderBottom: `2px solid ${col.border}40` }}>
-                    <div className="flex items-center gap-2">
-                      <span>{col.icona}</span>
-                      <span style={{ color: col.colore }}>{col.stato}</span>
-                    </div>
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-full"
-                      style={{ background: `${col.colore}20`, color: col.colore }}>
-                      {colTasks.length}
-                    </span>
+                    <div className="flex items-center gap-2"><span>{col.icona}</span><span style={{ color: col.colore }}>{col.stato}</span></div>
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: `${col.colore}20`, color: col.colore }}>{ct.length}</span>
                   </div>
                   <div className="kanban-col-body">
-                    {colTasks.map(task => (
-                      <TaskCard
-                        key={task.id}
-                        task={task}
-                        team={team}
-                        utente={utente}
-                        isNew={newTaskIds.has(task.id)}
-                        draggingId={dragItem}
-                        onDragStart={() => setDragItem(task.id)}
-                        onDragEnd={() => { setDragItem(null); setDragOverTaskId(null); setDragOverPos(null); }}
-                        onClick={() => setSelectedTask(task)}
-                        showFaseBadge={true}
-                        revisionCount={task.id_contenuto ? clpRevisionCount[task.id_contenuto] : undefined}
-                        onDragOverTask={(e) => handleDragOverTask(e, task.id)}
-                        dropIndicator={dragOverTaskId === task.id ? dragOverPos : null}
-                      />
-                    ))}
-                    {colTasks.length === 0 && (
-                      <div className="flex items-center justify-center h-16 text-xs rounded-lg"
-                        style={{ color: 'hsl(var(--skorpio-text-tertiary))', border: `1px dashed ${col.border}40` }}>
-                        Nessun task
-                      </div>
-                    )}
+                    {ct.map(t => <TaskCard key={t.id} task={t} team={team} utente={utente} draggingId={dragItem} onDragStart={() => setDragItem(t.id)} onDragEnd={() => setDragItem(null)} onClick={() => setSelectedTask(t)} showFaseBadge={true} revisionCount={t.id_contenuto ? clpRevisionCount[t.id_contenuto] : undefined} />)}
+                    {ct.length === 0 && <div className="flex items-center justify-center h-16 text-xs rounded-lg" style={{ color: 'hsl(var(--skorpio-text-tertiary))', border: `1px dashed ${col.border}40` }}>Nessun task</div>}
                   </div>
                 </div>
               );
@@ -1110,48 +394,10 @@ export function KanbanTab({ team, clienti, personaView }: KanbanTabProps) {
         </div>
       )}
 
-      {/* Mobile FAB */}
-      {isMobile && (
-        <button
-          onClick={() => setShowNuovoTask(true)}
-          className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-2xl text-white"
-          style={{ background: 'hsl(var(--primary))' }}
-        >
-          +
-        </button>
-      )}
+      {isMobile && <button onClick={() => setShowNuovoTask(true)} className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-2xl text-white" style={{ background: 'hsl(var(--primary))' }}>+</button>}
 
-      {/* Detail Panel */}
-      {selectedTask && (
-        <TaskDetailPanel
-          task={selectedTask}
-          team={team}
-          onClose={() => setSelectedTask(null)}
-          onUpdate={(updated) => {
-            isMyAction.current = true;
-            setTasks(prev => prev.map(t => t.id === updated.id ? updated : t));
-            setSelectedTask(updated);
-          }}
-          onDelete={(id) => {
-            setTasks(prev => prev.filter(t => t.id !== id));
-            setSelectedTask(null);
-          }}
-        />
-      )}
-
-      {showNuovoTask && (
-        <NuovoTaskModal
-          team={team}
-          clienti={clienti}
-          utente={utente}
-          onClose={() => setShowNuovoTask(false)}
-          onCreated={(task) => {
-            isMyAction.current = true;
-            setTasks(prev => [task, ...prev]);
-            addToast(`✅ Task ${task.id_display} creato`, 'success');
-          }}
-        />
-      )}
+      {selectedTask && <TaskDetailPanel task={selectedTask} team={team} onClose={() => setSelectedTask(null)} onUpdate={async (_updated: Task) => { await loadTasks(); }} onDelete={async (_id: string) => { setSelectedTask(null); await loadTasks(); }} />}
+      {showNuovoTask && <NuovoTaskModal team={team} clienti={clienti} utente={utente} onClose={() => setShowNuovoTask(false)} onCreated={async (t) => { addToast(`✅ Task ${t.id_display} creato`, 'success'); setShowNuovoTask(false); await loadTasks(); }} />}
     </div>
   );
 }
