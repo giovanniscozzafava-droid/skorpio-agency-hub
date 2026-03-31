@@ -177,13 +177,11 @@ export function KanbanTab({ team, clienti, personaView }: { team: TeamMember[]; 
   const [mobileCol, setMobileCol] = useState('Da fare');
   const [mobileCLPCol, setMobileCLPCol] = useState('Girato');
   const [riprogrammaConfirm, setRiprogrammaConfirm] = useState<{ taskId: string; contenutoId: string; desc: string } | null>(null);
-  const busy = useRef(false);
+  const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const canEditProgrammazione = utente?.nome === 'Elisa' || utente?.nome === 'Giovanni' || utente?.ruolo === 'Admin';
 
   // ── L'UNICA FUNZIONE CHE LEGGE DAL DB ────────────────────────────────────
   const loadTasks = useCallback(async () => {
-    if (busy.current) return;
-    busy.current = true;
     try {
       const [{ data: td }, { data: cd }] = await Promise.all([
         supabase.from('task').select('*').neq('stato', 'Archiviato').order('created_at', { ascending: false }),
@@ -195,18 +193,23 @@ export function KanbanTab({ team, clienti, personaView }: { team: TeamMember[]; 
       setClpRevisionCount(Object.fromEntries((cd || []).map(c => [c.id, c.revision_count || 0])));
     } catch (e) { console.error('[Kanban] loadTasks:', e); }
     setLoading(false);
-    busy.current = false;
   }, []);
 
-  // ── REALTIME: qualsiasi cambiamento → ricarica tutto ─────────────────────
+  // Debounced reload per realtime (evita 10 reload in 1 secondo)
+  const debouncedReload = useCallback(() => {
+    if (reloadTimer.current) clearTimeout(reloadTimer.current);
+    reloadTimer.current = setTimeout(() => loadTasks(), 500);
+  }, [loadTasks]);
+
+  // ── REALTIME: qualsiasi cambiamento → ricarica (debounced) ───────────────
   useEffect(() => {
     loadTasks();
     const ch = supabase.channel('kanban-v3')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'task' }, () => loadTasks())
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'contenuti' }, () => loadTasks())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'task' }, () => debouncedReload())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'contenuti' }, () => debouncedReload())
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [loadTasks]);
+    return () => { supabase.removeChannel(ch); if (reloadTimer.current) clearTimeout(reloadTimer.current); };
+  }, [loadTasks, debouncedReload]);
 
   // ── FILTRI ───────────────────────────────────────────────────────────────
   const matchSearch = (t: Task) => !searchQuery.trim() || (t.descrizione + t.cliente_nome + t.id_display + t.id_contenuto + t.assegnato_a + t.tipo).toLowerCase().includes(searchQuery.toLowerCase());
@@ -264,6 +267,8 @@ export function KanbanTab({ team, clienti, personaView }: { team: TeamMember[]; 
       if (nf) { sounds.taskCompletato(); addToast(`✅ ${task.tipo} → ${nf}`, 'success'); }
     } catch (e: any) { sounds.errore(); addToast('❌ ' + (e?.message || 'Errore'), 'error'); }
     await loadTasks();
+    // Backup reload — in caso il primo arrivi prima che il DB abbia committato
+    setTimeout(() => loadTasks(), 1000);
   };
 
   const handleRiprogramma = async (contenutoId: string) => {
