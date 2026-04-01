@@ -2,8 +2,7 @@
  * CLP Workflow utilities — condivisi tra CLPDetailPanel e TaskDetailPanel
  */
 import { supabase } from './supabase';
-import { toDateStr, addDays } from './dateUtils';
-import type { Contenuto, FaseCLP, TeamMember } from '../types';
+import { toDateStr, addDays } from './dateUtils';pre-montato';
 import { FASE_TO_TASK_TIPO, FASE_TIPO_MAP, FASE_ORDER as FASE_ORDER_CONFIG, TEAM_ASSIGNMENTS, LEAD_TIMES_BY_TIPO } from '../config/faseConfig';
 
 // ── Default lead times (giorni lavorativi prima della pubblicazione) ──────────
@@ -272,8 +271,9 @@ export async function creaTaskPremontaggio(contenuto: Contenuto, team: TeamMembe
 }
 
 /**
- * Revisione: Elisa richiede modifiche → CLP torna a "Pre montato", nuovo task per Alessandro
- * Usa stored procedure dedicata — 1 sola chiamata DB
+/**
+ * Revisione: Elisa richiede modifiche → CLP torna a "Montato", nuovo task Upload esportato per Alessandro
+ * Usa FaseService centralizzato
  */
 export async function richiestaModifiche(
   contenuto: Contenuto,
@@ -281,14 +281,29 @@ export async function richiestaModifiche(
   noteRevisione: string,
   userId?: string
 ): Promise<any> {
-  const { data, error } = await supabase.rpc('richiesta_modifiche', {
-    p_contenuto_id: contenuto.id,
-    p_note_revisione: noteRevisione,
-    p_user_id: userId || 'revisione',
+  // Completa il task di revisione corrente
+  await completaTaskPerContenuto(contenuto.id, 'Revisione montaggio');
+  // Cambio fase via SP — gestisce tutto (fase + task nuovo + log)
+  // Uploadato → Montato (non Pre montato): il montatore deve ri-esportare e ri-caricare
+  const { cambiaFaseCLP: cambiaFaseRM } = await import('../services/faseService');
+  const result = await cambiaFaseRM({
+    contenutoId: contenuto.id,
+    nuovaFase: 'Montato',
+    source: 'workflow',
+    userId: userId || 'revisione',
+    oldFase: contenuto.fase,
   });
-  if (error) throw new Error(error.message);
-  if (!data?.success) throw new Error(data?.error || 'Errore sconosciuto');
-  return { ok: true };
+  if (!result.success) {
+    throw new Error('Cambio fase fallito: ' + result.errors.join(', '));
+  }
+  // Scrivi note revisione solo se la fase è cambiata
+  await supabase.from('contenuti').update({
+    note_revisione: noteRevisione,
+    revision_count: (contenuto as any).revision_count ? (contenuto as any).revision_count + 1 : 1,
+  }).eq('id', contenuto.id);
+  // Task Upload esportato creato dalla SP (step 6) — non serve creaTaskWorkflow
+  return { ok: true, taskCreated: result.taskCreated };
+}
 }
 
 /**
