@@ -35,7 +35,7 @@ export const FASE_TRANSITIONS: Record<string, string[]> = {
   'Girato':       ['Pre montato', 'Scartata'],
   'Pre montato':  ['Montato', 'Scartata'],
   'Montato':      ['Uploadato', 'Pre montato', 'Scartata'], // Pre montato = richiesta modifiche
-  'Uploadato':    ['Revisionato', 'Pre montato', 'Scartata'], // Pre montato = richiesta modifiche
+  'Uploadato':    ['Revisionato', 'Montato', 'Scartata'], // Pre montato = richiesta modifiche
   'Revisionato':  ['Programmato', 'Pre montato', 'Scartata'], // Pre montato = richiesta modifiche
   'Programmato':  ['Pubblicato', 'Revisionato', 'Pre montato', 'Scartata'], // può tornare indietro
   'Pubblicato':   ['Scartata'],
