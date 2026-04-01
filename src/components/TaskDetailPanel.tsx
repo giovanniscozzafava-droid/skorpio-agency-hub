@@ -274,10 +274,10 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
     setSavingRevisione(true);
     try {
       await richiestaModifiche(contenutoRevisione, team, noteModifiche.trim());
-      setClpFase('Pre montato');
+      setClpFase('Montato');
       setTaskCompletato(true);
       sounds.salva();
-      addToast('🔄 Richiesta modifiche inviata → task Montaggio creato per Alessandro', 'success');
+      addToast('🔄 Richiesta modifiche inviata → task Upload esportato creato per Alessandro', 'success');
       const { data } = await supabase.from('task').select('*').eq('id', task.id).single();
       if (data) onUpdate(data as Task);
       setShowModificheForm(false);
