@@ -304,7 +304,6 @@ export async function richiestaModifiche(
   // Task Upload esportato creato dalla SP (step 6) — non serve creaTaskWorkflow
   return { ok: true, taskCreated: result.taskCreated };
 }
-}
 
 /**
  * Revisione: Elisa approva → CLP passa a Revisionato, crea task Programmazione
