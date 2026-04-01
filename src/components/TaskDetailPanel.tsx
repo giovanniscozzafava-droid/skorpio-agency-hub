@@ -1312,7 +1312,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
 
                 <p className="text-[10px] text-muted-foreground mt-1">
                   ✅ Approvato → CLP avanza a Revisionato + task Programmazione per Elisa<br />
-                  🔄 Modifiche → CLP torna a Pre montato + task Montaggio per Alessandro
+                  🔄 Modifiche → CLP torna a Montato + task Upload esportato per Alessandro
                 </p>
               </div>
             </div>
