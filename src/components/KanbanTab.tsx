@@ -214,6 +214,17 @@ export function KanbanTab({ team, clienti, personaView }: { team: TeamMember[]; 
   // ── FILTRI ───────────────────────────────────────────────────────────────
   const matchSearch = (t: Task) => !searchQuery.trim() || (t.descrizione + t.cliente_nome + t.id_display + t.id_contenuto + t.assegnato_a + t.tipo).toLowerCase().includes(searchQuery.toLowerCase());
 
+  const PRIO_ORDER = { '🔴 Alta': 0, '🟡 Media': 1, '🟢 Bassa': 2 };
+  const sortByUrgenza = (a, b) => {
+    const now = Date.now();
+    const msA = a.scadenza ? getTargetDate(a.scadenza, a.ora).getTime() : Infinity;
+    const msB = b.scadenza ? getTargetDate(b.scadenza, b.ora).getTime() : Infinity;
+    const scadutoA = msA < now ? -1 : 0;
+    const scadutoB = msB < now ? -1 : 0;
+    if (scadutoA !== scadutoB) return scadutoA - scadutoB;
+    if (msA !== msB) return msA - msB;
+    return (PRIO_ORDER[a.priorita] ?? 1) - (PRIO_ORDER[b.priorita] ?? 1);
+  };
   const filteredStandard = (stato: string) => tasks.filter(t => {
     if (t.stato !== stato || (t.id_contenuto && t.id_contenuto.trim())) return false;
     if (personaView && t.assegnato_a !== personaView) return false;
@@ -222,7 +233,7 @@ export function KanbanTab({ team, clienti, personaView }: { team: TeamMember[]; 
     if (filtraOggi && t.scadenza) { const ms = getTargetDate(t.scadenza, t.ora).getTime(); if (ms > Date.now() + 86400000 || ms < Date.now() - 86400000) return false; }
     else if (filtraOggi) return false;
     return true;
-  }).sort((a, b) => (a.posizione ?? 0) - (b.posizione ?? 0));
+ }).sort(sortByUrgenza);
 
   const filteredCLP = (faseCLP: string) => {
     const tipoCol = TIPO_PER_FASE[faseCLP];
