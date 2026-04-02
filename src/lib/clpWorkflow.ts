@@ -1,786 +1,430 @@
 /**
- * CLP Workflow utilities — condivisi tra CLPDetailPanel e TaskDetailPanel
+ * KanbanTab — RISCRITTO DA ZERO
+ * Principio: DB è l'unica fonte di verità.
+ * Ogni azione → scrivi sul DB → loadTasks() → render.
+ * Realtime → loadTasks(). Fine.
  */
-import { supabase } from './supabase';
-import { toDateStr, addDays } from './dateUtils';
-import { FASE_TO_TASK_TIPO, FASE_TIPO_MAP, FASE_ORDER as FASE_ORDER_CONFIG, TEAM_ASSIGNMENTS, LEAD_TIMES_BY_TIPO } from '../config/faseConfig';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { supabase } from '../lib/supabase';
+import { useApp } from '../context/AppContext';
+import { sounds } from '../lib/sounds';
+import type { Task, TeamMember, Cliente } from '../types';
+import { Avatar } from './Avatar';
+import { ClienteLogo } from './ClienteLogo';
+import { TaskDetailPanel } from './TaskDetailPanel';
+import { NuovoTaskModal } from './NuovoTaskModal';
+import { parseLocalDate } from '../lib/dateUtils';
+import { completaTaskEAvanzaFase, ricalcolaScadenzeTask } from '../lib/clpWorkflow';
+import { FASE_TIPO_MAP } from '../config/faseConfig';
 
-// ── Default lead times (giorni lavorativi prima della pubblicazione) ──────────
-// Retrocompatibilità: mappa piatta usata come fallback
-export const DEFAULT_LEAD_TIMES: Record<string, number> = {
-  'Scrittura script': 7,
-  'Premontaggio': 5,
-  'Montaggio': 3,
-  'Upload esportato': 2,
-  'Revisione montaggio': 2,
-  'Programmazione': 1,
-  'Pubblicazione': 0,
+const COLONNE = [
+  { stato: 'Da fare',        colore: '#F59E0B', bg: '#FFFBEB', border: '#F59E0B', icona: '📋' },
+  { stato: 'In lavorazione', colore: '#3B82F6', bg: '#EFF6FF', border: '#3B82F6', icona: '⚡' },
+  { stato: 'In revisione',   colore: '#8B5CF6', bg: '#F5F3FF', border: '#8B5CF6', icona: '🔍' },
+  { stato: 'Completato',     colore: '#22C55E', bg: '#F0FDF4', border: '#22C55E', icona: '✅' },
+  { stato: 'Non accettato',  colore: '#EF4444', bg: '#FEF2F2', border: '#EF4444', icona: '❌' },
+] as const;
+
+const COLONNE_CLP = [
+  { stato: 'Girato',      tipo: 'Premontaggio',        colore: '#8B5CF6', bg: 'hsl(270 60% 97%)', border: '#8B5CF6', icona: '🎬', label: 'Girato' },
+  { stato: 'Pre montato', tipo: 'Montaggio',            colore: '#3B82F6', bg: 'hsl(214 80% 97%)', border: '#3B82F6', icona: '✂️', label: 'Pre montato' },
+  { stato: 'Montato',     tipo: 'Upload esportato',     colore: '#F59E0B', bg: 'hsl(38 92% 97%)',  border: '#F59E0B', icona: '📤', label: 'Montato' },
+  { stato: 'Uploadato',   tipo: 'Revisione montaggio',  colore: '#EC4899', bg: 'hsl(328 80% 97%)', border: '#EC4899', icona: '🔍', label: 'Uploadato' },
+  { stato: 'Revisionato', tipo: 'Programmazione',       colore: '#7C3AED', bg: 'hsl(263 70% 97%)', border: '#7C3AED', icona: '📅', label: 'Revisionato' },
+  { stato: 'Programmato', tipo: '',                     colore: '#6D28D9', bg: 'hsl(263 60% 97%)', border: '#6D28D9', icona: '📡', label: 'Programmato' },
+  { stato: 'Pubblicato',  tipo: '',                     colore: '#22C55E', bg: 'hsl(142 76% 97%)', border: '#22C55E', icona: '✅', label: 'Pubblicato' },
+] as const;
+
+const PRIORITA_COLOR: Record<string, string> = { '🔴 Alta': '#EF4444', '🟡 Media': '#F59E0B', '🟢 Bassa': '#22C55E' };
+
+const TIPO_TO_FASE: Record<string, { label: string; bg: string; color: string; border: string }> = {
+  'Premontaggio':        { label: '🎬 Girato',     bg: 'hsl(270 60% 55%/0.1)', color: 'hsl(270 50% 45%)', border: 'hsl(270 60% 55%/0.3)' },
+  'Montaggio':           { label: '✂️ Pre montato', bg: 'hsl(214 80% 55%/0.1)', color: 'hsl(214 70% 44%)', border: 'hsl(214 80% 55%/0.28)' },
+  'Upload esportato':    { label: '📤 Montato',     bg: 'hsl(38 92% 55%/0.1)',  color: 'hsl(38 80% 35%)',  border: 'hsl(38 92% 55%/0.28)' },
+  'Revisione montaggio': { label: '🔍 Uploadato',   bg: 'hsl(328 80% 55%/0.1)', color: 'hsl(328 65% 40%)', border: 'hsl(328 80% 55%/0.28)' },
+  'Programmazione':      { label: '📅 Revisionato', bg: 'hsl(263 70% 55%/0.1)', color: 'hsl(263 55% 40%)', border: 'hsl(263 70% 55%/0.28)' },
 };
 
-export function getLeadTimes(tipoContenuto?: string): Record<string, number> {
-  // Usa LEAD_TIMES_BY_TIPO se disponibile per il tipo contenuto
-  if (tipoContenuto) {
-    const perTipo = LEAD_TIMES_BY_TIPO[tipoContenuto] || LEAD_TIMES_BY_TIPO['default'];
-    if (perTipo) return { ...DEFAULT_LEAD_TIMES, ...perTipo };
-  }
-  try {
-    const stored = localStorage.getItem('skorpio_lead_times');
-    if (stored) return { ...DEFAULT_LEAD_TIMES, ...JSON.parse(stored) };
-  } catch { /* fallback */ }
-  return { ...DEFAULT_LEAD_TIMES };
-}
-
-export function saveLeadTimes(times: Record<string, number>) {
-  localStorage.setItem('skorpio_lead_times', JSON.stringify(times));
-}
-
-/** Calcola la deadline a ritroso dalla data di pubblicazione */
-export function calcolaDeadlineARitroso(dataPubblicazione: string | null, tipoTask: string, tipoContenuto?: string): string | null {
-  if (!dataPubblicazione) return null;
-  const leadTimes = getLeadTimes(tipoContenuto);
-  const giorni = leadTimes[tipoTask];
-  if (giorni === undefined || giorni === 0) return dataPubblicazione;
-  // Sottrai N giorni
-  const pubDate = new Date(dataPubblicazione + 'T00:00:00');
-  const deadline = addDays(pubDate, -giorni);
-  return toDateStr(deadline);
-}
-
-/**
- * Ricalcola le scadenze di tutti i task aperti collegati a un CLP
- * in base alla nuova data di pubblicazione e ai lead times.
- */
-export async function ricalcolaScadenzeTask(contenutoId: string, dataPubblicazione: string, oraPubblicazione: string | null, tipoContenuto?: string): Promise<number> {
-  const leadTimes = getLeadTimes(tipoContenuto);
-
-  const { data: openTasks } = await supabase
-    .from('task')
-    .select('id, tipo')
-    .eq('id_contenuto', contenutoId)
-    .neq('stato', 'Completato')
-    .neq('stato', 'Archiviato');
-
-  if (!openTasks || openTasks.length === 0) return 0;
-
-  let updated = 0;
-  for (const task of openTasks) {
-    const giorni = leadTimes[task.tipo];
-    if (giorni === undefined) continue;
-
-    const deadline = giorni === 0
-      ? dataPubblicazione
-      : toDateStr(addDays(new Date(dataPubblicazione + 'T00:00:00'), -giorni));
-
-    const ora = giorni === 0 ? oraPubblicazione : null;
-
-    await supabase
-      .from('task')
-      .update({ scadenza: deadline, ora: ora || null })
-      .eq('id', task.id);
-    updated++;
-  }
-
-  return updated;
-}
-
-// ── Workflow step definitions ────────────────────────────────────────────────
-export interface WorkflowStep {
-  faseCurrent: FaseCLP;
-  faseNext: FaseCLP;
-  tipoNext: string;
-  assegnatoKeyword: string;
-  emojiNext: string;
-  descrizioneNext: (c: Contenuto) => string;
-}
-
-// [UNIFIED - old] assegnatoKeyword era hardcoded — ora usa TEAM_ASSIGNMENTS da faseConfig.ts
-export const WORKFLOW_MAP: Record<string, WorkflowStep> = {
-  'Scrittura script': {
-    faseCurrent: 'Idea',
-    faseNext: 'Script',
-    tipoNext: 'Premontaggio',
-    assegnatoKeyword: TEAM_ASSIGNMENTS['Premontaggio'],
-    emojiNext: '🎬',
-    descrizioneNext: c => `🎬 Pre montaggio ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
-  },
-  'Premontaggio': {
-    faseCurrent: 'Girato',
-    faseNext: 'Pre montato',
-    tipoNext: 'Montaggio',
-    assegnatoKeyword: TEAM_ASSIGNMENTS['Montaggio'],
-    emojiNext: '✂️',
-    descrizioneNext: c => `✂️ Montaggio ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
-  },
-  'Montaggio': {
-    faseCurrent: 'Pre montato',
-    faseNext: 'Montato',
-    tipoNext: 'Upload esportato',
-    assegnatoKeyword: TEAM_ASSIGNMENTS['Upload esportato'],
-    emojiNext: '📤',
-    descrizioneNext: c => `📤 Upload esportato ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
-  },
-  'Upload esportato': {
-    faseCurrent: 'Montato',
-    faseNext: 'Uploadato',
-    tipoNext: 'Revisione montaggio',
-    assegnatoKeyword: TEAM_ASSIGNMENTS['Revisione montaggio'],
-    emojiNext: '👁️',
-    descrizioneNext: c => `👁️ Revisione ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
-  },
-  'Revisione montaggio': {
-    faseCurrent: 'Uploadato',
-    faseNext: 'Revisionato',
-    tipoNext: 'Programmazione',
-    assegnatoKeyword: TEAM_ASSIGNMENTS['Programmazione'],
-    emojiNext: '📅',
-    descrizioneNext: c => `📅 Programmazione ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
-  },
-  'Programmazione': {
-    faseCurrent: 'Revisionato',
-    faseNext: 'Programmato',
-    tipoNext: '',
-    assegnatoKeyword: TEAM_ASSIGNMENTS['Programmazione'],
-    emojiNext: '',
-    descrizioneNext: () => '',
-  },
-  // FEAT 7: task condizionale — si inserisce solo se supervisione_giovanni è attivo
-  'Supervisione': {
-    faseCurrent: 'Montato',
-    faseNext: 'Montato', // resta nella stessa fase, poi crea Upload
-    tipoNext: 'Upload esportato',
-    assegnatoKeyword: TEAM_ASSIGNMENTS['Upload esportato'],
-    emojiNext: '📤',
-    descrizioneNext: c => `📤 Upload esportato ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
-  },
+const FASE_NEXT: Record<string, string> = {
+  'Girato': 'Pre montato', 'Pre montato': 'Montato', 'Montato': 'Uploadato',
+  'Uploadato': 'Revisionato', 'Revisionato': 'Programmato', 'Programmato': 'Pubblicato',
 };
 
-// ── Workflow ordered steps for timeline display ──────────────────────────────
-// [UNIFIED - old] assegnato hardcoded — ora usa TEAM_ASSIGNMENTS
-export const WORKFLOW_STEPS_ORDER = [
-  { fase: 'Script', tipo: 'Scrittura script', label: 'Scrittura script', emoji: '📝', assegnato: TEAM_ASSIGNMENTS['Scrittura script'] },
-  { fase: 'Girato', tipo: 'Premontaggio', label: 'Pre montaggio', emoji: '🎬', assegnato: TEAM_ASSIGNMENTS['Premontaggio'] },
-  { fase: 'Pre montato', tipo: 'Montaggio', label: 'Montaggio', emoji: '✂️', assegnato: TEAM_ASSIGNMENTS['Montaggio'] },
-  { fase: 'Montato', tipo: 'Upload esportato', label: 'Upload esportato', emoji: '📤', assegnato: TEAM_ASSIGNMENTS['Upload esportato'] },
-  { fase: 'Uploadato', tipo: 'Revisione montaggio', label: 'Revisione', emoji: '👁️', assegnato: TEAM_ASSIGNMENTS['Revisione montaggio'] },
-  { fase: 'Revisionato', tipo: 'Programmazione', label: 'Programmazione', emoji: '📅', assegnato: TEAM_ASSIGNMENTS['Programmazione'] },
-  { fase: 'Programmato', tipo: '', label: 'Pubblicazione', emoji: '📤', assegnato: TEAM_ASSIGNMENTS['Programmazione'] },
-  { fase: 'Pubblicato', tipo: 'Cleanup', label: 'Pubblicato', emoji: '✅', assegnato: TEAM_ASSIGNMENTS['Cleanup'] },
-];
+const TIPO_PER_FASE = FASE_TIPO_MAP;
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-export function findMembro(team: TeamMember[], cerca: string): string {
-  const m = team.find(t => t.nome.toLowerCase().includes(cerca.toLowerCase()));
-  return m?.nome ?? cerca;
+function getTargetDate(scadenza: string, ora: string | null): Date {
+  return new Date(`${scadenza}T${ora ? ora.slice(0, 5) : '23:59'}:00`);
 }
 
-async function clpHasExportedFile(contenutoId: string): Promise<boolean> {
-  const { data } = await supabase
-    .from('log_riprese')
-    .select('id')
-    .eq('contenuto_id', contenutoId)
-    .not('exported_file_id', 'is', null)
-    .limit(1);
-
-  return !!data?.length;
-}
-
-export async function completaTaskPerContenuto(contenutoId: string, tipo: string) {
-  const { data } = await supabase
-    .from('task')
-    .select('id')
-    .eq('id_contenuto', contenutoId)
-    .eq('tipo', tipo)
-    .neq('stato', 'Completato')
-    .neq('stato', 'Archiviato');
-
-  if (data && data.length > 0) {
-    await supabase
-      .from('task')
-      .update({ stato: 'Completato' })
-      .in('id', data.map(t => t.id));
-  }
-}
-
-export async function creaTaskWorkflow(
-  contenuto: Contenuto,
-  assegnatoA: string,
-  tipo: string,
-  descrizione: string,
-  stato: string = 'Da fare',
-  scadenza?: string | null,
-  ora?: string | null
-) {
-  // Anti-duplicato
-  const { data: existing } = await supabase
-    .from('task')
-    .select('id')
-    .eq('id_contenuto', contenuto.id)
-    .eq('tipo', tipo)
-    .neq('stato', 'Completato')
-    .neq('stato', 'Archiviato');
-
-  if (existing && existing.length > 0) return null;
-
-  // Check if user manually deleted this task type before — respect that
-  // (We skip this check for simplicity; the anti-duplicate check suffices)
-
-  // Calcola deadline a ritroso se non già fornita (usa tipo contenuto per lead times differenziati)
-  const deadlineCalcolata = scadenza || calcolaDeadlineARitroso(contenuto.data_pubblicazione, tipo, contenuto.tipo);
-
-  const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
-
-  const { data, error } = await supabase
-    .from('task')
-    .insert({
-      id_display: idData ?? `TSK${Date.now()}`,
-      descrizione,
-      tipo,
-      stato,
-      assegnato_a: assegnatoA,
-      assegnato_da: '⚡ Sistema',
-      cliente_id: contenuto.cliente_id,
-      cliente_nome: contenuto.cliente_nome || '',
-      id_contenuto: contenuto.id,
-      priorita: deadlineCalcolata ? '🔴 Alta' : '🟡 Media',
-      scadenza: deadlineCalcolata ?? null,
-      ora: ora ?? null,
-    })
-    .select()
-    .single();
-
-  if (error) console.error('Errore creazione task workflow:', error);
-  return data;
-}
-
-/**
- * Crea task di Premontaggio per Luca quando vengono caricate clip su un CLP
- */
-export async function creaTaskPremontaggio(contenuto: Contenuto, team: TeamMember[], numClip: number): Promise<any> {
-  // [UNIFIED - old] const nomeLuca = findMembro(team, 'Luca');
-  const nomeLuca = findMembro(team, TEAM_ASSIGNMENTS['Premontaggio']);
-  return creaTaskWorkflow(
-    contenuto,
-    nomeLuca,
-    'Premontaggio',
-    `🎬 Pre montaggio ${contenuto.id_display} – ${contenuto.titolo}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}`,
-    'Da fare',
-    null,
-    null,
+function LiveClock({ scadenza, ora }: { scadenza: string; ora: string | null }) {
+  const [diff, setDiff] = useState(() => getTargetDate(scadenza, ora).getTime() - Date.now());
+  useEffect(() => { const id = setInterval(() => setDiff(getTargetDate(scadenza, ora).getTime() - Date.now()), 60000); return () => clearInterval(id); }, [scadenza, ora]);
+  const abs = Math.abs(diff);
+  const d = Math.floor(abs / 86400000), h = Math.floor((abs % 86400000) / 3600000), m = Math.floor((abs % 3600000) / 60000);
+  const isScaduto = diff <= 0;
+  const text = isScaduto ? (d > 0 ? `da ${d}g` : `da ${h}h`) : d > 7 ? `${d}gg` : d >= 1 ? `${d}g ${h}h` : h >= 1 ? `${h}h ${m}min` : `${m}min`;
+  const level = isScaduto ? 'scaduto' : d > 7 ? 'ok' : d >= 1 ? 'warn' : 'urgent';
+  const s = { ok: { bg: 'hsl(214 80% 55%/0.1)', c: 'hsl(214 70% 44%)', b: 'hsl(214 80% 55%/0.25)' }, warn: { bg: 'hsl(38 92% 50%/0.12)', c: 'hsl(32 95% 35%)', b: 'hsl(38 92% 50%/0.35)' }, urgent: { bg: 'hsl(0 80% 55%/0.12)', c: 'hsl(0 70% 42%)', b: 'hsl(0 80% 55%/0.4)' }, scaduto: { bg: 'hsl(0 80% 55%/0.14)', c: 'hsl(0 70% 38%)', b: 'hsl(0 80% 55%/0.5)' } }[level];
+  return (
+    <div className={`mt-2 flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-semibold${level === 'urgent' ? ' animate-pulse' : ''}`} style={{ background: s.bg, border: `1px solid ${s.b}`, color: s.c }}>
+      <span className="uppercase tracking-wide" style={{ fontSize: '0.65rem' }}>{isScaduto ? 'SCADUTO' : level === 'urgent' ? 'URGENTE' : level === 'warn' ? 'IN SCADENZA' : 'SCADE TRA'}</span>
+      <span className="font-mono tabular-nums" style={{ fontSize: '0.72rem' }}>{text}</span>
+    </div>
   );
 }
 
-/**
-/**
- * Revisione: Elisa richiede modifiche → CLP torna a "Montato", nuovo task Upload esportato per Alessandro
- * Usa FaseService centralizzato
- */
-export async function richiestaModifiche(
-  contenuto: Contenuto,
-  team: TeamMember[],
-  noteRevisione: string,
-  userId?: string
-): Promise<any> {
-  // Completa il task di revisione corrente
-  await completaTaskPerContenuto(contenuto.id, 'Revisione montaggio');
-  // Cambio fase via SP — gestisce tutto (fase + task nuovo + log)
-  // Uploadato → Montato (non Pre montato): il montatore deve ri-esportare e ri-caricare
-  const { cambiaFaseCLP: cambiaFaseRM } = await import('../services/faseService');
-  const result = await cambiaFaseRM({
-    contenutoId: contenuto.id,
-    nuovaFase: 'Montato',
-    source: 'workflow',
-    userId: userId || 'revisione',
-    oldFase: contenuto.fase,
-  });
-  if (!result.success) {
-    throw new Error('Cambio fase fallito: ' + result.errors.join(', '));
-  }
-  // Scrivi note revisione solo se la fase è cambiata
-  await supabase.from('contenuti').update({
-    note_revisione: noteRevisione,
-    revision_count: (contenuto as any).revision_count ? (contenuto as any).revision_count + 1 : 1,
-  }).eq('id', contenuto.id);
+// ── TaskCard ──────────────────────────────────────────────────────────────────
 
-  // Riassegna il task Upload esportato a chi ha fatto l'ultimo upload (non sempre Alessandro)
-  // Se Luca ha caricato l'ultimo file, il task torna a Luca
-  const { data: lastUploader } = await supabase
-    .from('task')
-    .select('assegnato_a')
-    .eq('id_contenuto', contenuto.id)
-    .eq('tipo', 'Upload esportato')
-    .eq('stato', 'Completato')
-    .order('updated_at', { ascending: false })
-    .limit(1);
+function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate, revisionCount, isProgrammato, canEditProgrammazione, onRiprogramma, onEditPubDate, clientLogoUrl }: {
+  task: Task; team: TeamMember[]; utente: TeamMember | null; draggingId: string | null;
+  onDragStart: () => void; onDragEnd: () => void; onClick: () => void;
+  showFaseBadge?: boolean; pubDate?: { data: string | null; ora: string | null } | null; revisionCount?: number;
+  isProgrammato?: boolean; canEditProgrammazione?: boolean; onRiprogramma?: () => void; onEditPubDate?: (d: string, o: string | null) => void;
+  clientLogoUrl?: string | null;
+}) {
+  const member = team.find(m => m.nome === task.assegnato_a);
+  const isAuto = task.assegnato_da?.includes('Sistema') || task.assegnato_da?.includes('⚡');
+  const [editPub, setEditPub] = useState(false);
+  const [eDate, setEDate] = useState(pubDate?.data || '');
+  const [eOra, setEOra] = useState(pubDate?.ora?.slice(0, 5) || '');
+  const [showMenu, setShowMenu] = useState(false);
 
-  if (lastUploader && lastUploader.length > 0) {
-    const realUploader = lastUploader[0].assegnato_a;
-    // Aggiorna il task appena creato dalla SP
-    const { data: newTask } = await supabase
-      .from('task')
-      .select('id, assegnato_a')
-      .eq('id_contenuto', contenuto.id)
-      .eq('tipo', 'Upload esportato')
-      .neq('stato', 'Completato')
-      .neq('stato', 'Archiviato')
-      .order('created_at', { ascending: false })
-      .limit(1);
+  const scadInfo = (() => {
+    if (!task.scadenza) return null;
+    const oggi = new Date(); oggi.setHours(0,0,0,0);
+    const scad = parseLocalDate(task.scadenza); scad.setHours(0,0,0,0);
+    const diff = Math.floor((scad.getTime() - oggi.getTime()) / 86400000);
+    if (diff < 0) return { label: '⚠ SCADUTO', color: '#EF4444', bg: '#FEF2F2' };
+    if (diff === 0) return { label: '⏰ OGGI', color: '#D97706', bg: '#FEF3C7' };
+    if (diff === 1) return { label: '⏰ DOMANI', color: '#D97706', bg: '#FEF3C7' };
+    return { label: `📅 ${scad.toLocaleDateString('it-IT', { day:'2-digit', month:'2-digit' })}`, color: '#64748B', bg: '#F1F5F9' };
+  })();
 
-    if (newTask && newTask.length > 0 && newTask[0].assegnato_a !== realUploader) {
-      await supabase.from('task').update({ assegnato_a: realUploader }).eq('id', newTask[0].id);
-      console.log(`[richiestaModifiche] Riassegnato Upload esportato a ${realUploader} (era ${newTask[0].assegnato_a})`);
-    }
-  }
+  return (
+    <div className={`task-card ${draggingId === task.id ? 'dragging' : ''}`} draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onClick={onClick}
+      style={{ borderLeft: `3px solid ${PRIORITA_COLOR[task.priorita] || '#64748B'}`, ...(scadInfo?.label.includes('SCADUTO') ? { borderColor: '#EF4444' } : {}) }}>
+      <div className="flex items-center gap-1.5 mb-1">
+        {isAuto && <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: 'hsl(38 92% 50%/0.15)', color: 'hsl(32 95% 40%)' }}>⚡ Auto</span>}
+        {(revisionCount ?? 0) >= 3 && <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A' }}>⚠️ {revisionCount} rev</span>}
+      </div>
+      <div className="flex items-start gap-2 mb-2">
+        <div className="w-2 h-2 rounded-full mt-1 flex-shrink-0" style={{ backgroundColor: PRIORITA_COLOR[task.priorita] || '#64748B' }} />
+        <p className="text-sm font-medium flex-1 leading-snug" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>{task.descrizione.length > 80 ? task.descrizione.slice(0, 80) + '…' : task.descrizione}</p>
+      </div>
+      <div className="flex items-center justify-between gap-1 mt-2">
+        <div className="flex items-center gap-1 min-w-0">
+          <span className="text-xs font-mono" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>{task.id_display}</span>
+          {showFaseBadge && task.tipo && (() => { const f = TIPO_TO_FASE[task.tipo]; return f ? <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ background: f.bg, color: f.color, border: `1px solid ${f.border}` }}>{f.label}</span> : null; })()}
+        </div>
+        {member && <Avatar nome={member.nome} colore={member.colore} size={20} avatarUrl={member.avatar_url} />}
+      </div>
+      {task.cliente_nome && <div className="flex items-center gap-1.5 mt-1 truncate"><ClienteLogo nome={task.cliente_nome} logoUrl={clientLogoUrl} size={16} /><span className="text-xs truncate" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>{task.cliente_nome.slice(0, 20)}</span></div>}
 
-  // Task Upload esportato creato dalla SP (step 6) — non serve creaTaskWorkflow
-  return { ok: true, taskCreated: result.taskCreated };
-}
+      {pubDate?.data ? (
+        <div className="mt-1.5">
+          <div className="flex items-center justify-between">
+            <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: '#7C3AED', opacity: 0.7 }}>📡 Pubblicazione</p>
+            {isProgrammato && canEditProgrammazione && <button onClick={e => { e.stopPropagation(); setEditPub(v => !v); setEDate(pubDate.data || ''); setEOra(pubDate.ora?.slice(0, 5) || ''); }} className="text-[10px] px-1 py-0.5 rounded" style={{ color: '#7C3AED' }}>✏️</button>}
+          </div>
+          {editPub && isProgrammato && canEditProgrammazione ? (
+            <div className="mt-1 space-y-1" onClick={e => e.stopPropagation()}>
+              <input type="date" className="w-full text-[11px] px-1.5 py-1 rounded border" style={{ borderColor: '#C4B5FD' }} value={eDate} onChange={e => setEDate(e.target.value)} />
+              <input type="time" className="w-full text-[11px] px-1.5 py-1 rounded border" style={{ borderColor: '#C4B5FD' }} value={eOra} onChange={e => setEOra(e.target.value)} />
+              <div className="flex gap-1">
+                <button className="flex-1 text-[10px] px-2 py-1 rounded font-semibold" style={{ background: '#7C3AED', color: 'white' }} onClick={() => { onEditPubDate?.(eDate, eOra || null); setEditPub(false); }}>Salva</button>
+                <button className="text-[10px] px-2 py-1 rounded" style={{ background: '#F1F5F9' }} onClick={() => setEditPub(false)}>✕</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {isProgrammato && pubDate.data && <p className="text-[11px] font-bold mt-0.5" style={{ color: '#6D28D9' }}>{new Date(pubDate.data + 'T00:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: '2-digit', month: '2-digit' })}{pubDate.ora && <span className="ml-1 font-mono">{pubDate.ora.slice(0, 5)}</span>}</p>}
+              <LiveClock scadenza={pubDate.data} ora={pubDate.ora} />
+            </>
+          )}
+        </div>
+      ) : task.scadenza ? <LiveClock scadenza={task.scadenza} ora={task.ora} /> : scadInfo ? (
+        <div className="inline-flex items-center text-xs px-1.5 py-0.5 rounded mt-1.5 font-medium" style={{ background: scadInfo.bg, color: scadInfo.color }}>{scadInfo.label}</div>
+      ) : null}
 
-/**
- * Revisione: Elisa approva → CLP passa a Revisionato, crea task Programmazione
- * La SP gestisce: cambio fase + completamento vecchio task + creazione Programmazione
- */
-export async function approvaRevisione(
-  contenuto: Contenuto,
-  team: TeamMember[],
-  userId?: string
-): Promise<any> {
-  // Completa il task di revisione
-  await completaTaskPerContenuto(contenuto.id, 'Revisione montaggio');
-
-  const { cambiaFaseCLP: cambiaFaseAR } = await import('../services/faseService');
-  const result = await cambiaFaseAR({
-    contenutoId: contenuto.id,
-    nuovaFase: 'Revisionato',
-    source: 'workflow',
-    userId: userId || 'revisione',
-    oldFase: contenuto.fase,
-  });
-
-  if (!result.success) {
-    throw new Error('Cambio fase fallito: ' + result.errors.join(', '));
-  }
-
-  // Task Programmazione creato dalla SP (step 6) — non serve creaTaskWorkflow
-  return { ok: true, taskCreated: result.taskCreated };
-}
-
-/**
- * Chiamato quando l'utente cambia la fase CLP direttamente dal TaskDetailPanel.
- * Completa SEMPRE il task corrente se la fase avanza in avanti, e crea il task
- * che "vive" nella nuova fase.
- */
-export async function avanzaFaseDaTask(
-  taskId: string,
-  taskTipo: string,
-  contenutoId: string,
-  nuovaFase: FaseCLP,
-  team: TeamMember[],
-  teamId?: string
-): Promise<{ completatoTask: boolean; taskCreato: boolean; driveTriggered: boolean }> {
-  const FASE_SEQ = ['Girato', 'Pre montato', 'Montato', 'Uploadato', 'Revisionato', 'Programmato', 'Pubblicato'];
-  const step = WORKFLOW_MAP[taskTipo];
-  const faseCurrent = step?.faseCurrent;
-  const currentIdx = faseCurrent ? FASE_SEQ.indexOf(faseCurrent) : -1;
-  const targetIdx = FASE_SEQ.indexOf(nuovaFase);
-  const isForward = targetIdx > currentIdx;
-
-  // BLOCCO: non si può andare a Uploadato o oltre senza un file esportato
-  // Bypass per task creati prima del 28/03/2026 (migrazione vecchia logica)
-  const BYPASS_DATE = '2026-03-28';
-  if (targetIdx >= FASE_SEQ.indexOf('Uploadato')) {
-    const { data: taskRow } = await supabase
-      .from('task')
-      .select('created_at')
-      .eq('id_contenuto', contenutoId)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    const isOldTask = taskRow?.created_at && taskRow.created_at < BYPASS_DATE;
-    if (!isOldTask) {
-      const hasFile = await clpHasExportedFile(contenutoId);
-      if (!hasFile) {
-        throw new Error('Non puoi avanzare a questa fase senza aver prima caricato il file esportato.');
-      }
-    }
-  }
-
-  // [OLD] await supabase.from('contenuti').update({ fase: nuovaFase }).eq('id', contenutoId);
-  const { cambiaFaseCLP: cambiaFaseAF } = await import('../services/faseService');
-  console.log('[Step2c] avanzaFaseDaTask via FaseService', { contenutoId, nuovaFase });
-  await cambiaFaseAF({ contenutoId, nuovaFase, source: 'kanban', userId: teamId || 'workflow', oldFase: faseCurrent });
-
-  // Se stiamo andando INDIETRO: archivia task di fasi successive e crea task per la nuova fase
-  if (!isForward) {
-    const FASE_TIPO: Record<string, { tipo: string; assegnato: string }> = {
-      'Girato':      { tipo: 'Premontaggio',       assegnato: 'Luca' },
-      'Pre montato': { tipo: 'Montaggio',           assegnato: 'Alessandro' },
-      'Montato':     { tipo: 'Upload esportato',    assegnato: 'Alessandro' },
-      'Uploadato':   { tipo: 'Revisione montaggio', assegnato: 'Elisa' },
-      'Revisionato': { tipo: 'Programmazione',      assegnato: 'Elisa' },
-    };
-
-    // Archivia task aperti di fasi > nuovaFase
-    for (let i = targetIdx + 1; i < FASE_SEQ.length; i++) {
-      const ft = FASE_TIPO[FASE_SEQ[i]];
-      if (!ft) continue;
-      await supabase.from('task')
-        .update({ stato: 'Archiviato' })
-        .eq('id_contenuto', contenutoId)
-        .eq('tipo', ft.tipo)
-        .neq('stato', 'Completato')
-        .neq('stato', 'Archiviato');
-    }
-    // Archivia anche il task corrente (quello da cui si sta facendo il cambio)
-    await supabase.from('task').update({ stato: 'Archiviato' }).eq('id', taskId);
-
-    // Crea task per la nuova fase se non esiste
-    const ft = FASE_TIPO[nuovaFase];
-    if (ft) {
-      const { data: existing } = await supabase.from('task').select('id')
-        .eq('id_contenuto', contenutoId).eq('tipo', ft.tipo)
-        .neq('stato', 'Completato').neq('stato', 'Archiviato');
-      if (!existing || existing.length === 0) {
-        const { data: contenuto } = await supabase.from('contenuti').select('id_display, titolo, cliente_id, cliente_nome').eq('id', contenutoId).single();
-        if (contenuto) {
-          const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
-          await supabase.from('task').insert({
-            id_display: idData || `TSK${Date.now()}`,
-            descrizione: `${ft.tipo} ${contenuto.id_display} – ${contenuto.titolo}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}`,
-            tipo: ft.tipo, stato: 'Da fare',
-            assegnato_a: ft.assegnato,
-            assegnato_da: '⚡ Sistema',
-            cliente_id: contenuto.cliente_id, cliente_nome: contenuto.cliente_nome || '',
-            id_contenuto: contenutoId, priorita: '🟡 Media',
-          });
-          console.log(`[avanzaFaseDaTask] Backward: creato ${ft.tipo} per ${contenuto.id_display}`);
-        }
-      }
-    }
-
-    return { completatoTask: true, taskCreato: true, driveTriggered: false };
-  }
-
-  // 2. Completa il task corrente (e tutti i task di fasi precedenti rimasti aperti)
-  await supabase.from('task').update({ stato: 'Completato' }).eq('id', taskId);
-
-  // Completa anche eventuali task orfani di fasi precedenti
-  // [UNIFIED - old] FASE_TIPO_MAP locale rimosso — ora importato da config/faseConfig.ts
-  for (let i = 0; i < targetIdx; i++) {
-    const prevTipo = FASE_TIPO_MAP[FASE_SEQ[i]];
-    if (prevTipo) {
-      await supabase.from('task')
-        .update({ stato: 'Completato' })
-        .eq('id_contenuto', contenutoId)
-        .eq('tipo', prevTipo)
-        .neq('stato', 'Completato')
-        .neq('stato', 'Archiviato');
-    }
-  }
-
-  // 3. Prendi contenuto fresco
-  const { data: contenuto } = await supabase
-    .from('contenuti')
-    .select('*')
-    .eq('id', contenutoId)
-    .single();
-
-  if (!contenuto) return { completatoTask: true, taskCreato: false, driveTriggered: false };
-
-  // 4. Trova il task che dovrebbe "vivere" nella nuova fase e crealo
-  // Es: fase Uploadato → task tipo "Revisione montaggio"
-  const tipoNuovaFase = FASE_TIPO_MAP[nuovaFase];
-  let newTask = null;
-  if (tipoNuovaFase) {
-    // Controlla se esiste già un task aperto di questo tipo
-    const { data: existing } = await supabase.from('task')
-      .select('id')
-      .eq('id_contenuto', contenutoId)
-      .eq('tipo', tipoNuovaFase)
-      .neq('stato', 'Completato')
-      .neq('stato', 'Archiviato')
-      .limit(1);
-
-    if (!existing || existing.length === 0) {
-      // Trova il WORKFLOW_MAP entry per il tipo che stiamo creando
-      // Es: tipoNuovaFase = 'Revisione montaggio' → WORKFLOW_MAP['Revisione montaggio']
-      const wfStep = WORKFLOW_MAP[tipoNuovaFase];
-      if (wfStep) {
-        const assegnatoA = findMembro(team, wfStep.assegnatoKeyword);
-        const c = contenuto as Contenuto;
-        const desc = `${wfStep.emojiNext || '📋'} ${tipoNuovaFase} ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`;
-        newTask = await creaTaskWorkflow(c, assegnatoA, tipoNuovaFase, desc, 'Da fare');
-      } else {
-        // Fallback per tipi senza entry in WORKFLOW_MAP (es: step iniziale)
-        const wfEntry = Object.entries(WORKFLOW_MAP).find(([, v]) => v.faseCurrent === nuovaFase);
-        if (wfEntry) {
-          const [, entryStep] = wfEntry;
-          const assegnatoA = findMembro(team, entryStep.assegnatoKeyword);
-          const c = contenuto as Contenuto;
-          const desc = `${entryStep.emojiNext || '📋'} ${tipoNuovaFase} ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`;
-          newTask = await creaTaskWorkflow(c, assegnatoA, tipoNuovaFase, desc, 'Da fare');
-        }
-      }
-
-      // Se è Upload esportato, aggiungi nota con percorso Drive
-      if (tipoNuovaFase === 'Upload esportato' && newTask) {
-        const slug = (contenuto as Contenuto).titolo.replace(/\s+/g, '-').slice(0, 40);
-        const folderPath = `SKORPIO_Clip/${(contenuto as Contenuto).cliente_nome}/${(contenuto as Contenuto).id_display}_${slug}/file_esportato/`;
-        const driveNote = contenuto.link_drive
-          ? `📂 Carica il file esportato nella cartella "file_esportato/" su Google Drive:\n${contenuto.link_drive}\n\nPercorso: ${folderPath}`
-          : `📂 Carica il file esportato nella sezione Riprese del CLP ${(contenuto as Contenuto).id_display}, zona "File esportato".\n\nPercorso Drive: ${folderPath}`;
-        await supabase.from('task').update({ note: driveNote }).eq('id', newTask.id);
-      }
-    }
-  }
-
-  // [UNIFIED - old] Drive trigger — ora lo fa FaseService.cambiaFaseCLP() (step 6)
-  // 5. Se la fase è Montato → triggera Drive
-  const driveTriggered = false; // Drive ora gestito da FaseService
-  // if (nuovaFase === 'Montato' && !contenuto.link_drive) { ...fetch create-drive-folder... }
-
-  // 6. Se fase = Programmato e data+ora già passati → pubblica subito + cleanup
-  if (nuovaFase === 'Programmato' && contenuto.data_pubblicazione && contenuto.ora_pubblicazione) {
-    if (isProntoPerPubblicazione(contenuto.data_pubblicazione, contenuto.ora_pubblicazione)) {
-      // [OLD] await supabase.from('contenuti').update({ fase: 'Pubblicato' }).eq('id', contenutoId);
-      const { cambiaFaseCLP: cambiaFase } = await import('../services/faseService');
-      console.log('[Step2c] auto-publish via FaseService', { contenutoId });
-      await cambiaFase({ contenutoId, nuovaFase: 'Pubblicato', source: 'workflow', userId: teamId || 'workflow', oldFase: 'Programmato' });
-      await creaTaskCleanup(contenuto as Contenuto, team as any[]);
-      return { completatoTask: true, taskCreato: !!newTask, driveTriggered };
-    }
-  }
-
-  return { completatoTask: true, taskCreato: !!newTask, driveTriggered };
-}
-
-
-/**
- * Funzione di completamento via tasto "Completato" del task:
- * avanza la fase CLP + crea il task successivo.
- */
-export async function completaTaskEAvanzaFase(
-  taskTipo: string,
-  contenutoId: string,
-  team: TeamMember[],
-  teamId?: string
-): Promise<FaseCLP | null> {
-  // Completa TUTTI i task aperti di questo tipo per questo contenuto
-  await completaTaskPerContenuto(contenutoId, taskTipo);
-  const step = WORKFLOW_MAP[taskTipo];
-  if (!step) return null;
-
-  const { data: contenuto } = await supabase
-    .from('contenuti')
-    .select('*')
-    .eq('id', contenutoId)
-    .single();
-
-  if (!contenuto) return null;
-
-  let faseNext = step.faseNext;
-  let stepForNextTask = step;
-
-  // Se l'esportato è già stato caricato fuori dal task dedicato,
-  // salta automaticamente lo step "Upload esportato" e porta Elisa in Uploadato.
-  if (step.faseNext === 'Montato' && await clpHasExportedFile(contenutoId)) {
-    const uploadStep = WORKFLOW_MAP['Upload esportato'];
-    faseNext = uploadStep.faseNext;
-    stepForNextTask = uploadStep;
-    await completaTaskPerContenuto(contenutoId, 'Upload esportato');
-  }
-
-  // [OLD - replaced by FaseService]
-  // await supabase.from('contenuti').update({ fase: faseNext }).eq('id', contenutoId);
-
-  // [NEW - FaseService centralizzato]
-  const { cambiaFaseCLP } = await import('../services/faseService');
-  console.log('[Step2c] completaTaskEAvanzaFase via FaseService', { contenutoId, faseNext });
-  const faseResult = await cambiaFaseCLP({
-    contenutoId,
-    nuovaFase: faseNext,
-    source: 'kanban',
-    userId: teamId || 'workflow',
-    oldFase: contenuto.fase,
-    taskIdCompletato: undefined, // task già completato sopra
-  });
-  console.log('[Step2c] risultato:', faseResult);
-
-  // [UNIFIED - old] Creazione task successivo — ora lo fa FaseService.cambiaFaseCLP() (step 5)
-  // if (stepForNextTask.tipoNext) {
-  //   const assegnatoA = findMembro(team, stepForNextTask.assegnatoKeyword);
-  //   const newTask = await creaTaskWorkflow(
-  //     contenuto as Contenuto, assegnatoA, stepForNextTask.tipoNext,
-  //     stepForNextTask.descrizioneNext(contenuto as Contenuto), 'Da fare',
-  //   );
-  //   if (stepForNextTask.tipoNext === 'Upload esportato' && newTask) { ...drive note... }
-  // }
-
-  // [UNIFIED - old] Drive trigger — ora lo fa FaseService.cambiaFaseCLP() (step 6)
-  // if (step.faseNext === 'Montato' && !contenuto.link_drive) {
-  //   try { await fetch(...create-drive-folder...); } catch (e) { ... }
-  // }
-
-  // Se faseNext = Programmato e data+ora già passati → pubblica subito + cleanup
-  if (faseNext === 'Programmato' && contenuto.data_pubblicazione && contenuto.ora_pubblicazione) {
-    if (isProntoPerPubblicazione(contenuto.data_pubblicazione, contenuto.ora_pubblicazione)) {
-      // [OLD] await supabase.from('contenuti').update({ fase: 'Pubblicato' }).eq('id', contenutoId);
-      const { cambiaFaseCLP: cambiaFase2 } = await import('../services/faseService');
-      console.log('[Step2c] auto-publish via FaseService (completaTaskEAvanzaFase)', { contenutoId });
-      await cambiaFase2({ contenutoId, nuovaFase: 'Pubblicato', source: 'kanban', userId: teamId || 'workflow', oldFase: 'Programmato' });
-      await creaTaskCleanup(contenuto as Contenuto, team as any[]);
-      return 'Pubblicato' as FaseCLP;
-    }
-  }
-
-  return faseNext;
-}
-
-/**
- * Helper: controlla se un CLP programmato con data+ora è pronto per la pubblicazione.
- * Se ora_pubblicazione è assente, usa default 10:00:00.
- */
-function isProntoPerPubblicazione(dataPub: string | null, oraPub: string | null, contenutoId?: string): boolean {
-  if (!dataPub) return false;
-  let ora = oraPub;
-  if (!ora) {
-    console.log('[AutoPub] ora mancante, uso default 10:00', contenutoId || '');
-    ora = '10:00:00';
-  }
-  const now = new Date();
-  const scheduled = new Date(`${dataPub}T${ora.length === 5 ? ora + ':00' : ora}`);
-  return now >= scheduled;
-}
-
-/**
- * Check periodico: CLPs in stato "Programmato" con data+ora passati
- * vengono portati a "Pubblicato" e il task Programmazione/Pubblicazione viene completato.
- * NOTA: senza ora_pubblicazione il CLP resta in Programmato.
- */
-export async function checkAutoPubblica(): Promise<number> {
-  const oggi = toDateStr(new Date());
-
-  // Prendi tutti i CLPs programmati con data <= oggi (filtro orario fatto dopo in JS)
-  const { data: candidati } = await supabase
-    .from('contenuti')
-    .select('id, data_pubblicazione, ora_pubblicazione')
-    .eq('fase', 'Programmato')
-    .lte('data_pubblicazione', oggi);
-
-  if (!candidati || candidati.length === 0) return 0;
-
-  // Filtra solo quelli il cui orario è effettivamente passato
-  const daPublicare = candidati.filter(c =>
-    isProntoPerPubblicazione(c.data_pubblicazione, c.ora_pubblicazione, c.id)
+      {isProgrammato && canEditProgrammazione && (
+        <div className="relative mt-1.5">
+          <button onClick={e => { e.stopPropagation(); setShowMenu(v => !v); }} className="text-xs px-1.5 py-0.5 rounded hover:bg-purple-100" style={{ color: '#7C3AED' }}>⋮</button>
+          {showMenu && <div className="absolute right-0 top-full mt-1 rounded-lg border shadow-lg py-1 z-50" style={{ background: 'hsl(var(--background))', borderColor: 'hsl(var(--border))', minWidth: 160 }} onClick={e => e.stopPropagation()}>
+            <button className="w-full text-left text-xs px-3 py-1.5 hover:bg-purple-50" onClick={() => { setShowMenu(false); onRiprogramma?.(); }}>🔄 Riprogramma</button>
+          </div>}
+        </div>
+      )}
+    </div>
   );
+}
 
-  if (daPublicare.length === 0) return 0;
+// ── MAIN COMPONENT ────────────────────────────────────────────────────────────
 
-  const ids = daPublicare.map(c => c.id);
+export function KanbanTab({ team, clienti, personaView }: { team: TeamMember[]; clienti: Cliente[]; personaView: string | null }) {
+  const { utente, addToast } = useApp();
+  const isMobile = useIsMobile();
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [clpFasi, setClpFasi] = useState<Record<string, string>>({});
+  const [clpPubDates, setClpPubDates] = useState<Record<string, { data: string | null; ora: string | null }>>({});
+  const [clpRevisionCount, setClpRevisionCount] = useState<Record<string, number>>({});
 
-  // [NEW - FaseService centralizzato]
-  const { cambiaFaseCLP } = await import('../services/faseService');
-  for (const id of ids) {
-    console.log('[Step2c] checkAutoPubblica via FaseService', { id });
-    await cambiaFaseCLP({ contenutoId: id, nuovaFase: 'Pubblicato', source: 'workflow', userId: 'auto-publish', oldFase: 'Programmato' });
-  }
+  // Mappa cliente_id → logo_url per le card
+  const clientLogoMap: Record<string, string | null> = {};
+  for (const c of clienti) { if (c.logo_url) clientLogoMap[c.id] = c.logo_url; }
+  // Anche per nome (fallback quando il task ha solo cliente_nome)
+  const clientLogoByName: Record<string, string | null> = {};
+  for (const c of clienti) { if (c.logo_url) clientLogoByName[c.nome] = c.logo_url; }
+  const [loading, setLoading] = useState(true);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [showNuovoTask, setShowNuovoTask] = useState(false);
+  const [dragItem, setDragItem] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filtraOggi, setFiltraOggi] = useState(false);
+  const [boardMode, setBoardMode] = useState<'standard' | 'clp' | 'both'>('both');
+  const [mobileCol, setMobileCol] = useState('Da fare');
+  const [mobileCLPCol, setMobileCLPCol] = useState('Girato');
+  const [riprogrammaConfirm, setRiprogrammaConfirm] = useState<{ taskId: string; contenutoId: string; desc: string } | null>(null);
+  const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const canEditProgrammazione = utente?.nome === 'Elisa' || utente?.nome === 'Giovanni' || utente?.ruolo === 'Admin';
 
-  for (const c of daPublicare) {
-    await completaTaskPerContenuto(c.id, 'Programmazione');
-    await completaTaskPerContenuto(c.id, 'Pubblicazione');
+  // ── L'UNICA FUNZIONE CHE LEGGE DAL DB ────────────────────────────────────
+  const loadTasks = useCallback(async () => {
     try {
-      const { data: contenuto } = await supabase.from('contenuti').select('*').eq('id', c.id).single();
-      if (contenuto) {
-        const { data: teamData } = await supabase.from('team').select('*');
-        const team = (teamData || []) as any[];
-        await creaTaskCleanup(contenuto as Contenuto, team);
+      const [{ data: td }, { data: cd }] = await Promise.all([
+        supabase.from('task').select('*').neq('stato', 'Archiviato').order('created_at', { ascending: false }),
+        supabase.from('contenuti').select('id, fase, data_pubblicazione, ora_pubblicazione, revision_count'),
+      ]);
+      setTasks(td || []);
+      setClpFasi(Object.fromEntries((cd || []).map(c => [c.id, c.fase || ''])));
+      setClpPubDates(Object.fromEntries((cd || []).map(c => [c.id, { data: c.data_pubblicazione, ora: c.ora_pubblicazione }])));
+      setClpRevisionCount(Object.fromEntries((cd || []).map(c => [c.id, c.revision_count || 0])));
+    } catch (e) { console.error('[Kanban] loadTasks:', e); }
+    setLoading(false);
+  }, []);
 
-        // FEAT 5: Notifica auto-pubblicazione per Elisa e Giovanni
-        const ora = c.ora_pubblicazione || '10:00';
-        const titoloCLP = contenuto.titolo || contenuto.id_display || c.id;
-        const msg = `${contenuto.id_display} - ${titoloCLP} pubblicato automaticamente alle ${ora}`;
-        const destinatari = [TEAM_ASSIGNMENTS['Programmazione'], TEAM_ASSIGNMENTS['Scrittura script']]; // Elisa, Giovanni
-        for (const dest of destinatari) {
-          if (!dest) continue;
-          await supabase.from('notifiche').insert({
-            destinatario: dest,
-            tipo: 'auto_pubblicazione',
-            titolo: '📤 Pubblicato automaticamente',
-            messaggio: msg,
-          }).then(({ error }) => {
-            if (error) console.warn('[checkAutoPubblica] errore notifica:', error);
-          });
-        }
-      }
-    } catch (e) {
-      console.error('[checkAutoPubblica] errore creaTaskCleanup:', e);
-    }
-  }
+  // Debounced reload per realtime (evita 10 reload in 1 secondo)
+  const debouncedReload = useCallback(() => {
+    if (reloadTimer.current) clearTimeout(reloadTimer.current);
+    reloadTimer.current = setTimeout(() => loadTasks(), 500);
+  }, [loadTasks]);
 
-  return ids.length;
-}
+  // ── REALTIME: qualsiasi cambiamento → ricarica (debounced) ───────────────
+  useEffect(() => {
+    loadTasks();
+    const ch = supabase.channel('kanban-v3')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'task' }, () => debouncedReload())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'contenuti' }, () => debouncedReload())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); if (reloadTimer.current) clearTimeout(reloadTimer.current); };
+  }, [loadTasks, debouncedReload]);
 
-/**
- * Crea il task di cleanup per Elisa quando un CLP viene pubblicato.
- */
-export async function creaTaskCleanup(contenuto: Contenuto, team: any[]): Promise<void> {
-  const { data: existing } = await supabase
-    .from('task')
-    .select('id')
-    .eq('id_contenuto', contenuto.id)
-    .eq('tipo', 'Cleanup')
-    .neq('stato', 'Completato')
-    .neq('stato', 'Archiviato');
+  // ── FILTRI ───────────────────────────────────────────────────────────────
+  const matchSearch = (t: Task) => !searchQuery.trim() || (t.descrizione + t.cliente_nome + t.id_display + t.id_contenuto + t.assegnato_a + t.tipo).toLowerCase().includes(searchQuery.toLowerCase());
 
-  if (existing && existing.length > 0) return;
+  const PRIO_ORDER = { '🔴 Alta': 0, '🟡 Media': 1, '🟢 Bassa': 2 };
+  const sortByUrgenza = (a, b) => {
+    const now = Date.now();
+    const msA = a.scadenza ? getTargetDate(a.scadenza, a.ora).getTime() : Infinity;
+    const msB = b.scadenza ? getTargetDate(b.scadenza, b.ora).getTime() : Infinity;
+    const scadutoA = msA < now ? -1 : 0;
+    const scadutoB = msB < now ? -1 : 0;
+    if (scadutoA !== scadutoB) return scadutoA - scadutoB;
+    if (msA !== msB) return msA - msB;
+    return (PRIO_ORDER[a.priorita] ?? 1) - (PRIO_ORDER[b.priorita] ?? 1);
+  };
+  const filteredStandard = (stato: string) => tasks.filter(t => {
+    if (t.stato !== stato || (t.id_contenuto && t.id_contenuto.trim())) return false;
+    if (personaView && t.assegnato_a !== personaView) return false;
+    if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
+    if (!matchSearch(t)) return false;
+    if (filtraOggi && t.scadenza) { const ms = getTargetDate(t.scadenza, t.ora).getTime(); if (ms > Date.now() + 86400000 || ms < Date.now() - 86400000) return false; }
+    else if (filtraOggi) return false;
+    return true;
+ }).sort(sortByUrgenza);
 
-  // [UNIFIED - old] const nomeElisa = findMembro(team, 'Elisa');
-  const nomeElisa = findMembro(team, TEAM_ASSIGNMENTS['Cleanup']);
+  const filteredCLP = (faseCLP: string) => {
+    const tipoCol = TIPO_PER_FASE[faseCLP];
+    return tasks.filter(t => {
+      if (!t.id_contenuto?.trim() || !matchSearch(t)) return false;
+      const fase = clpFasi[t.id_contenuto];
+      if (!fase) return false;
+      if (faseCLP === 'Programmato') return fase === 'Programmato' && t.tipo === 'Programmazione';
+      if (faseCLP === 'Pubblicato') return fase === 'Pubblicato' && (t.tipo === 'Cleanup' || (t.stato === 'Completato' && t.tipo === 'Programmazione'));
+      if (personaView && t.assegnato_a !== personaView) return false;
+      if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
+      // Revisionato: mostra sia Programmazione che Supervisione
+      if (faseCLP === 'Revisionato' && fase === 'Revisionato' && t.tipo === 'Supervisione' && t.stato !== 'Completato') return true;
+      return fase === faseCLP && tipoCol === t.tipo && t.stato !== 'Completato';
+    }).sort(sortByUrgenza);
+  };
 
-  const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
+  // ── HANDLERS: azione → DB → loadTasks() ──────────────────────────────────
+  const handleDropStandard = async (nuovoStato: string) => {
+    if (!dragItem) return;
+    setDropTarget(null);
+    const task = tasks.find(t => t.id === dragItem);
+    if (!task || task.stato === nuovoStato || task.stato === 'Archiviato') { setDragItem(null); return; }
+    setDragItem(null);
+    const { error } = await supabase.from('task').update({ stato: nuovoStato }).eq('id', task.id);
+    if (error) { sounds.errore(); addToast('Errore', 'error'); }
+    else if (nuovoStato === 'Completato') { sounds.taskCompletato(); addToast('✅ Task completato!', 'success'); }
+    else { sounds.drop(); addToast(`↕️ → ${nuovoStato}`, 'info'); }
+    await loadTasks();
+  };
 
-  await supabase.from('task').insert({
-    id_display: idData ?? `TSK${Date.now()}`,
-    descrizione: `🗑️ Cleanup ${contenuto.id_display} – ${contenuto.titolo}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}`,
-    tipo: 'Cleanup',
-    stato: 'Da fare',
-    assegnato_a: nomeElisa,
-    assegnato_da: '⚡ Sistema',
-    cliente_id: contenuto.cliente_id,
-    cliente_nome: contenuto.cliente_nome || '',
-    id_contenuto: contenuto.id,
-    priorita: '🟢 Bassa',
-    note: `La clip ${contenuto.id_display} è stata pubblicata. Cancella i file grezzi dalla cartella clip/ su Google Drive. Il file esportato resta.`,
-  });
-}
+  const handleDropCLP = async (faseCLP: string) => {
+    if (!dragItem) return;
+    setDropTarget(null);
+    const task = tasks.find(t => t.id === dragItem);
+    if (!task?.id_contenuto) { setDragItem(null); return; }
+    const faseCorr = Object.entries(TIPO_PER_FASE).find(([, tipo]) => tipo === task.tipo)?.[0];
+    const fasePrev = faseCorr ? FASE_NEXT[faseCorr] : null;
+    if (fasePrev && fasePrev !== faseCLP) { addToast(`⚠️ Solo alla fase successiva: ${fasePrev}`, 'warn'); setDragItem(null); return; }
+    setDragItem(null);
+    addToast('⏳ Avanzamento…', 'info');
+    try {
+      const nf = await completaTaskEAvanzaFase(task.tipo, task.id_contenuto, team, utente?.id);
+      if (nf) { sounds.taskCompletato(); addToast(`✅ ${task.tipo} → ${nf}`, 'success'); }
+    } catch (e: any) { sounds.errore(); addToast('❌ ' + (e?.message || 'Errore'), 'error'); }
+    await loadTasks();
+    // Backup reload — in caso il primo arrivi prima che il DB abbia committato
+    setTimeout(() => loadTasks(), 1000);
+  };
 
-/**
- * Sync: trova CLPs in fasi workflow che non hanno il task corrispondente e li crea.
- * Inoltre completa automaticamente i task di fasi precedenti che sono rimasti aperti.
- * Chiamato all'avvio per recuperare CLPs entrati nel workflow prima dell'automazione.
- */
-export async function syncMissingWorkflowTasks(): Promise<number> {
-  // [DISABLED] Disabilitato per debug — questa funzione causava regressioni di fase
-  // e task duplicati. L'unico punto autorizzato a cambiare fase è faseService.ts (stored procedure).
-  console.log('[DISABLED] syncMissingWorkflowTasks — disabilitato per debug');
-  return 0;
-}
+  const handleRiprogramma = async (contenutoId: string) => {
+    setRiprogrammaConfirm(null);
+    addToast('⏳ Riprogrammazione…', 'info');
+    const { cambiaFaseCLP } = await import('../services/faseService');
+    const r = await cambiaFaseCLP({ contenutoId, nuovaFase: 'Revisionato', source: 'kanban', userId: utente?.id || 'unknown', oldFase: 'Programmato' });
+    addToast(r.success ? '🔄 Riprogrammato' : '❌ ' + (r.errors[0] || 'Errore'), r.success ? 'success' : 'error');
+    await loadTasks();
+  };
 
-/**
- * Recupera i task workflow per un CLP (per la timeline nella tab Riprese)
- */
-export async function getWorkflowTasks(contenutoId: string): Promise<Array<{
-  tipo: string;
-  stato: string;
-  assegnato_a: string;
-  created_at: string;
-  updated_at: string;
-  scadenza: string | null;
-}>> {
-  const { data } = await supabase
-    .from('task')
-    .select('tipo, stato, assegnato_a, created_at, updated_at, scadenza')
-    .eq('id_contenuto', contenutoId)
-    .order('created_at', { ascending: true });
-  return (data || []) as any[];
+  const handleEditPubDate = async (contenutoId: string, newDate: string, newOra: string | null) => {
+    if (!newDate) return;
+    await supabase.from('contenuti').update({ data_pubblicazione: newDate, ora_pubblicazione: newOra }).eq('id', contenutoId);
+    await supabase.from('calendario').update({ data: newDate, ora: newOra }).eq('contenuto_id', contenutoId).eq('tipo', 'pubblicazione');
+    const { data: c } = await supabase.from('contenuti').select('tipo').eq('id', contenutoId).single();
+    const count = await ricalcolaScadenzeTask(contenutoId, newDate, newOra, c?.tipo);
+    addToast(`📅 Data aggiornata — ${count} scadenze ricalcolate`, 'success');
+    await loadTasks();
+  };
+
+  if (loading) return <div className="flex items-center justify-center h-64"><div className="sk-spinner" style={{ color: '#3B82F6' }} /></div>;
+  const showStd = boardMode === 'standard' || boardMode === 'both';
+  const showCLP = boardMode === 'clp' || boardMode === 'both';
+
+  return (
+    <div className="p-4 max-w-full overflow-x-hidden">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h2 className="font-bold text-lg" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>Kanban Board</h2>
+          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: '#DCFCE7', color: '#16A34A' }}>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#22C55E', boxShadow: '0 0 0 3px #BBF7D0' }} /> LIVE
+          </div>
+          <button onClick={() => setFiltraOggi(f => !f)} className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold"
+            style={filtraOggi ? { background: '#FEE2E2', color: '#DC2626', border: '1px solid rgba(220,38,38,0.4)' } : { background: '#F1F5F9', color: '#64748B', border: '1px solid #E2E8F0' }}>
+            ⏰ {!isMobile && 'In scadenza oggi '}{filtraOggi && '×'}
+          </button>
+        </div>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="relative flex-1 sm:flex-none">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs" style={{ color: 'hsl(var(--muted-foreground))' }}>🔍</span>
+            <input type="text" placeholder="Cerca task..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+              className="pl-8 pr-3 py-1.5 rounded-lg text-xs border outline-none w-full sm:w-44"
+              style={{ background: 'hsl(var(--background))', borderColor: searchQuery ? 'hsl(var(--primary))' : 'hsl(var(--border))', color: 'hsl(var(--foreground))' }} />
+            {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs">✕</button>}
+          </div>
+          <div className="flex rounded-lg overflow-hidden border border-border text-xs flex-shrink-0">
+            {(['both', 'standard', 'clp'] as const).map(mode => (
+              <button key={mode} onClick={() => setBoardMode(mode)} className="px-2.5 py-1 font-medium"
+                style={boardMode === mode ? { background: 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))' } : { background: 'hsl(var(--background))', color: 'hsl(var(--muted-foreground))' }}>
+                {mode === 'both' ? 'Tutte' : mode === 'standard' ? 'Task' : '🎬 CLP'}
+              </button>
+            ))}
+          </div>
+          <button onClick={() => setShowNuovoTask(true)} className="sk-btn-primary text-sm hidden sm:inline-flex">+ Nuovo Task</button>
+        </div>
+      </div>
+
+      {/* BOARD CLP */}
+      {showCLP && (
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(var(--muted-foreground))' }}>🎬 Workflow Produzione CLP</span>
+            <div className="flex-1 h-px hidden sm:block" style={{ background: 'hsl(var(--border))' }} />
+          </div>
+          {isMobile && <div className="flex gap-1 overflow-x-auto pb-2 mb-2">{COLONNE_CLP.map(col => <button key={col.stato} onClick={() => setMobileCLPCol(col.stato)} className="px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex-shrink-0" style={{ background: mobileCLPCol === col.stato ? col.colore : `${col.colore}15`, color: mobileCLPCol === col.stato ? '#fff' : col.colore }}>{col.icona} {col.stato} ({filteredCLP(col.stato).length})</button>)}</div>}
+          <div className={isMobile ? '' : 'flex gap-3 overflow-x-auto pb-2'}>
+            {COLONNE_CLP.filter(col => !isMobile || col.stato === mobileCLPCol).map(col => {
+              const ct = filteredCLP(col.stato);
+              return (
+                <div key={col.stato} className={`kanban-col ${dropTarget === `clp__${col.stato}` ? 'kanban-drop-target' : ''}`}
+                  style={{ background: col.bg, border: `1px solid ${col.border}30`, minWidth: isMobile ? '100%' : 180 }}
+                  onDragOver={e => { e.preventDefault(); setDropTarget(`clp__${col.stato}`); }} onDragLeave={() => setDropTarget(null)} onDrop={() => handleDropCLP(col.stato)}>
+                  <div className="kanban-col-header" style={{ borderBottom: `2px solid ${col.border}40` }}>
+                    <div className="flex items-center gap-1.5"><span>{col.icona}</span><span className="text-xs font-semibold" style={{ color: col.colore }}>{col.stato}</span></div>
+                    <span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ background: `${col.colore}20`, color: col.colore }}>{ct.length}</span>
+                  </div>
+                  <div className="kanban-col-body">
+                    {ct.map(t => <TaskCard key={t.id} task={t} team={team} utente={utente} draggingId={dragItem} onDragStart={() => setDragItem(t.id)} onDragEnd={() => setDragItem(null)} onClick={() => setSelectedTask(t)} showFaseBadge={false} pubDate={t.id_contenuto ? clpPubDates[t.id_contenuto] : null} revisionCount={t.id_contenuto ? clpRevisionCount[t.id_contenuto] : undefined} isProgrammato={col.stato === 'Programmato'} canEditProgrammazione={canEditProgrammazione} onRiprogramma={() => t.id_contenuto && setRiprogrammaConfirm({ taskId: t.id, contenutoId: t.id_contenuto, desc: t.descrizione.slice(0, 50) })} onEditPubDate={(d, o) => t.id_contenuto && handleEditPubDate(t.id_contenuto, d, o)} clientLogoUrl={t.cliente_id ? clientLogoMap[t.cliente_id] : clientLogoByName[t.cliente_nome]} />)}
+                    {ct.length === 0 && <div className="flex items-center justify-center h-12 text-xs rounded-lg" style={{ color: 'hsl(var(--muted-foreground))', border: `1px dashed ${col.border}40` }}>Nessun task</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Conferma riprogramma */}
+      {riprogrammaConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => setRiprogrammaConfirm(null)}>
+          <div className="rounded-xl border shadow-xl p-5 max-w-sm w-full mx-4" style={{ background: 'hsl(var(--background))' }} onClick={e => e.stopPropagation()}>
+            <p className="text-sm font-semibold mb-2">🔄 Riprogramma CLP</p>
+            <p className="text-xs mb-4" style={{ color: 'hsl(var(--muted-foreground))' }}>Vuoi riprogrammare "{riprogrammaConfirm.desc}"?</p>
+            <div className="flex gap-2">
+              <button className="flex-1 text-xs px-3 py-2 rounded-lg font-semibold" style={{ background: 'hsl(38 92% 50%)', color: 'white' }} onClick={() => handleRiprogramma(riprogrammaConfirm.contenutoId)}>Conferma</button>
+              <button className="text-xs px-3 py-2 rounded-lg font-semibold" style={{ background: 'hsl(var(--muted))' }} onClick={() => setRiprogrammaConfirm(null)}>Annulla</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BOARD STANDARD */}
+      {showStd && (
+        <div>
+          {boardMode === 'both' && <div className="flex items-center gap-2 mb-2"><span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(var(--muted-foreground))' }}>📋 Task generali</span><div className="flex-1 h-px" style={{ background: 'hsl(var(--border))' }} /></div>}
+          {isMobile && <div className="flex gap-1 overflow-x-auto pb-2 mb-2">{COLONNE.map(col => <button key={col.stato} onClick={() => setMobileCol(col.stato)} className="px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex-shrink-0" style={{ background: mobileCol === col.stato ? col.colore : `${col.colore}15`, color: mobileCol === col.stato ? '#fff' : col.colore }}>{col.icona} {col.stato} ({filteredStandard(col.stato).length})</button>)}</div>}
+          <div className={isMobile ? '' : 'flex gap-4 overflow-x-auto pb-4'}>
+            {COLONNE.filter(col => !isMobile || col.stato === mobileCol).map(col => {
+              const ct = filteredStandard(col.stato);
+              return (
+                <div key={col.stato} className={`kanban-col ${dropTarget === col.stato ? 'kanban-drop-target' : ''}`}
+                  style={{ background: col.bg, border: `1px solid ${col.border}30`, minWidth: isMobile ? '100%' : undefined }}
+                  onDragOver={e => { e.preventDefault(); setDropTarget(col.stato); }} onDragLeave={() => setDropTarget(null)} onDrop={() => handleDropStandard(col.stato)}>
+                  <div className="kanban-col-header" style={{ borderBottom: `2px solid ${col.border}40` }}>
+                    <div className="flex items-center gap-2"><span>{col.icona}</span><span style={{ color: col.colore }}>{col.stato}</span></div>
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: `${col.colore}20`, color: col.colore }}>{ct.length}</span>
+                  </div>
+                  <div className="kanban-col-body">
+                    {ct.map(t => <TaskCard key={t.id} task={t} team={team} utente={utente} draggingId={dragItem} onDragStart={() => setDragItem(t.id)} onDragEnd={() => setDragItem(null)} onClick={() => setSelectedTask(t)} showFaseBadge={true} revisionCount={t.id_contenuto ? clpRevisionCount[t.id_contenuto] : undefined} clientLogoUrl={t.cliente_id ? clientLogoMap[t.cliente_id] : clientLogoByName[t.cliente_nome]} />)}
+                    {ct.length === 0 && <div className="flex items-center justify-center h-16 text-xs rounded-lg" style={{ color: 'hsl(var(--skorpio-text-tertiary))', border: `1px dashed ${col.border}40` }}>Nessun task</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {isMobile && <button onClick={() => setShowNuovoTask(true)} className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-2xl text-white" style={{ background: 'hsl(var(--primary))' }}>+</button>}
+
+      {selectedTask && <TaskDetailPanel task={selectedTask} team={team} onClose={() => setSelectedTask(null)} onUpdate={async (_updated: Task) => { await loadTasks(); }} onDelete={async (_id: string) => { setSelectedTask(null); await loadTasks(); }} />}
+      {showNuovoTask && <NuovoTaskModal team={team} clienti={clienti} utente={utente} onClose={() => setShowNuovoTask(false)} onCreated={async (t) => { addToast(`✅ Task ${t.id_display} creato`, 'success'); setShowNuovoTask(false); await loadTasks(); }} />}
+    </div>
+  );
 }
