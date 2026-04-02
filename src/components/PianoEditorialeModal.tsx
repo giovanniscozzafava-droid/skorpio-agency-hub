@@ -60,6 +60,7 @@ export function PianoEditorialeModal({ cliente, onClose }: PianoEditorialeModalP
 
   const generatePDF = () => {
     setGenerating(true);
+    try {
 
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -222,6 +223,10 @@ export function PianoEditorialeModal({ cliente, onClose }: PianoEditorialeModalP
     // ─── SALVA ───
     const fileName = `Piano_Editoriale_${cliente.nome.replace(/[^a-zA-Z0-9]/g, '_')}_${oggiStr}.pdf`;
     doc.save(fileName);
+    } catch (err: any) {
+      console.error('[PianoEditoriale] Errore generazione PDF:', err);
+      alert('Errore generazione PDF: ' + (err.message || err));
+    }
     setGenerating(false);
   };
 
