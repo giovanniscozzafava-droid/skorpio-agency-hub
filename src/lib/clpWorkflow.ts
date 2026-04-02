@@ -301,6 +301,37 @@ export async function richiestaModifiche(
     note_revisione: noteRevisione,
     revision_count: (contenuto as any).revision_count ? (contenuto as any).revision_count + 1 : 1,
   }).eq('id', contenuto.id);
+
+  // Riassegna il task Upload esportato a chi ha fatto l'ultimo upload (non sempre Alessandro)
+  // Se Luca ha caricato l'ultimo file, il task torna a Luca
+  const { data: lastUploader } = await supabase
+    .from('task')
+    .select('assegnato_a')
+    .eq('id_contenuto', contenuto.id)
+    .eq('tipo', 'Upload esportato')
+    .eq('stato', 'Completato')
+    .order('updated_at', { ascending: false })
+    .limit(1);
+
+  if (lastUploader && lastUploader.length > 0) {
+    const realUploader = lastUploader[0].assegnato_a;
+    // Aggiorna il task appena creato dalla SP
+    const { data: newTask } = await supabase
+      .from('task')
+      .select('id, assegnato_a')
+      .eq('id_contenuto', contenuto.id)
+      .eq('tipo', 'Upload esportato')
+      .neq('stato', 'Completato')
+      .neq('stato', 'Archiviato')
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (newTask && newTask.length > 0 && newTask[0].assegnato_a !== realUploader) {
+      await supabase.from('task').update({ assegnato_a: realUploader }).eq('id', newTask[0].id);
+      console.log(`[richiestaModifiche] Riassegnato Upload esportato a ${realUploader} (era ${newTask[0].assegnato_a})`);
+    }
+  }
+
   // Task Upload esportato creato dalla SP (step 6) — non serve creaTaskWorkflow
   return { ok: true, taskCreated: result.taskCreated };
 }
