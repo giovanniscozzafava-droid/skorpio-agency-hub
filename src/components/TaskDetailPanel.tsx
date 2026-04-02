@@ -326,7 +326,19 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
       supabase.from('contenuti').update({
         data_pubblicazione: dataStr,
         ora_pubblicazione: oraStr,
-        // [BLOCKED - only faseService can write fase] fase: 'Programmato',
+      }).eq('id', task.id_contenuto),
+    ]);
+
+    const { cambiaFaseCLP } = await import('../services/faseService');
+    await cambiaFaseCLP({
+      contenutoId: task.id_contenuto,
+      nuovaFase: 'Programmato',
+      source: 'kanban',
+      userId: utente?.id || 'workflow',
+      oldFase: clpFase || 'Revisionato',
+    });
+
+    // Completa il task
       }).eq('id', task.id_contenuto),
     ]);
 
