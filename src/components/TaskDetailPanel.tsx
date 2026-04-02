@@ -339,9 +339,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
     });
 
     // Completa il task
-      }).eq('id', task.id_contenuto),
-    ]);
-
+    
     // Completa il task e aggiunge evento calendario
     await supabase.from('task').update({ stato: 'Completato' }).eq('id', task.id);
 
