@@ -5,6 +5,7 @@ import { toDateStr } from '../lib/dateUtils';
 import type { Cliente } from '../types';
 import { ClienteLogo } from './ClienteLogo';
 import { LogoUploader } from './LogoUploader';
+import { PianoEditorialeModal } from './PianoEditorialeModal';
 
 // ─── helpers mese ────────────────────────────────────────────────────────────
 function meseRange(year: number, month: number) {
@@ -271,6 +272,7 @@ function DetailPanel({ cliente, onClose, onUpdate, onDelete }: DetailPanelProps)
   const { addToast } = useApp();
   const [form, setForm] = useState<Cliente>({ ...cliente });
   const [saving, setSaving] = useState(false);
+  const [showPianoEditoriale, setShowPianoEditoriale] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // sync if cliente changes from outside
@@ -381,6 +383,17 @@ function DetailPanel({ cliente, onClose, onUpdate, onDelete }: DetailPanelProps)
               </a>
             </div>
           ) : null}
+
+          {/* ─── Piano Editoriale ─── */}
+          <button
+            onClick={() => setShowPianoEditoriale(true)}
+            className="w-full rounded-xl p-3 border mb-2 flex items-center gap-2 text-sm font-medium transition-all hover:opacity-80"
+            style={{ background: 'hsl(270 60% 98%)', borderColor: 'hsl(270 60% 85%)', color: 'hsl(270 60% 40%)' }}
+          >
+            <span>📋</span>
+            <span className="flex-1 text-left">Scarica Piano Editoriale</span>
+            <span className="text-xs opacity-60">PDF ↓</span>
+          </button>
 
           {/* Stato & Pacchetto */}
           <div className="grid grid-cols-2 gap-3">
@@ -569,6 +582,9 @@ function DetailPanel({ cliente, onClose, onUpdate, onDelete }: DetailPanelProps)
           </button>
         </div>
       </div>
+      {showPianoEditoriale && (
+        <PianoEditorialeModal cliente={cliente} onClose={() => setShowPianoEditoriale(false)} />
+      )}
     </div>
   );
 }
