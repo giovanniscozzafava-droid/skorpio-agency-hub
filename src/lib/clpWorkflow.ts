@@ -410,9 +410,55 @@ export async function avanzaFaseDaTask(
   console.log('[Step2c] avanzaFaseDaTask via FaseService', { contenutoId, nuovaFase });
   await cambiaFaseAF({ contenutoId, nuovaFase, source: 'kanban', userId: teamId || 'workflow', oldFase: faseCurrent });
 
-  // Se stiamo andando INDIETRO, non completare il task corrente
+  // Se stiamo andando INDIETRO: archivia task di fasi successive e crea task per la nuova fase
   if (!isForward) {
-    return { completatoTask: false, taskCreato: false, driveTriggered: false };
+    const FASE_TIPO: Record<string, { tipo: string; assegnato: string }> = {
+      'Girato':      { tipo: 'Premontaggio',       assegnato: 'Luca' },
+      'Pre montato': { tipo: 'Montaggio',           assegnato: 'Alessandro' },
+      'Montato':     { tipo: 'Upload esportato',    assegnato: 'Alessandro' },
+      'Uploadato':   { tipo: 'Revisione montaggio', assegnato: 'Elisa' },
+      'Revisionato': { tipo: 'Programmazione',      assegnato: 'Elisa' },
+    };
+
+    // Archivia task aperti di fasi > nuovaFase
+    for (let i = targetIdx + 1; i < FASE_SEQ.length; i++) {
+      const ft = FASE_TIPO[FASE_SEQ[i]];
+      if (!ft) continue;
+      await supabase.from('task')
+        .update({ stato: 'Archiviato' })
+        .eq('id_contenuto', contenutoId)
+        .eq('tipo', ft.tipo)
+        .neq('stato', 'Completato')
+        .neq('stato', 'Archiviato');
+    }
+    // Archivia anche il task corrente (quello da cui si sta facendo il cambio)
+    await supabase.from('task').update({ stato: 'Archiviato' }).eq('id', taskId);
+
+    // Crea task per la nuova fase se non esiste
+    const ft = FASE_TIPO[nuovaFase];
+    if (ft) {
+      const { data: existing } = await supabase.from('task').select('id')
+        .eq('id_contenuto', contenutoId).eq('tipo', ft.tipo)
+        .neq('stato', 'Completato').neq('stato', 'Archiviato');
+      if (!existing || existing.length === 0) {
+        const { data: contenuto } = await supabase.from('contenuti').select('id_display, titolo, cliente_id, cliente_nome').eq('id', contenutoId).single();
+        if (contenuto) {
+          const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
+          await supabase.from('task').insert({
+            id_display: idData || `TSK${Date.now()}`,
+            descrizione: `${ft.tipo} ${contenuto.id_display} – ${contenuto.titolo}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}`,
+            tipo: ft.tipo, stato: 'Da fare',
+            assegnato_a: ft.assegnato,
+            assegnato_da: '⚡ Sistema',
+            cliente_id: contenuto.cliente_id, cliente_nome: contenuto.cliente_nome || '',
+            id_contenuto: contenutoId, priorita: '🟡 Media',
+          });
+          console.log(`[avanzaFaseDaTask] Backward: creato ${ft.tipo} per ${contenuto.id_display}`);
+        }
+      }
+    }
+
+    return { completatoTask: true, taskCreato: true, driveTriggered: false };
   }
 
   // 2. Completa il task corrente (e tutti i task di fasi precedenti rimasti aperti)
