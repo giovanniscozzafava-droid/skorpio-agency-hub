@@ -147,6 +147,11 @@ function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onCl
         <div className="inline-flex items-center text-xs px-1.5 py-0.5 rounded mt-1.5 font-medium" style={{ background: scadInfo.bg, color: scadInfo.color }}>{scadInfo.label}</div>
       ) : null}
 
+      {/* Se il task è SCADUTO ma la card mostra la pubDate, aggiungi badge scaduto */}
+      {scadInfo?.label.includes('SCADUTO') && pubDate?.data && (
+        <div className="inline-flex items-center text-xs px-1.5 py-0.5 rounded mt-1 font-bold" style={{ background: '#FEF2F2', color: '#EF4444' }}>⚠ SCADUTO da {Math.abs(Math.floor((parseLocalDate(task.scadenza!).getTime() - new Date().setHours(0,0,0,0)) / 86400000))}g</div>
+      )}
+
       {isProgrammato && canEditProgrammazione && (
         <div className="relative mt-1.5">
           <button onClick={e => { e.stopPropagation(); setShowMenu(v => !v); }} className="text-xs px-1.5 py-0.5 rounded hover:bg-purple-100" style={{ color: '#7C3AED' }}>⋮</button>
