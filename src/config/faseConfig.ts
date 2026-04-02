@@ -31,13 +31,13 @@ export const FASE_ORDER: FaseCLP[] = [
 /** Allowed transitions: map of fase → array of valid next fasi */
 export const FASE_TRANSITIONS: Record<string, string[]> = {
   'Idea':         ['Script', 'Girato', 'Scartata'],
-  'Script':       ['Girato', 'Scartata'],
-  'Girato':       ['Pre montato', 'Scartata'],
-  'Pre montato':  ['Montato', 'Scartata'],
-  'Montato':      ['Uploadato', 'Pre montato', 'Scartata'], // Pre montato = richiesta modifiche
-  'Uploadato':    ['Revisionato', 'Montato', 'Scartata'], // Pre montato = richiesta modifiche
-  'Revisionato':  ['Programmato', 'Pre montato', 'Scartata'], // Pre montato = richiesta modifiche
-  'Programmato':  ['Pubblicato', 'Revisionato', 'Pre montato', 'Scartata'], // può tornare indietro
+  'Script':       ['Idea', 'Girato', 'Scartata'],
+  'Girato':       ['Idea', 'Script', 'Pre montato', 'Scartata'],
+  'Pre montato':  ['Girato', 'Montato', 'Scartata'],
+  'Montato':      ['Girato', 'Pre montato', 'Uploadato', 'Scartata'],
+  'Uploadato':    ['Girato', 'Pre montato', 'Montato', 'Revisionato', 'Scartata'],
+  'Revisionato':  ['Girato', 'Pre montato', 'Montato', 'Programmato', 'Scartata'],
+  'Programmato':  ['Girato', 'Pre montato', 'Montato', 'Revisionato', 'Pubblicato', 'Scartata'],
   'Pubblicato':   ['Scartata'],
   'Scartata':     ['Idea'],
 };
