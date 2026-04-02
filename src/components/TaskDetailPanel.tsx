@@ -151,6 +151,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   const [contenutoRevisione, setContenutoRevisione] = useState<Contenuto | null>(null);
   const [exportedFileId, setExportedFileId] = useState<string | null>(null);
   const [allExportedFiles, setAllExportedFiles] = useState<{ id: string; fileId: string; fileName: string; uploadedAt: string }[]>([]);
+  const [clipFiles, setClipFiles] = useState<{ id: string; fileId: string; fileName: string; stato: string }[]>([]);
   const [supervisioneGiovanni, setSupervisioneGiovanni] = useState(false);
   const isRevisioneTask = task.tipo === 'Revisione montaggio';
   const isSupervisoneTask = task.tipo === 'Supervisione';
@@ -175,6 +176,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   const isUploadTask = task.tipo === 'Upload esportato';
   const isMontaggioTask = task.tipo === 'Montaggio';
   const isMontaggioConModifiche = isMontaggioTask && !!contenutoRevisione?.note_revisione;
+  const isPremontaggio = task.tipo === 'Premontaggio';
 
   // ── Upload esportato state (shared by Upload and Montaggio re-upload) ──────
   const [uploadProgress, setUploadProgress] = useState<{ percent: number; fileName: string } | null>(null);
@@ -255,6 +257,24 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
             fileId: d.exported_file_id!,
             fileName: d.exported_file_name || 'export',
             uploadedAt: d.exported_file_uploaded_at || '',
+          })));
+        }
+      });
+    // Load clip files for Premontaggio tasks
+    supabase
+      .from('log_riprese')
+      .select('id, file_id, file_name, stato')
+      .eq('contenuto_id', task.id_contenuto)
+      .not('file_id', 'is', null)
+      .is('file_deleted_at', null)
+      .order('file_name', { ascending: true })
+      .then(({ data }) => {
+        if (data) {
+          setClipFiles(data.map(d => ({
+            id: d.id,
+            fileId: d.file_id!,
+            fileName: d.file_name || 'clip',
+            stato: d.stato || '',
           })));
         }
       });
@@ -874,8 +894,16 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
               ['Cliente', task.cliente_nome || '—'],
               ['Contenuto', task.id_contenuto || '—'],
               ['Assegnato da', task.assegnato_da || '—'],
-              ['Scadenza', task.scadenza ? parseLocalDate(task.scadenza).toLocaleDateString('it-IT') : '—'],
-              ['Ora', task.ora ? task.ora.slice(0, 5) : '—'],
+              ['Scadenza', task.scadenza
+                ? parseLocalDate(task.scadenza).toLocaleDateString('it-IT')
+                : contenutoRevisione?.data_pubblicazione
+                  ? '📡 ' + parseLocalDate(contenutoRevisione.data_pubblicazione).toLocaleDateString('it-IT')
+                  : '—'],
+              ['Ora', task.ora
+                ? task.ora.slice(0, 5)
+                : contenutoRevisione?.ora_pubblicazione
+                  ? contenutoRevisione.ora_pubblicazione.slice(0, 5)
+                  : '—'],
             ].map(([label, value]) => (
               <div key={label} className="flex gap-2">
                 <span className="flex-shrink-0 text-xs font-medium w-28" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>{label}</span>
@@ -1068,6 +1096,41 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
               style={{ background: 'hsl(142 70% 45% / 0.08)', color: 'hsl(142 60% 35%)', border: '1px solid hsl(142 70% 45% / 0.25)' }}>
               ✅ Programmato per {task.scadenza ? format(parseLocalDate(task.scadenza), 'd MMM yyyy', { locale: it }) : '—'}
               {task.ora ? ` alle ${task.ora.slice(0,5)}` : ''} — verrà pubblicato automaticamente!
+            </div>
+          )}
+
+          {/* ─── CLIP DA MONTARE (task Premontaggio) ─────────────────── */}
+          {isPremontaggio && clipFiles.length > 0 && utente?.id && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                🎬 CLIP DA MONTARE ({clipFiles.length})
+              </p>
+              <div className="rounded-xl p-2.5 space-y-1.5"
+                style={{ background: 'hsl(214 80% 55% / 0.06)', border: '1px solid hsl(214 80% 55% / 0.25)' }}>
+                {clipFiles.map(clip => (
+                  <a
+                    key={clip.id}
+                    href={`${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${clip.fileId}&teamId=${utente.id}&download=1`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all hover:opacity-80"
+                    style={{ background: 'hsl(214 80% 55% / 0.1)', color: 'hsl(214 80% 40%)' }}
+                  >
+                    <span>📎</span>
+                    <span className="flex-1 truncate">{clip.fileName}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'hsl(214 80% 55% / 0.15)' }}>⬇️</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {isPremontaggio && clipFiles.length === 0 && (
+            <div className="rounded-xl p-3 text-center"
+              style={{ background: 'hsl(38 92% 50% / 0.06)', border: '1px solid hsl(38 92% 50% / 0.2)' }}>
+              <p className="text-xs" style={{ color: 'hsl(38 80% 35%)' }}>
+                ⚠️ Nessuna clip caricata per questo CLP
+              </p>
             </div>
           )}
 
