@@ -92,6 +92,12 @@ export function ContenutiTab({ team, clienti }: ContentTabProps) {
   // ── V3: usa FaseService con oldFase + optimistic update ──
   const handleFaseChange = async (contenuto: Contenuto, nuovaFase: FaseCLP) => {
     console.log('[ContenutiTab] handleFaseChange V3', { id: contenuto.id, oldFase: contenuto.fase, nuovaFase });
+
+    const FASE_SEQ = ['Idea', 'Script', 'Girato', 'Pre montato', 'Montato', 'Uploadato', 'Revisionato', 'Programmato', 'Pubblicato'];
+    const oldIdx = FASE_SEQ.indexOf(contenuto.fase);
+    const newIdx = FASE_SEQ.indexOf(nuovaFase);
+    const isBackward = newIdx < oldIdx;
+
     const result = await cambiaFaseCLP({
       contenutoId: contenuto.id,
       nuovaFase,
@@ -103,6 +109,49 @@ export function ContenutiTab({ team, clienti }: ContentTabProps) {
     if (!result.success) {
       addToast('Errore cambio fase: ' + result.errors.join(', '), 'error');
       return;
+    }
+
+    // Se vai indietro: archivia i task di fasi successive e crea task per la nuova fase
+    if (isBackward) {
+      const FASE_TIPO: Record<string, string> = {
+        'Girato': 'Premontaggio', 'Pre montato': 'Montaggio', 'Montato': 'Upload esportato',
+        'Uploadato': 'Revisione montaggio', 'Revisionato': 'Programmazione',
+      };
+      // Archivia task aperti di fasi > nuovaFase
+      for (let i = newIdx + 1; i < FASE_SEQ.length; i++) {
+        const tipoFase = FASE_TIPO[FASE_SEQ[i]];
+        if (!tipoFase) continue;
+        await supabase.from('task')
+          .update({ stato: 'Archiviato' })
+          .eq('id_contenuto', contenuto.id)
+          .eq('tipo', tipoFase)
+          .neq('stato', 'Completato')
+          .neq('stato', 'Archiviato');
+      }
+      // Crea task per la nuova fase se non esiste già
+      const tipoNuovo = FASE_TIPO[nuovaFase];
+      if (tipoNuovo) {
+        const ASSEGNAMENTI: Record<string, string> = {
+          'Premontaggio': 'Luca', 'Montaggio': 'Alessandro', 'Upload esportato': 'Alessandro',
+          'Revisione montaggio': 'Elisa', 'Programmazione': 'Elisa',
+        };
+        const { data: existing } = await supabase.from('task').select('id')
+          .eq('id_contenuto', contenuto.id).eq('tipo', tipoNuovo)
+          .neq('stato', 'Completato').neq('stato', 'Archiviato');
+        if (!existing || existing.length === 0) {
+          const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
+          await supabase.from('task').insert({
+            id_display: idData || `TSK${Date.now()}`,
+            descrizione: `${tipoNuovo} ${contenuto.id_display} – ${contenuto.titolo}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}`,
+            tipo: tipoNuovo, stato: 'Da fare',
+            assegnato_a: ASSEGNAMENTI[tipoNuovo] || 'Giovanni',
+            assegnato_da: '⚡ Sistema',
+            cliente_id: contenuto.cliente_id, cliente_nome: contenuto.cliente_nome || '',
+            id_contenuto: contenuto.id, priorita: '🟡 Media',
+          });
+          console.log(`[ContenutiTab] Backward: creato task ${tipoNuovo} per ${contenuto.id_display}`);
+        }
+      }
     }
 
     // Optimistic update — aggiorna localmente senza re-fetch
