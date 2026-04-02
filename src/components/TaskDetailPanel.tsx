@@ -151,7 +151,9 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   const [contenutoRevisione, setContenutoRevisione] = useState<Contenuto | null>(null);
   const [exportedFileId, setExportedFileId] = useState<string | null>(null);
   const [allExportedFiles, setAllExportedFiles] = useState<{ id: string; fileId: string; fileName: string; uploadedAt: string }[]>([]);
+  const [supervisioneGiovanni, setSupervisioneGiovanni] = useState(false);
   const isRevisioneTask = task.tipo === 'Revisione montaggio';
+  const isSupervisoneTask = task.tipo === 'Supervisione';
   const isAutoTask = task.assegnato_da?.includes('Sistema') || task.assegnato_da?.includes('⚡');
 
   // ── Programmazione date picker ─────────────────────────────────────────────
@@ -263,10 +265,43 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
     setSavingRevisione(true);
     try {
       await approvaRevisione(contenutoRevisione, team);
+      
+      if (supervisioneGiovanni) {
+        // Archivia il task Programmazione appena creato dalla SP
+        const { data: progTasks } = await supabase
+          .from('task')
+          .select('id')
+          .eq('id_contenuto', contenutoRevisione.id)
+          .eq('tipo', 'Programmazione')
+          .neq('stato', 'Completato')
+          .neq('stato', 'Archiviato');
+        if (progTasks && progTasks.length > 0) {
+          await supabase.from('task').update({ stato: 'Archiviato' }).in('id', progTasks.map(t => t.id));
+        }
+        // Crea task Supervisione per Giovanni
+        const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
+        const nomeGiovanni = team.find(t => t.nome.toLowerCase().includes('giovanni'))?.nome || 'Giovanni';
+        await supabase.from('task').insert({
+          id_display: idData || `TSK${Date.now()}`,
+          descrizione: `👁️ Supervisione ${contenutoRevisione.id_display} – ${contenutoRevisione.titolo}${contenutoRevisione.cliente_nome ? ` (${contenutoRevisione.cliente_nome})` : ''}`,
+          tipo: 'Supervisione',
+          stato: 'Da fare',
+          assegnato_a: nomeGiovanni,
+          assegnato_da: '⚡ Sistema',
+          cliente_id: contenutoRevisione.cliente_id,
+          cliente_nome: contenutoRevisione.cliente_nome || '',
+          id_contenuto: contenutoRevisione.id,
+          priorita: '🔴 Alta',
+        });
+        await supabase.from('contenuti').update({ supervisione_giovanni: true }).eq('id', contenutoRevisione.id);
+        addToast('✅ Revisione approvata → inviata a Giovanni per supervisione', 'success');
+      } else {
+        addToast('✅ Revisione approvata → CLP avanzato a Revisionato — task Programmazione creato!', 'success');
+      }
+      
       setClpFase('Revisionato');
       setTaskCompletato(true);
       sounds.taskCompletato();
-      addToast('✅ Revisione approvata → CLP avanzato a Revisionato — task Programmazione creato!', 'success');
       const { data } = await supabase.from('task').select('*').eq('id', task.id).single();
       if (data) onUpdate(data as Task);
     } catch (err: any) {
@@ -1122,6 +1157,43 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
               )}
             </div>
           )}
+          {/* ─── NOTE REVISIONE (task Upload esportato con modifiche richieste) ── */}
+          {isUploadTask && contenutoRevisione?.note_revisione && (
+            <div className="rounded-xl p-3.5 space-y-2"
+              style={{ background: 'hsl(38 92% 50% / 0.08)', border: '1px solid hsl(38 92% 50% / 0.30)' }}>
+              <div className="flex items-center gap-1.5">
+                <span style={{ fontSize: 16 }}>📝</span>
+                <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(32 95% 35%)' }}>
+                  Modifiche richieste
+                </p>
+                {contenutoRevisione.revision_count && contenutoRevisione.revision_count > 1 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ background: '#FEF3C7', color: '#D97706' }}>
+                    Revisione #{contenutoRevisione.revision_count}
+                  </span>
+                )}
+              </div>
+              <p className="text-sm leading-relaxed whitespace-pre-wrap"
+                style={{ color: 'hsl(32 80% 25%)' }}>
+                {contenutoRevisione.note_revisione}
+              </p>
+            </div>
+          )}
+
+          {/* ─── VIDEO PRECEDENTE (task Upload dopo revisione — per vedere cosa modificare) ── */}
+          {isUploadTask && contenutoRevisione?.note_revisione && exportedFileId && utente?.id && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                🎬 VIDEO DA MODIFICARE
+              </p>
+              <video
+                controls
+                className="w-full rounded-lg border border-border"
+                style={{ maxHeight: 200 }}
+                src={`${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${exportedFileId}&teamId=${utente.id}`}
+              />
+            </div>
+          )}
+
           {/* ─── UPLOAD ESPORTATO: file picker + progress ──────────────── */}
           {isUploadTask && !taskCompletato && (
             <div>
@@ -1279,23 +1351,36 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
                 style={{ background: 'hsl(270 60% 55% / 0.06)', border: '1px solid hsl(270 60% 55% / 0.2)' }}>
 
                 {!showModificheForm ? (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleApprovaRevisione}
-                      disabled={savingRevisione}
-                      className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
-                      style={{ background: 'hsl(142 70% 45%)', color: 'white', opacity: savingRevisione ? 0.6 : 1 }}
-                    >
-                      {savingRevisione ? '⏳…' : '✅ Approvato'}
-                    </button>
-                    <button
-                      onClick={() => setShowModificheForm(true)}
-                      disabled={savingRevisione}
-                      className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
-                      style={{ background: 'hsl(38 92% 50% / 0.15)', color: 'hsl(32 95% 35%)', border: '1px solid hsl(38 92% 50% / 0.35)' }}
-                    >
-                      🔄 Richiedi modifiche
-                    </button>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={supervisioneGiovanni}
+                        onChange={e => setSupervisioneGiovanni(e.target.checked)}
+                        className="rounded"
+                      />
+                      <span className="text-xs font-medium" style={{ color: 'hsl(38 80% 35%)' }}>
+                        👁️ Fai supervisionare anche a Giovanni
+                      </span>
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleApprovaRevisione}
+                        disabled={savingRevisione}
+                        className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
+                        style={{ background: 'hsl(142 70% 45%)', color: 'white', opacity: savingRevisione ? 0.6 : 1 }}
+                      >
+                        {savingRevisione ? '⏳…' : supervisioneGiovanni ? '✅ Approva + Supervisione' : '✅ Approvato'}
+                      </button>
+                      <button
+                        onClick={() => setShowModificheForm(true)}
+                        disabled={savingRevisione}
+                        className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
+                        style={{ background: 'hsl(38 92% 50% / 0.15)', color: 'hsl(32 95% 35%)', border: '1px solid hsl(38 92% 50% / 0.35)' }}
+                      >
+                        🔄 Richiedi modifiche
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -1331,6 +1416,133 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
 
                 <p className="text-[10px] text-muted-foreground mt-1">
                   ✅ Approvato → CLP avanza a Revisionato + task Programmazione per Elisa<br />
+                  🔄 Modifiche → CLP torna a Montato + task Upload esportato per Alessandro
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ─── SUPERVISIONE GIOVANNI: Approva / Respingi ─────────────────── */}
+          {isSupervisoneTask && !taskCompletato && (
+            <div className="space-y-3">
+              {allExportedFiles.length > 0 && (
+                <div>
+                  <p className="text-[11px] text-muted-foreground mb-1.5">📹 Anteprima file esportato</p>
+                  <video
+                    controls
+                    className="w-full rounded-lg border"
+                    style={{ maxHeight: 200, borderColor: 'hsl(214 80% 55% / 0.4)' }}
+                    src={`${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${allExportedFiles[allExportedFiles.length - 1].fileId}&teamId=${utente.id}`}
+                  />
+                </div>
+              )}
+
+              <div className="rounded-xl p-3 space-y-2"
+                style={{ background: 'hsl(38 92% 50% / 0.06)', border: '1px solid hsl(38 92% 50% / 0.2)' }}>
+                <p className="text-xs font-semibold" style={{ color: 'hsl(38 80% 35%)' }}>
+                  👁️ Supervisione richiesta da Elisa
+                </p>
+                {contenutoRevisione?.note_revisione && (
+                  <p className="text-xs italic" style={{ color: 'hsl(var(--skorpio-text-secondary))' }}>
+                    Note: {contenutoRevisione.note_revisione}
+                  </p>
+                )}
+                {!showModificheForm ? (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={async () => {
+                        if (!contenutoRevisione) return;
+                        setSavingRevisione(true);
+                        try {
+                          await supabase.from('task').update({ stato: 'Completato' }).eq('id', task.id);
+                          const nomeElisa = team.find(t => t.nome.toLowerCase().includes('elisa'))?.nome || 'Elisa';
+                          const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
+                          await supabase.from('task').insert({
+                            id_display: idData || `TSK${Date.now()}`,
+                            descrizione: `📅 Programmazione ${contenutoRevisione.id_display} – ${contenutoRevisione.titolo}${contenutoRevisione.cliente_nome ? ` (${contenutoRevisione.cliente_nome})` : ''}`,
+                            tipo: 'Programmazione',
+                            stato: 'Da fare',
+                            assegnato_a: nomeElisa,
+                            assegnato_da: '⚡ Sistema',
+                            cliente_id: contenutoRevisione.cliente_id,
+                            cliente_nome: contenutoRevisione.cliente_nome || '',
+                            id_contenuto: contenutoRevisione.id,
+                            priorita: '🔴 Alta',
+                            scadenza: contenutoRevisione.data_pubblicazione || null,
+                          });
+                          await supabase.from('contenuti').update({ supervisione_giovanni: false }).eq('id', contenutoRevisione.id);
+                          setTaskCompletato(true);
+                          sounds.taskCompletato();
+                          addToast('✅ Supervisione approvata → task Programmazione creato per Elisa!', 'success');
+                          const { data } = await supabase.from('task').select('*').eq('id', task.id).single();
+                          if (data) onUpdate(data as Task);
+                        } catch (err: any) {
+                          addToast(`❌ Errore: ${err.message}`, 'error');
+                        }
+                        setSavingRevisione(false);
+                      }}
+                      disabled={savingRevisione}
+                      className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
+                      style={{ background: 'hsl(142 70% 45%)', color: 'white', opacity: savingRevisione ? 0.6 : 1 }}
+                    >
+                      {savingRevisione ? '⏳…' : '✅ Approva'}
+                    </button>
+                    <button
+                      onClick={() => setShowModificheForm(true)}
+                      disabled={savingRevisione}
+                      className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
+                      style={{ background: 'hsl(0 80% 55% / 0.15)', color: 'hsl(0 70% 42%)', border: '1px solid hsl(0 80% 55% / 0.35)' }}
+                    >
+                      🔄 Richiedi modifiche
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <textarea
+                      value={noteModifiche}
+                      onChange={e => setNoteModifiche(e.target.value)}
+                      className="sk-textarea w-full text-sm"
+                      rows={3}
+                      placeholder="Cosa va corretto?"
+                      autoFocus
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={async () => {
+                          if (!contenutoRevisione || !noteModifiche.trim()) return;
+                          setSavingRevisione(true);
+                          try {
+                            await richiestaModifiche(contenutoRevisione, team, noteModifiche.trim(), utente?.id);
+                            setClpFase('Montato');
+                            setTaskCompletato(true);
+                            sounds.salva();
+                            addToast('🔄 Giovanni ha richiesto modifiche → task Upload esportato per Alessandro', 'success');
+                            const { data } = await supabase.from('task').select('*').eq('id', task.id).single();
+                            if (data) onUpdate(data as Task);
+                            setShowModificheForm(false);
+                            setNoteModifiche('');
+                          } catch (err: any) {
+                            addToast(`❌ Errore: ${err.message}`, 'error');
+                          }
+                          setSavingRevisione(false);
+                        }}
+                        disabled={savingRevisione || !noteModifiche.trim()}
+                        className="flex-1 py-1.5 rounded-lg text-xs font-semibold"
+                        style={{ background: 'hsl(38 92% 50%)', color: 'white', opacity: (savingRevisione || !noteModifiche.trim()) ? 0.5 : 1 }}
+                      >
+                        {savingRevisione ? '⏳…' : '🔄 Invia'}
+                      </button>
+                      <button
+                        onClick={() => { setShowModificheForm(false); setNoteModifiche(''); }}
+                        className="flex-1 py-1.5 rounded-lg text-xs font-medium border border-border hover:bg-muted"
+                      >
+                        Annulla
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  ✅ Approva → task Programmazione per Elisa<br />
                   🔄 Modifiche → CLP torna a Montato + task Upload esportato per Alessandro
                 </p>
               </div>
