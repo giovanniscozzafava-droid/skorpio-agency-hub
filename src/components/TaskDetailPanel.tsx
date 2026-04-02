@@ -161,6 +161,15 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   const [oraPub, setOraPub] = useState<string>(task.ora ? task.ora.slice(0, 5) : '');
   const [savingProg, setSavingProg] = useState(false);
   const isProgrammazioneTask = task.tipo === 'Programmazione';
+  // Pre-fill data/ora dal CLP se il task non ha scadenza propria
+  useEffect(() => {
+    if (isProgrammazioneTask && !task.scadenza && contenutoRevisione?.data_pubblicazione) {
+      setDataPub(parseLocalDate(contenutoRevisione.data_pubblicazione));
+      if (contenutoRevisione.ora_pubblicazione) {
+        setOraPub(contenutoRevisione.ora_pubblicazione.slice(0, 5));
+      }
+    }
+  }, [contenutoRevisione, isProgrammazioneTask, task.scadenza]);
   const isUploadTask = task.tipo === 'Upload esportato';
   const isMontaggioTask = task.tipo === 'Montaggio';
   const isMontaggioConModifiche = isMontaggioTask && !!contenutoRevisione?.note_revisione;
