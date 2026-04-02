@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import { useUpload } from '../context/UploadContext';
 import type { LogRipresa, Cliente, TeamMember, Contenuto, Task } from '../types';
-import { WORKFLOW_STEPS_ORDER } from '../lib/clpWorkflow';
+import { WORKFLOW_STEPS_ORDER, creaTaskPremontaggio } from '../lib/clpWorkflow';
 import { cambiaFaseCLP } from '../services/faseService';
 import { FASE_CONFIG, TEAM_ASSIGNMENTS } from '../config/faseConfig';
 import { ClipFileUpload, FileStatusDot, formatBytes } from './ClipFileUpload';
@@ -397,7 +397,7 @@ function NuovaClipModal({ clienti, team, contenuti, onClose, onCreated, onClipUp
     if (contenutoId) {
       const { data: clpData } = await supabase
         .from('contenuti')
-        .select('fase')
+        .select('*')
         .eq('id', contenutoId)
         .single();
       const fasePrecedente = ['Idea', 'Script'];
@@ -418,6 +418,11 @@ function NuovaClipModal({ clienti, team, contenuti, onClose, onCreated, onClipUp
         if (!result.success) {
           addToast('⚠️ Errore avanzamento a Girato: ' + result.errors.join(', '), 'warn');
         }
+      }
+      const faseAttuale = clpData?.fase === 'Girato' || fasePrecedente.includes(clpData?.fase || '');
+      if (faseAttuale && clpData) {
+        const taskResult = await creaTaskPremontaggio(clpData, team, rawCodes.length);
+        if (taskResult) console.log('[RipreseTab] Task Premontaggio creato:', taskResult.id_display);
       }
     }
 
