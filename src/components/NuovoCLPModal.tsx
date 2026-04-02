@@ -416,18 +416,7 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
             </div>
           </div>
 
-          {/* Supervisione Giovanni */}
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={form.supervisione_giovanni}
-              onChange={e => setForm(prev => ({ ...prev, supervisione_giovanni: e.target.checked }))}
-              className="rounded"
-            />
-            <span className="text-sm" style={{ color: 'hsl(var(--skorpio-text-secondary))' }}>
-              👁️ Supervisione Giovanni (aggiunge step revisione prima dell'upload)
-            </span>
-          </label>
+          {/* Supervisione Giovanni — configurabile solo nella fase Revisione (TaskDetailPanel) */}
 
           <div className="flex justify-end gap-3 pt-2">
             {driveWarning && (
