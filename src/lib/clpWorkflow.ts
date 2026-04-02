@@ -1,1630 +1,786 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { supabase } from '../lib/supabase';
-import { useApp } from '../context/AppContext';
+/**
+ * CLP Workflow utilities — condivisi tra CLPDetailPanel e TaskDetailPanel
+ */
+import { supabase } from './supabase';
+import { toDateStr, addDays } from './dateUtils';
+import { FASE_TO_TASK_TIPO, FASE_TIPO_MAP, FASE_ORDER as FASE_ORDER_CONFIG, TEAM_ASSIGNMENTS, LEAD_TIMES_BY_TIPO } from '../config/faseConfig';
 
-import { sounds } from '../lib/sounds';
-import { avanzaFaseDaTask, completaTaskEAvanzaFase, WORKFLOW_MAP, richiestaModifiche, approvaRevisione } from '../lib/clpWorkflow';
-import type { Task, TeamMember, FaseCLP, Contenuto } from '../types';
+// ── Default lead times (giorni lavorativi prima della pubblicazione) ──────────
+// Retrocompatibilità: mappa piatta usata come fallback
+export const DEFAULT_LEAD_TIMES: Record<string, number> = {
+  'Scrittura script': 7,
+  'Premontaggio': 5,
+  'Montaggio': 3,
+  'Upload esportato': 2,
+  'Revisione montaggio': 2,
+  'Programmazione': 1,
+  'Pubblicazione': 0,
+};
 
-import { Avatar } from './Avatar';
-import { Calendar } from './ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
-import { format } from 'date-fns';
-import { it } from 'date-fns/locale';
-import { CalendarIcon } from 'lucide-react';
-import { parseLocalDate } from '../lib/dateUtils';
-
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-
-// ── Countdown grande per il pannello dettaglio ────────────────────────────────
-function getCountdownMs(scadenza: string, ora: string | null): number {
-  return new Date(`${scadenza}T${ora ? ora.slice(0, 5) : '23:59'}:00`).getTime() - Date.now();
+export function getLeadTimes(tipoContenuto?: string): Record<string, number> {
+  // Usa LEAD_TIMES_BY_TIPO se disponibile per il tipo contenuto
+  if (tipoContenuto) {
+    const perTipo = LEAD_TIMES_BY_TIPO[tipoContenuto] || LEAD_TIMES_BY_TIPO['default'];
+    if (perTipo) return { ...DEFAULT_LEAD_TIMES, ...perTipo };
+  }
+  try {
+    const stored = localStorage.getItem('skorpio_lead_times');
+    if (stored) return { ...DEFAULT_LEAD_TIMES, ...JSON.parse(stored) };
+  } catch { /* fallback */ }
+  return { ...DEFAULT_LEAD_TIMES };
 }
 
-function isScadenzaOggi(scadenza: string): boolean {
-  const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  return scadenza === today;
+export function saveLeadTimes(times: Record<string, number>) {
+  localStorage.setItem('skorpio_lead_times', JSON.stringify(times));
 }
 
-function CountdownDettaglio({ scadenza, ora }: { scadenza: string; ora: string | null }) {
-  const [diff, setDiff] = useState(() => getCountdownMs(scadenza, ora));
-
-  useEffect(() => {
-    const id = setInterval(() => setDiff(getCountdownMs(scadenza, ora)), 60000);
-    return () => clearInterval(id);
-  }, [scadenza, ora]);
-
-  const d = Math.floor(Math.abs(diff) / 86400000);
-  const h = Math.floor((Math.abs(diff) % 86400000) / 3600000);
-  const m = Math.floor((Math.abs(diff) % 3600000) / 60000);
-
-  const isScaduto = diff <= 0;
-  // Task senza ora che scade oggi → urgente (deve essere gestito entro oggi)
-  const isUrgent  = !isScaduto && (diff < 24 * 3600000 || (isScadenzaOggi(scadenza) && !ora));
-  const isWarning = !isScaduto && !isUrgent && diff < 7 * 86400000;
-
-  const level = isScaduto ? 'scaduto' : isUrgent ? 'urgent' : isWarning ? 'warn' : 'ok';
-  const colors = {
-    ok:      { bg: 'hsl(214 80% 55% / 0.08)', color: 'hsl(214 70% 44%)', border: 'hsl(214 80% 55% / 0.20)', label: 'SCADE TRA' },
-    warn:    { bg: 'hsl(38 92% 50% / 0.10)',  color: 'hsl(32 95% 35%)',  border: 'hsl(38 92% 50% / 0.30)', label: 'IN SCADENZA' },
-    urgent:  { bg: 'hsl(0 80% 55% / 0.10)',   color: 'hsl(0 70% 42%)',   border: 'hsl(0 80% 55% / 0.35)', label: '⚡ URGENTE' },
-    scaduto: { bg: 'hsl(0 80% 55% / 0.13)',   color: 'hsl(0 70% 38%)',   border: 'hsl(0 80% 55% / 0.45)', label: '⚠️ SCADUTO DA' },
-  }[level];
-
-  // Se scade oggi senza ora esplicita, mostra "oggi · Xh Ymin"
-  const todayNoOra = isScadenzaOggi(scadenza) && !ora && !isScaduto;
-  const timeText = isScaduto
-    ? d > 0 ? `${d}g ${h}h` : `${h}h ${m}min`
-    : d > 7 ? `${d} giorni`
-    : todayNoOra ? `oggi · ${h}h ${m}min`
-    : d >= 1 ? `${d}g ${h}h`
-    : h >= 1 ? `${h}h ${m}min`
-    : `${m} min`;
-
-  return (
-    <div
-      className={`flex items-center justify-between rounded-xl px-4 py-3${level === 'urgent' ? ' animate-pulse' : ''}`}
-      style={{ background: colors.bg, border: `1px solid ${colors.border}` }}
-    >
-      <div>
-        <p className="text-xs font-bold uppercase tracking-wider" style={{ color: colors.color, opacity: 0.8 }}>
-          {colors.label}
-        </p>
-        <p className="text-2xl font-black mt-0.5 font-mono tabular-nums" style={{ color: colors.color }}>
-          {timeText}
-        </p>
-      </div>
-      <span style={{ fontSize: 28 }}>{isScaduto ? '⏰' : isUrgent ? '🔴' : isWarning ? '🟡' : '📅'}</span>
-    </div>
-  );
+/** Calcola la deadline a ritroso dalla data di pubblicazione */
+export function calcolaDeadlineARitroso(dataPubblicazione: string | null, tipoTask: string, tipoContenuto?: string): string | null {
+  if (!dataPubblicazione) return null;
+  const leadTimes = getLeadTimes(tipoContenuto);
+  const giorni = leadTimes[tipoTask];
+  if (giorni === undefined || giorni === 0) return dataPubblicazione;
+  // Sottrai N giorni
+  const pubDate = new Date(dataPubblicazione + 'T00:00:00');
+  const deadline = addDays(pubDate, -giorni);
+  return toDateStr(deadline);
 }
 
-async function invokeEdge(path: string, body: object) {
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/${path}`, {
-    method: 'POST',
-    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error || `Edge error ${res.status}`);
+/**
+ * Ricalcola le scadenze di tutti i task aperti collegati a un CLP
+ * in base alla nuova data di pubblicazione e ai lead times.
+ */
+export async function ricalcolaScadenzeTask(contenutoId: string, dataPubblicazione: string, oraPubblicazione: string | null, tipoContenuto?: string): Promise<number> {
+  const leadTimes = getLeadTimes(tipoContenuto);
+
+  const { data: openTasks } = await supabase
+    .from('task')
+    .select('id, tipo')
+    .eq('id_contenuto', contenutoId)
+    .neq('stato', 'Completato')
+    .neq('stato', 'Archiviato');
+
+  if (!openTasks || openTasks.length === 0) return 0;
+
+  let updated = 0;
+  for (const task of openTasks) {
+    const giorni = leadTimes[task.tipo];
+    if (giorni === undefined) continue;
+
+    const deadline = giorni === 0
+      ? dataPubblicazione
+      : toDateStr(addDays(new Date(dataPubblicazione + 'T00:00:00'), -giorni));
+
+    const ora = giorni === 0 ? oraPubblicazione : null;
+
+    await supabase
+      .from('task')
+      .update({ scadenza: deadline, ora: ora || null })
+      .eq('id', task.id);
+    updated++;
+  }
+
+  return updated;
+}
+
+// ── Workflow step definitions ────────────────────────────────────────────────
+export interface WorkflowStep {
+  faseCurrent: FaseCLP;
+  faseNext: FaseCLP;
+  tipoNext: string;
+  assegnatoKeyword: string;
+  emojiNext: string;
+  descrizioneNext: (c: Contenuto) => string;
+}
+
+// [UNIFIED - old] assegnatoKeyword era hardcoded — ora usa TEAM_ASSIGNMENTS da faseConfig.ts
+export const WORKFLOW_MAP: Record<string, WorkflowStep> = {
+  'Scrittura script': {
+    faseCurrent: 'Idea',
+    faseNext: 'Script',
+    tipoNext: 'Premontaggio',
+    assegnatoKeyword: TEAM_ASSIGNMENTS['Premontaggio'],
+    emojiNext: '🎬',
+    descrizioneNext: c => `🎬 Pre montaggio ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
+  },
+  'Premontaggio': {
+    faseCurrent: 'Girato',
+    faseNext: 'Pre montato',
+    tipoNext: 'Montaggio',
+    assegnatoKeyword: TEAM_ASSIGNMENTS['Montaggio'],
+    emojiNext: '✂️',
+    descrizioneNext: c => `✂️ Montaggio ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
+  },
+  'Montaggio': {
+    faseCurrent: 'Pre montato',
+    faseNext: 'Montato',
+    tipoNext: 'Upload esportato',
+    assegnatoKeyword: TEAM_ASSIGNMENTS['Upload esportato'],
+    emojiNext: '📤',
+    descrizioneNext: c => `📤 Upload esportato ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
+  },
+  'Upload esportato': {
+    faseCurrent: 'Montato',
+    faseNext: 'Uploadato',
+    tipoNext: 'Revisione montaggio',
+    assegnatoKeyword: TEAM_ASSIGNMENTS['Revisione montaggio'],
+    emojiNext: '👁️',
+    descrizioneNext: c => `👁️ Revisione ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
+  },
+  'Revisione montaggio': {
+    faseCurrent: 'Uploadato',
+    faseNext: 'Revisionato',
+    tipoNext: 'Programmazione',
+    assegnatoKeyword: TEAM_ASSIGNMENTS['Programmazione'],
+    emojiNext: '📅',
+    descrizioneNext: c => `📅 Programmazione ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
+  },
+  'Programmazione': {
+    faseCurrent: 'Revisionato',
+    faseNext: 'Programmato',
+    tipoNext: '',
+    assegnatoKeyword: TEAM_ASSIGNMENTS['Programmazione'],
+    emojiNext: '',
+    descrizioneNext: () => '',
+  },
+  // FEAT 7: task condizionale — si inserisce solo se supervisione_giovanni è attivo
+  'Supervisione': {
+    faseCurrent: 'Montato',
+    faseNext: 'Montato', // resta nella stessa fase, poi crea Upload
+    tipoNext: 'Upload esportato',
+    assegnatoKeyword: TEAM_ASSIGNMENTS['Upload esportato'],
+    emojiNext: '📤',
+    descrizioneNext: c => `📤 Upload esportato ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`,
+  },
+};
+
+// ── Workflow ordered steps for timeline display ──────────────────────────────
+// [UNIFIED - old] assegnato hardcoded — ora usa TEAM_ASSIGNMENTS
+export const WORKFLOW_STEPS_ORDER = [
+  { fase: 'Script', tipo: 'Scrittura script', label: 'Scrittura script', emoji: '📝', assegnato: TEAM_ASSIGNMENTS['Scrittura script'] },
+  { fase: 'Girato', tipo: 'Premontaggio', label: 'Pre montaggio', emoji: '🎬', assegnato: TEAM_ASSIGNMENTS['Premontaggio'] },
+  { fase: 'Pre montato', tipo: 'Montaggio', label: 'Montaggio', emoji: '✂️', assegnato: TEAM_ASSIGNMENTS['Montaggio'] },
+  { fase: 'Montato', tipo: 'Upload esportato', label: 'Upload esportato', emoji: '📤', assegnato: TEAM_ASSIGNMENTS['Upload esportato'] },
+  { fase: 'Uploadato', tipo: 'Revisione montaggio', label: 'Revisione', emoji: '👁️', assegnato: TEAM_ASSIGNMENTS['Revisione montaggio'] },
+  { fase: 'Revisionato', tipo: 'Programmazione', label: 'Programmazione', emoji: '📅', assegnato: TEAM_ASSIGNMENTS['Programmazione'] },
+  { fase: 'Programmato', tipo: '', label: 'Pubblicazione', emoji: '📤', assegnato: TEAM_ASSIGNMENTS['Programmazione'] },
+  { fase: 'Pubblicato', tipo: 'Cleanup', label: 'Pubblicato', emoji: '✅', assegnato: TEAM_ASSIGNMENTS['Cleanup'] },
+];
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+export function findMembro(team: TeamMember[], cerca: string): string {
+  const m = team.find(t => t.nome.toLowerCase().includes(cerca.toLowerCase()));
+  return m?.nome ?? cerca;
+}
+
+async function clpHasExportedFile(contenutoId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('log_riprese')
+    .select('id')
+    .eq('contenuto_id', contenutoId)
+    .not('exported_file_id', 'is', null)
+    .limit(1);
+
+  return !!data?.length;
+}
+
+export async function completaTaskPerContenuto(contenutoId: string, tipo: string) {
+  const { data } = await supabase
+    .from('task')
+    .select('id')
+    .eq('id_contenuto', contenutoId)
+    .eq('tipo', tipo)
+    .neq('stato', 'Completato')
+    .neq('stato', 'Archiviato');
+
+  if (data && data.length > 0) {
+    await supabase
+      .from('task')
+      .update({ stato: 'Completato' })
+      .in('id', data.map(t => t.id));
+  }
+}
+
+export async function creaTaskWorkflow(
+  contenuto: Contenuto,
+  assegnatoA: string,
+  tipo: string,
+  descrizione: string,
+  stato: string = 'Da fare',
+  scadenza?: string | null,
+  ora?: string | null
+) {
+  // Anti-duplicato
+  const { data: existing } = await supabase
+    .from('task')
+    .select('id')
+    .eq('id_contenuto', contenuto.id)
+    .eq('tipo', tipo)
+    .neq('stato', 'Completato')
+    .neq('stato', 'Archiviato');
+
+  if (existing && existing.length > 0) return null;
+
+  // Check if user manually deleted this task type before — respect that
+  // (We skip this check for simplicity; the anti-duplicate check suffices)
+
+  // Scadenza solo se esplicitamente passata (es. task Programmazione con data pubblicazione)
+  // NON calcolare automaticamente a ritroso — l'unica scadenza reale è quella della programmazione
+
+  const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
+
+  const { data, error } = await supabase
+    .from('task')
+    .insert({
+      id_display: idData ?? `TSK${Date.now()}`,
+      descrizione,
+      tipo,
+      stato,
+      assegnato_a: assegnatoA,
+      assegnato_da: '⚡ Sistema',
+      cliente_id: contenuto.cliente_id,
+      cliente_nome: contenuto.cliente_nome || '',
+      id_contenuto: contenuto.id,
+      priorita: '🟡 Media',
+      scadenza: scadenza ?? null,
+      ora: ora ?? null,
+    })
+    .select()
+    .single();
+
+  if (error) console.error('Errore creazione task workflow:', error);
   return data;
 }
 
-const STATI: Task['stato'][] = ['Da fare', 'In lavorazione', 'In revisione', 'Completato', 'Non accettato'];
-
-const STATO_COLORS: Record<string, { bg: string; text: string }> = {
-  'Da fare':        { bg: '#FEF3C7', text: '#D97706' },
-  'In lavorazione': { bg: '#DBEAFE', text: '#2563EB' },
-  'In revisione':   { bg: '#EDE9FE', text: '#7C3AED' },
-  'Completato':     { bg: '#DCFCE7', text: '#16A34A' },
-  'Non accettato':  { bg: '#FEE2E2', text: '#DC2626' },
-  'Archiviato':     { bg: '#F1F5F9', text: '#64748B' },
-};
-
-const PRIORITA_COLORS: Record<string, { dot: string; bg: string; text: string }> = {
-  '🔴 Alta':  { dot: '#EF4444', bg: '#FEE2E2', text: '#DC2626' },
-  '🟡 Media': { dot: '#F59E0B', bg: '#FEF3C7', text: '#D97706' },
-  '🟢 Bassa': { dot: '#22C55E', bg: '#DCFCE7', text: '#16A34A' },
-};
-
-const FASI_PIPELINE: FaseCLP[] = ['Girato', 'Pre montato', 'Montato', 'Uploadato', 'Revisionato', 'Programmato', 'Pubblicato'];
-
-const FASE_STYLE: Record<string, { bg: string; text: string; border: string }> = {
-  'Girato':      { bg: 'hsl(271 80% 55% / 0.12)', text: 'hsl(271 60% 40%)',  border: 'hsl(271 80% 55% / 0.35)' },
-  'Pre montato': { bg: 'hsl(214 80% 55% / 0.12)', text: 'hsl(214 70% 40%)',  border: 'hsl(214 80% 55% / 0.35)' },
-  'Montato':     { bg: 'hsl(25 90% 55% / 0.12)',  text: 'hsl(25 70% 40%)',   border: 'hsl(25 90% 55% / 0.35)' },
-  'Uploadato':   { bg: 'hsl(45 90% 50% / 0.12)',  text: 'hsl(45 80% 30%)',   border: 'hsl(45 90% 50% / 0.35)' },
-  'Revisionato': { bg: 'hsl(328 80% 55% / 0.12)', text: 'hsl(328 65% 40%)',  border: 'hsl(328 80% 55% / 0.35)' },
-  'Programmato': { bg: 'hsl(142 70% 45% / 0.12)', text: 'hsl(142 60% 35%)',  border: 'hsl(142 70% 45% / 0.35)' },
-  'Pubblicato':  { bg: 'hsl(142 70% 45% / 0.20)', text: 'hsl(142 60% 30%)',  border: 'hsl(142 70% 45% / 0.50)' },
-};
-
-interface TaskDetailPanelProps {
-  task: Task;
-  team: TeamMember[];
-  onClose: () => void;
-  onUpdate: (updated: Task) => void;
-  onDelete: (id: string) => void;
+/**
+ * Crea task di Premontaggio per Luca quando vengono caricate clip su un CLP
+ */
+export async function creaTaskPremontaggio(contenuto: Contenuto, team: TeamMember[], numClip: number): Promise<any> {
+  // [UNIFIED - old] const nomeLuca = findMembro(team, 'Luca');
+  const nomeLuca = findMembro(team, TEAM_ASSIGNMENTS['Premontaggio']);
+  return creaTaskWorkflow(
+    contenuto,
+    nomeLuca,
+    'Premontaggio',
+    `🎬 Pre montaggio ${contenuto.id_display} – ${contenuto.titolo}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}`,
+    'Da fare',
+    null,
+    null,
+  );
 }
 
-export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: TaskDetailPanelProps) {
-  const { utente, addToast } = useApp();
-  const [nota, setNota] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [clpFase, setClpFase] = useState<FaseCLP | null>(null);
-  const [savingFase, setSavingFase] = useState(false);
-  const [taskCompletato, setTaskCompletato] = useState(task.stato === 'Completato');
+/**
+/**
+ * Revisione: Elisa richiede modifiche → CLP torna a "Montato", nuovo task Upload esportato per Alessandro
+ * Usa FaseService centralizzato
+ */
+export async function richiestaModifiche(
+  contenuto: Contenuto,
+  team: TeamMember[],
+  noteRevisione: string,
+  userId?: string
+): Promise<any> {
+  // Completa il task di revisione corrente
+  await completaTaskPerContenuto(contenuto.id, 'Revisione montaggio');
+  // Cambio fase via SP — gestisce tutto (fase + task nuovo + log)
+  // Uploadato → Montato (non Pre montato): il montatore deve ri-esportare e ri-caricare
+  const { cambiaFaseCLP: cambiaFaseRM } = await import('../services/faseService');
+  const result = await cambiaFaseRM({
+    contenutoId: contenuto.id,
+    nuovaFase: 'Montato',
+    source: 'workflow',
+    userId: userId || 'revisione',
+    oldFase: contenuto.fase,
+  });
+  if (!result.success) {
+    throw new Error('Cambio fase fallito: ' + result.errors.join(', '));
+  }
+  // Scrivi note revisione solo se la fase è cambiata
+  await supabase.from('contenuti').update({
+    note_revisione: noteRevisione,
+    revision_count: (contenuto as any).revision_count ? (contenuto as any).revision_count + 1 : 1,
+  }).eq('id', contenuto.id);
 
-  // ── Cleanup task state ─────────────────────────────────────────────────────
-  const [cleanupInfo, setCleanupInfo] = useState<{ count: number; totalSize: number; clipFolderId: string } | null>(null);
-  const [loadingCleanup, setLoadingCleanup] = useState(false);
-  const [showCleanupConfirm, setShowCleanupConfirm] = useState(false);
-  const [deletingCleanup, setDeletingCleanup] = useState(false);
-  const isCleanupTask = task.tipo === 'Cleanup';
+  // Riassegna il task Upload esportato a chi ha fatto l'ultimo upload (non sempre Alessandro)
+  // Se Luca ha caricato l'ultimo file, il task torna a Luca
+  const { data: lastUploader } = await supabase
+    .from('task')
+    .select('assegnato_a')
+    .eq('id_contenuto', contenuto.id)
+    .eq('tipo', 'Upload esportato')
+    .eq('stato', 'Completato')
+    .order('updated_at', { ascending: false })
+    .limit(1);
 
-  // ── Revisione state ────────────────────────────────────────────────────────
-  const [showModificheForm, setShowModificheForm] = useState(false);
-  const [noteModifiche, setNoteModifiche] = useState('');
-  const [savingRevisione, setSavingRevisione] = useState(false);
-  const [contenutoRevisione, setContenutoRevisione] = useState<Contenuto | null>(null);
-  const [exportedFileId, setExportedFileId] = useState<string | null>(null);
-  const [allExportedFiles, setAllExportedFiles] = useState<{ id: string; fileId: string; fileName: string; uploadedAt: string }[]>([]);
-  const [supervisioneGiovanni, setSupervisioneGiovanni] = useState(false);
-  const isRevisioneTask = task.tipo === 'Revisione montaggio';
-  const isSupervisoneTask = task.tipo === 'Supervisione';
-  const isAutoTask = task.assegnato_da?.includes('Sistema') || task.assegnato_da?.includes('⚡');
+  if (lastUploader && lastUploader.length > 0) {
+    const realUploader = lastUploader[0].assegnato_a;
+    // Aggiorna il task appena creato dalla SP
+    const { data: newTask } = await supabase
+      .from('task')
+      .select('id, assegnato_a')
+      .eq('id_contenuto', contenuto.id)
+      .eq('tipo', 'Upload esportato')
+      .neq('stato', 'Completato')
+      .neq('stato', 'Archiviato')
+      .order('created_at', { ascending: false })
+      .limit(1);
 
-  // ── Programmazione date picker ─────────────────────────────────────────────
-  const [dataPub, setDataPub] = useState<Date | undefined>(
-    task.scadenza ? parseLocalDate(task.scadenza) : undefined
+    if (newTask && newTask.length > 0 && newTask[0].assegnato_a !== realUploader) {
+      await supabase.from('task').update({ assegnato_a: realUploader }).eq('id', newTask[0].id);
+      console.log(`[richiestaModifiche] Riassegnato Upload esportato a ${realUploader} (era ${newTask[0].assegnato_a})`);
+    }
+  }
+
+  // Task Upload esportato creato dalla SP (step 6) — non serve creaTaskWorkflow
+  return { ok: true, taskCreated: result.taskCreated };
+}
+
+/**
+ * Revisione: Elisa approva → CLP passa a Revisionato, crea task Programmazione
+ * La SP gestisce: cambio fase + completamento vecchio task + creazione Programmazione
+ */
+export async function approvaRevisione(
+  contenuto: Contenuto,
+  team: TeamMember[],
+  userId?: string
+): Promise<any> {
+  // Completa il task di revisione
+  await completaTaskPerContenuto(contenuto.id, 'Revisione montaggio');
+
+  const { cambiaFaseCLP: cambiaFaseAR } = await import('../services/faseService');
+  const result = await cambiaFaseAR({
+    contenutoId: contenuto.id,
+    nuovaFase: 'Revisionato',
+    source: 'workflow',
+    userId: userId || 'revisione',
+    oldFase: contenuto.fase,
+  });
+
+  if (!result.success) {
+    throw new Error('Cambio fase fallito: ' + result.errors.join(', '));
+  }
+
+  // Task Programmazione creato dalla SP (step 6) — non serve creaTaskWorkflow
+  return { ok: true, taskCreated: result.taskCreated };
+}
+
+/**
+ * Chiamato quando l'utente cambia la fase CLP direttamente dal TaskDetailPanel.
+ * Completa SEMPRE il task corrente se la fase avanza in avanti, e crea il task
+ * che "vive" nella nuova fase.
+ */
+export async function avanzaFaseDaTask(
+  taskId: string,
+  taskTipo: string,
+  contenutoId: string,
+  nuovaFase: FaseCLP,
+  team: TeamMember[],
+  teamId?: string
+): Promise<{ completatoTask: boolean; taskCreato: boolean; driveTriggered: boolean }> {
+  const FASE_SEQ = ['Girato', 'Pre montato', 'Montato', 'Uploadato', 'Revisionato', 'Programmato', 'Pubblicato'];
+  const step = WORKFLOW_MAP[taskTipo];
+  const faseCurrent = step?.faseCurrent;
+  const currentIdx = faseCurrent ? FASE_SEQ.indexOf(faseCurrent) : -1;
+  const targetIdx = FASE_SEQ.indexOf(nuovaFase);
+  const isForward = targetIdx > currentIdx;
+
+  // BLOCCO: non si può andare a Uploadato o oltre senza un file esportato
+  // Bypass per task creati prima del 28/03/2026 (migrazione vecchia logica)
+  const BYPASS_DATE = '2026-03-28';
+  if (targetIdx >= FASE_SEQ.indexOf('Uploadato')) {
+    const { data: taskRow } = await supabase
+      .from('task')
+      .select('created_at')
+      .eq('id_contenuto', contenutoId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    const isOldTask = taskRow?.created_at && taskRow.created_at < BYPASS_DATE;
+    if (!isOldTask) {
+      const hasFile = await clpHasExportedFile(contenutoId);
+      if (!hasFile) {
+        throw new Error('Non puoi avanzare a questa fase senza aver prima caricato il file esportato.');
+      }
+    }
+  }
+
+  // [OLD] await supabase.from('contenuti').update({ fase: nuovaFase }).eq('id', contenutoId);
+  const { cambiaFaseCLP: cambiaFaseAF } = await import('../services/faseService');
+  console.log('[Step2c] avanzaFaseDaTask via FaseService', { contenutoId, nuovaFase });
+  await cambiaFaseAF({ contenutoId, nuovaFase, source: 'kanban', userId: teamId || 'workflow', oldFase: faseCurrent });
+
+  // Se stiamo andando INDIETRO: archivia task di fasi successive e crea task per la nuova fase
+  if (!isForward) {
+    const FASE_TIPO: Record<string, { tipo: string; assegnato: string }> = {
+      'Girato':      { tipo: 'Premontaggio',       assegnato: 'Luca' },
+      'Pre montato': { tipo: 'Montaggio',           assegnato: 'Alessandro' },
+      'Montato':     { tipo: 'Upload esportato',    assegnato: 'Alessandro' },
+      'Uploadato':   { tipo: 'Revisione montaggio', assegnato: 'Elisa' },
+      'Revisionato': { tipo: 'Programmazione',      assegnato: 'Elisa' },
+    };
+
+    // Archivia task aperti di fasi > nuovaFase
+    for (let i = targetIdx + 1; i < FASE_SEQ.length; i++) {
+      const ft = FASE_TIPO[FASE_SEQ[i]];
+      if (!ft) continue;
+      await supabase.from('task')
+        .update({ stato: 'Archiviato' })
+        .eq('id_contenuto', contenutoId)
+        .eq('tipo', ft.tipo)
+        .neq('stato', 'Completato')
+        .neq('stato', 'Archiviato');
+    }
+    // Archivia anche il task corrente (quello da cui si sta facendo il cambio)
+    await supabase.from('task').update({ stato: 'Archiviato' }).eq('id', taskId);
+
+    // Crea task per la nuova fase se non esiste
+    const ft = FASE_TIPO[nuovaFase];
+    if (ft) {
+      const { data: existing } = await supabase.from('task').select('id')
+        .eq('id_contenuto', contenutoId).eq('tipo', ft.tipo)
+        .neq('stato', 'Completato').neq('stato', 'Archiviato');
+      if (!existing || existing.length === 0) {
+        const { data: contenuto } = await supabase.from('contenuti').select('id_display, titolo, cliente_id, cliente_nome').eq('id', contenutoId).single();
+        if (contenuto) {
+          const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
+          await supabase.from('task').insert({
+            id_display: idData || `TSK${Date.now()}`,
+            descrizione: `${ft.tipo} ${contenuto.id_display} – ${contenuto.titolo}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}`,
+            tipo: ft.tipo, stato: 'Da fare',
+            assegnato_a: ft.assegnato,
+            assegnato_da: '⚡ Sistema',
+            cliente_id: contenuto.cliente_id, cliente_nome: contenuto.cliente_nome || '',
+            id_contenuto: contenutoId, priorita: '🟡 Media',
+          });
+          console.log(`[avanzaFaseDaTask] Backward: creato ${ft.tipo} per ${contenuto.id_display}`);
+        }
+      }
+    }
+
+    return { completatoTask: true, taskCreato: true, driveTriggered: false };
+  }
+
+  // 2. Completa il task corrente (e tutti i task di fasi precedenti rimasti aperti)
+  await supabase.from('task').update({ stato: 'Completato' }).eq('id', taskId);
+
+  // Completa anche eventuali task orfani di fasi precedenti
+  // [UNIFIED - old] FASE_TIPO_MAP locale rimosso — ora importato da config/faseConfig.ts
+  for (let i = 0; i < targetIdx; i++) {
+    const prevTipo = FASE_TIPO_MAP[FASE_SEQ[i]];
+    if (prevTipo) {
+      await supabase.from('task')
+        .update({ stato: 'Completato' })
+        .eq('id_contenuto', contenutoId)
+        .eq('tipo', prevTipo)
+        .neq('stato', 'Completato')
+        .neq('stato', 'Archiviato');
+    }
+  }
+
+  // 3. Prendi contenuto fresco
+  const { data: contenuto } = await supabase
+    .from('contenuti')
+    .select('*')
+    .eq('id', contenutoId)
+    .single();
+
+  if (!contenuto) return { completatoTask: true, taskCreato: false, driveTriggered: false };
+
+  // 4. Trova il task che dovrebbe "vivere" nella nuova fase e crealo
+  // Es: fase Uploadato → task tipo "Revisione montaggio"
+  const tipoNuovaFase = FASE_TIPO_MAP[nuovaFase];
+  let newTask = null;
+  if (tipoNuovaFase) {
+    // Controlla se esiste già un task aperto di questo tipo
+    const { data: existing } = await supabase.from('task')
+      .select('id')
+      .eq('id_contenuto', contenutoId)
+      .eq('tipo', tipoNuovaFase)
+      .neq('stato', 'Completato')
+      .neq('stato', 'Archiviato')
+      .limit(1);
+
+    if (!existing || existing.length === 0) {
+      // Trova il WORKFLOW_MAP entry per il tipo che stiamo creando
+      // Es: tipoNuovaFase = 'Revisione montaggio' → WORKFLOW_MAP['Revisione montaggio']
+      const wfStep = WORKFLOW_MAP[tipoNuovaFase];
+      if (wfStep) {
+        const assegnatoA = findMembro(team, wfStep.assegnatoKeyword);
+        const c = contenuto as Contenuto;
+        const desc = `${wfStep.emojiNext || '📋'} ${tipoNuovaFase} ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`;
+        newTask = await creaTaskWorkflow(c, assegnatoA, tipoNuovaFase, desc, 'Da fare');
+      } else {
+        // Fallback per tipi senza entry in WORKFLOW_MAP (es: step iniziale)
+        const wfEntry = Object.entries(WORKFLOW_MAP).find(([, v]) => v.faseCurrent === nuovaFase);
+        if (wfEntry) {
+          const [, entryStep] = wfEntry;
+          const assegnatoA = findMembro(team, entryStep.assegnatoKeyword);
+          const c = contenuto as Contenuto;
+          const desc = `${entryStep.emojiNext || '📋'} ${tipoNuovaFase} ${c.id_display} – ${c.titolo}${c.cliente_nome ? ` (${c.cliente_nome})` : ''}`;
+          newTask = await creaTaskWorkflow(c, assegnatoA, tipoNuovaFase, desc, 'Da fare');
+        }
+      }
+
+      // Se è Upload esportato, aggiungi nota con percorso Drive
+      if (tipoNuovaFase === 'Upload esportato' && newTask) {
+        const slug = (contenuto as Contenuto).titolo.replace(/\s+/g, '-').slice(0, 40);
+        const folderPath = `SKORPIO_Clip/${(contenuto as Contenuto).cliente_nome}/${(contenuto as Contenuto).id_display}_${slug}/file_esportato/`;
+        const driveNote = contenuto.link_drive
+          ? `📂 Carica il file esportato nella cartella "file_esportato/" su Google Drive:\n${contenuto.link_drive}\n\nPercorso: ${folderPath}`
+          : `📂 Carica il file esportato nella sezione Riprese del CLP ${(contenuto as Contenuto).id_display}, zona "File esportato".\n\nPercorso Drive: ${folderPath}`;
+        await supabase.from('task').update({ note: driveNote }).eq('id', newTask.id);
+      }
+    }
+  }
+
+  // [UNIFIED - old] Drive trigger — ora lo fa FaseService.cambiaFaseCLP() (step 6)
+  // 5. Se la fase è Montato → triggera Drive
+  const driveTriggered = false; // Drive ora gestito da FaseService
+  // if (nuovaFase === 'Montato' && !contenuto.link_drive) { ...fetch create-drive-folder... }
+
+  // 6. Se fase = Programmato e data+ora già passati → pubblica subito + cleanup
+  if (nuovaFase === 'Programmato' && contenuto.data_pubblicazione && contenuto.ora_pubblicazione) {
+    if (isProntoPerPubblicazione(contenuto.data_pubblicazione, contenuto.ora_pubblicazione)) {
+      // [OLD] await supabase.from('contenuti').update({ fase: 'Pubblicato' }).eq('id', contenutoId);
+      const { cambiaFaseCLP: cambiaFase } = await import('../services/faseService');
+      console.log('[Step2c] auto-publish via FaseService', { contenutoId });
+      await cambiaFase({ contenutoId, nuovaFase: 'Pubblicato', source: 'workflow', userId: teamId || 'workflow', oldFase: 'Programmato' });
+      await creaTaskCleanup(contenuto as Contenuto, team as any[]);
+      return { completatoTask: true, taskCreato: !!newTask, driveTriggered };
+    }
+  }
+
+  return { completatoTask: true, taskCreato: !!newTask, driveTriggered };
+}
+
+
+/**
+ * Funzione di completamento via tasto "Completato" del task:
+ * avanza la fase CLP + crea il task successivo.
+ */
+export async function completaTaskEAvanzaFase(
+  taskTipo: string,
+  contenutoId: string,
+  team: TeamMember[],
+  teamId?: string
+): Promise<FaseCLP | null> {
+  // Completa TUTTI i task aperti di questo tipo per questo contenuto
+  await completaTaskPerContenuto(contenutoId, taskTipo);
+  const step = WORKFLOW_MAP[taskTipo];
+  if (!step) return null;
+
+  const { data: contenuto } = await supabase
+    .from('contenuti')
+    .select('*')
+    .eq('id', contenutoId)
+    .single();
+
+  if (!contenuto) return null;
+
+  let faseNext = step.faseNext;
+  let stepForNextTask = step;
+
+  // Se l'esportato è già stato caricato fuori dal task dedicato,
+  // salta automaticamente lo step "Upload esportato" e porta Elisa in Uploadato.
+  if (step.faseNext === 'Montato' && await clpHasExportedFile(contenutoId)) {
+    const uploadStep = WORKFLOW_MAP['Upload esportato'];
+    faseNext = uploadStep.faseNext;
+    stepForNextTask = uploadStep;
+    await completaTaskPerContenuto(contenutoId, 'Upload esportato');
+  }
+
+  // [OLD - replaced by FaseService]
+  // await supabase.from('contenuti').update({ fase: faseNext }).eq('id', contenutoId);
+
+  // [NEW - FaseService centralizzato]
+  const { cambiaFaseCLP } = await import('../services/faseService');
+  console.log('[Step2c] completaTaskEAvanzaFase via FaseService', { contenutoId, faseNext });
+  const faseResult = await cambiaFaseCLP({
+    contenutoId,
+    nuovaFase: faseNext,
+    source: 'kanban',
+    userId: teamId || 'workflow',
+    oldFase: contenuto.fase,
+    taskIdCompletato: undefined, // task già completato sopra
+  });
+  console.log('[Step2c] risultato:', faseResult);
+
+  // [UNIFIED - old] Creazione task successivo — ora lo fa FaseService.cambiaFaseCLP() (step 5)
+  // if (stepForNextTask.tipoNext) {
+  //   const assegnatoA = findMembro(team, stepForNextTask.assegnatoKeyword);
+  //   const newTask = await creaTaskWorkflow(
+  //     contenuto as Contenuto, assegnatoA, stepForNextTask.tipoNext,
+  //     stepForNextTask.descrizioneNext(contenuto as Contenuto), 'Da fare',
+  //   );
+  //   if (stepForNextTask.tipoNext === 'Upload esportato' && newTask) { ...drive note... }
+  // }
+
+  // [UNIFIED - old] Drive trigger — ora lo fa FaseService.cambiaFaseCLP() (step 6)
+  // if (step.faseNext === 'Montato' && !contenuto.link_drive) {
+  //   try { await fetch(...create-drive-folder...); } catch (e) { ... }
+  // }
+
+  // Se faseNext = Programmato e data+ora già passati → pubblica subito + cleanup
+  if (faseNext === 'Programmato' && contenuto.data_pubblicazione && contenuto.ora_pubblicazione) {
+    if (isProntoPerPubblicazione(contenuto.data_pubblicazione, contenuto.ora_pubblicazione)) {
+      // [OLD] await supabase.from('contenuti').update({ fase: 'Pubblicato' }).eq('id', contenutoId);
+      const { cambiaFaseCLP: cambiaFase2 } = await import('../services/faseService');
+      console.log('[Step2c] auto-publish via FaseService (completaTaskEAvanzaFase)', { contenutoId });
+      await cambiaFase2({ contenutoId, nuovaFase: 'Pubblicato', source: 'kanban', userId: teamId || 'workflow', oldFase: 'Programmato' });
+      await creaTaskCleanup(contenuto as Contenuto, team as any[]);
+      return 'Pubblicato' as FaseCLP;
+    }
+  }
+
+  return faseNext;
+}
+
+/**
+ * Helper: controlla se un CLP programmato con data+ora è pronto per la pubblicazione.
+ * Se ora_pubblicazione è assente, usa default 10:00:00.
+ */
+function isProntoPerPubblicazione(dataPub: string | null, oraPub: string | null, contenutoId?: string): boolean {
+  if (!dataPub) return false;
+  let ora = oraPub;
+  if (!ora) {
+    console.log('[AutoPub] ora mancante, uso default 10:00', contenutoId || '');
+    ora = '10:00:00';
+  }
+  const now = new Date();
+  const scheduled = new Date(`${dataPub}T${ora.length === 5 ? ora + ':00' : ora}`);
+  return now >= scheduled;
+}
+
+/**
+ * Check periodico: CLPs in stato "Programmato" con data+ora passati
+ * vengono portati a "Pubblicato" e il task Programmazione/Pubblicazione viene completato.
+ * NOTA: senza ora_pubblicazione il CLP resta in Programmato.
+ */
+export async function checkAutoPubblica(): Promise<number> {
+  const oggi = toDateStr(new Date());
+
+  // Prendi tutti i CLPs programmati con data <= oggi (filtro orario fatto dopo in JS)
+  const { data: candidati } = await supabase
+    .from('contenuti')
+    .select('id, data_pubblicazione, ora_pubblicazione')
+    .eq('fase', 'Programmato')
+    .lte('data_pubblicazione', oggi);
+
+  if (!candidati || candidati.length === 0) return 0;
+
+  // Filtra solo quelli il cui orario è effettivamente passato
+  const daPublicare = candidati.filter(c =>
+    isProntoPerPubblicazione(c.data_pubblicazione, c.ora_pubblicazione, c.id)
   );
-  const [oraPub, setOraPub] = useState<string>(task.ora ? task.ora.slice(0, 5) : '');
-  const [savingProg, setSavingProg] = useState(false);
-  const isProgrammazioneTask = task.tipo === 'Programmazione';
-  // Pre-fill data/ora dal CLP se il task non ha scadenza propria
-  useEffect(() => {
-    if (isProgrammazioneTask && !task.scadenza && contenutoRevisione?.data_pubblicazione) {
-      setDataPub(parseLocalDate(contenutoRevisione.data_pubblicazione));
-      if (contenutoRevisione.ora_pubblicazione) {
-        setOraPub(contenutoRevisione.ora_pubblicazione.slice(0, 5));
-      }
-    }
-  }, [contenutoRevisione, isProgrammazioneTask, task.scadenza]);
-  const isUploadTask = task.tipo === 'Upload esportato';
-  const isMontaggioTask = task.tipo === 'Montaggio';
-  const isMontaggioConModifiche = isMontaggioTask && !!contenutoRevisione?.note_revisione;
 
-  // ── Upload esportato state (shared by Upload and Montaggio re-upload) ──────
-  const [uploadProgress, setUploadProgress] = useState<{ percent: number; fileName: string } | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const uploadInputRef = useRef<HTMLInputElement>(null);
-  const montaggioUploadRef = useRef<HTMLInputElement>(null);
-  
+  if (daPublicare.length === 0) return 0;
 
-  const isCLPTask = !!(task.id_contenuto && WORKFLOW_MAP[task.tipo]);
-  const workflowStep = WORKFLOW_MAP[task.tipo];
+  const ids = daPublicare.map(c => c.id);
 
-  // Load cleanup info when it's a Cleanup task
-  useEffect(() => {
-    if (!isCleanupTask || !task.id_contenuto) return;
-    setLoadingCleanup(true);
-    supabase
-      .from('contenuti')
-      .select('drive_clip_folder_id')
-      .eq('id', task.id_contenuto)
-      .single()
-      .then(async ({ data }) => {
-        if (!data?.drive_clip_folder_id || !utente?.id) { setLoadingCleanup(false); return; }
-        try {
-          const result = await invokeEdge('google-drive-list-files', { folderId: data.drive_clip_folder_id, teamId: utente.id });
-          setCleanupInfo({ count: result.count, totalSize: result.totalSize, clipFolderId: data.drive_clip_folder_id });
-        } catch { /* ignore */ }
-        setLoadingCleanup(false);
-      });
-  }, [task.id_contenuto, isCleanupTask, utente?.id]);
+  // [NEW - FaseService centralizzato]
+  const { cambiaFaseCLP } = await import('../services/faseService');
+  for (const id of ids) {
+    console.log('[Step2c] checkAutoPubblica via FaseService', { id });
+    await cambiaFaseCLP({ contenutoId: id, nuovaFase: 'Pubblicato', source: 'workflow', userId: 'auto-publish', oldFase: 'Programmato' });
+  }
 
-  const handleDeleteRawFiles = async () => {
-    if (!cleanupInfo || !utente?.id) return;
-    setDeletingCleanup(true);
+  for (const c of daPublicare) {
+    await completaTaskPerContenuto(c.id, 'Programmazione');
+    await completaTaskPerContenuto(c.id, 'Pubblicazione');
     try {
-      await invokeEdge('google-drive-delete-folder-contents', { folderId: cleanupInfo.clipFolderId, teamId: utente.id });
-      // Mark raw files deleted in DB
-      if (task.id_contenuto) {
-        const { data: clips } = await supabase.from('log_riprese').select('id').eq('contenuto_id', task.id_contenuto);
-        if (clips && clips.length > 0) {
-          await supabase.from('log_riprese').update({ file_deleted_at: new Date().toISOString(), file_id: null, file_url: null }).in('id', clips.map((c: any) => c.id));
+      const { data: contenuto } = await supabase.from('contenuti').select('*').eq('id', c.id).single();
+      if (contenuto) {
+        const { data: teamData } = await supabase.from('team').select('*');
+        const team = (teamData || []) as any[];
+        await creaTaskCleanup(contenuto as Contenuto, team);
+
+        // FEAT 5: Notifica auto-pubblicazione per Elisa e Giovanni
+        const ora = c.ora_pubblicazione || '10:00';
+        const titoloCLP = contenuto.titolo || contenuto.id_display || c.id;
+        const msg = `${contenuto.id_display} - ${titoloCLP} pubblicato automaticamente alle ${ora}`;
+        const destinatari = [TEAM_ASSIGNMENTS['Programmazione'], TEAM_ASSIGNMENTS['Scrittura script']]; // Elisa, Giovanni
+        for (const dest of destinatari) {
+          if (!dest) continue;
+          await supabase.from('notifiche').insert({
+            destinatario: dest,
+            tipo: 'auto_pubblicazione',
+            titolo: '📤 Pubblicato automaticamente',
+            messaggio: msg,
+          }).then(({ error }) => {
+            if (error) console.warn('[checkAutoPubblica] errore notifica:', error);
+          });
         }
       }
-      await supabase.from('task').update({ stato: 'Completato' }).eq('id', task.id);
-      const { data: updated } = await supabase.from('task').select('*').eq('id', task.id).single();
-      if (updated) onUpdate(updated as Task);
-      addToast('🗑️ File grezzi eliminati. File esportato conservato.', 'success');
-      setShowCleanupConfirm(false);
-      setTaskCompletato(true);
-    } catch (err: any) {
-      addToast(`❌ Errore eliminazione: ${err.message}`, 'error');
+    } catch (e) {
+      console.error('[checkAutoPubblica] errore creaTaskCleanup:', e);
     }
-    setDeletingCleanup(false);
-  };
-
-  // Load contenuto for Revisione tasks (video preview + approve/reject)
-  useEffect(() => {
-    if (!task.id_contenuto) return;
-    supabase
-      .from('contenuti')
-      .select('*')
-      .eq('id', task.id_contenuto)
-      .single()
-      .then(({ data }) => {
-        if (data) setContenutoRevisione(data as Contenuto);
-      });
-    // Load ALL exported files from log_riprese for version history
-    supabase
-      .from('log_riprese')
-      .select('id, exported_file_id, exported_file_name, exported_file_uploaded_at')
-      .eq('contenuto_id', task.id_contenuto)
-      .not('exported_file_id', 'is', null)
-      .order('exported_file_uploaded_at', { ascending: true })
-      .then(({ data }) => {
-        if (data && data.length > 0) {
-          setExportedFileId(data[data.length - 1].exported_file_id);
-          setAllExportedFiles(data.map(d => ({
-            id: d.id,
-            fileId: d.exported_file_id!,
-            fileName: d.exported_file_name || 'export',
-            uploadedAt: d.exported_file_uploaded_at || '',
-          })));
-        }
-      });
-  }, [task.id_contenuto]);
-
-  const handleApprovaRevisione = async () => {
-    if (!contenutoRevisione) return;
-    setSavingRevisione(true);
-    try {
-      await approvaRevisione(contenutoRevisione, team);
-      
-      if (supervisioneGiovanni) {
-        // Archivia il task Programmazione appena creato dalla SP
-        const { data: progTasks } = await supabase
-          .from('task')
-          .select('id')
-          .eq('id_contenuto', contenutoRevisione.id)
-          .eq('tipo', 'Programmazione')
-          .neq('stato', 'Completato')
-          .neq('stato', 'Archiviato');
-        if (progTasks && progTasks.length > 0) {
-          await supabase.from('task').update({ stato: 'Archiviato' }).in('id', progTasks.map(t => t.id));
-        }
-        // Crea task Supervisione per Giovanni
-        const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
-        const nomeGiovanni = team.find(t => t.nome.toLowerCase().includes('giovanni'))?.nome || 'Giovanni';
-        await supabase.from('task').insert({
-          id_display: idData || `TSK${Date.now()}`,
-          descrizione: `👁️ Supervisione ${contenutoRevisione.id_display} – ${contenutoRevisione.titolo}${contenutoRevisione.cliente_nome ? ` (${contenutoRevisione.cliente_nome})` : ''}`,
-          tipo: 'Supervisione',
-          stato: 'Da fare',
-          assegnato_a: nomeGiovanni,
-          assegnato_da: '⚡ Sistema',
-          cliente_id: contenutoRevisione.cliente_id,
-          cliente_nome: contenutoRevisione.cliente_nome || '',
-          id_contenuto: contenutoRevisione.id,
-          priorita: '🔴 Alta',
-        });
-        await supabase.from('contenuti').update({ supervisione_giovanni: true }).eq('id', contenutoRevisione.id);
-        addToast('✅ Revisione approvata → inviata a Giovanni per supervisione', 'success');
-      } else {
-        addToast('✅ Revisione approvata → CLP avanzato a Revisionato — task Programmazione creato!', 'success');
-      }
-      
-      setClpFase('Revisionato');
-      setTaskCompletato(true);
-      sounds.taskCompletato();
-      const { data } = await supabase.from('task').select('*').eq('id', task.id).single();
-      if (data) onUpdate(data as Task);
-    } catch (err: any) {
-      addToast(`❌ Errore: ${err.message}`, 'error');
-    }
-    setSavingRevisione(false);
-  };
-
-  const handleRichiestaModifiche = async () => {
-    if (!contenutoRevisione || !noteModifiche.trim()) {
-      addToast('⚠️ Scrivi cosa va corretto', 'warn');
-      return;
-    }
-    setSavingRevisione(true);
-    try {
-      await richiestaModifiche(contenutoRevisione, team, noteModifiche.trim());
-      setClpFase('Montato');
-      setTaskCompletato(true);
-      sounds.salva();
-      addToast('🔄 Richiesta modifiche inviata → task Upload esportato creato per Alessandro', 'success');
-      const { data } = await supabase.from('task').select('*').eq('id', task.id).single();
-      if (data) onUpdate(data as Task);
-      setShowModificheForm(false);
-      setNoteModifiche('');
-    } catch (err: any) {
-      addToast(`❌ Errore: ${err.message}`, 'error');
-    }
-    setSavingRevisione(false);
-  };
-
-  useEffect(() => {
-    if (!task.id_contenuto) return;
-    supabase
-      .from('contenuti')
-      .select('fase')
-      .eq('id', task.id_contenuto)
-      .single()
-      .then(({ data }) => {
-        if (data) setClpFase(data.fase as FaseCLP);
-      });
-  }, [task.id_contenuto]);
-
-  useEffect(() => {
-    setTaskCompletato(task.stato === 'Completato');
-  }, [task.stato]);
-
-  useEffect(() => {
-    setDataPub(task.scadenza ? parseLocalDate(task.scadenza) : undefined);
-    setOraPub(task.ora ? task.ora.slice(0, 5) : '');
-  }, [task.scadenza, task.ora]);
-
-  const scad = task.scadenza ? parseLocalDate(task.scadenza) : null;
-  const oggi = new Date(); oggi.setHours(0, 0, 0, 0);
-  const isScaduto = scad && scad < oggi && task.stato !== 'Completato';
-
-  // ── Salva data/ora di pubblicazione (task Programmazione) ─────────────────
-  const handleSalvaProgrammazione = async () => {
-    if (!dataPub || !task.id_contenuto) return;
-    setSavingProg(true);
-    const dataStr = format(dataPub, 'yyyy-MM-dd');
-    const oraStr = oraPub || null;
-
-    // Aggiorna scadenza del task e data_pubblicazione del CLP
-    await Promise.all([
-      supabase.from('task').update({ scadenza: dataStr, ora: oraStr }).eq('id', task.id),
-      supabase.from('contenuti').update({
-        data_pubblicazione: dataStr,
-        ora_pubblicazione: oraStr,
-      }).eq('id', task.id_contenuto),
-    ]);
-
-    const { cambiaFaseCLP } = await import('../services/faseService');
-    await cambiaFaseCLP({
-      contenutoId: task.id_contenuto,
-      nuovaFase: 'Programmato',
-      source: 'kanban',
-      userId: utente?.id || 'workflow',
-      oldFase: clpFase || 'Revisionato',
-    });
-
-    // Completa il task
-    
-    // Completa il task e aggiunge evento calendario
-    await supabase.from('task').update({ stato: 'Completato' }).eq('id', task.id);
-
-    // Crea evento calendario per la pubblicazione
-    const { data: contenuto } = await supabase
-      .from('contenuti')
-      .select('*')
-      .eq('id', task.id_contenuto)
-      .single();
-
-    if (contenuto) {
-      await supabase.from('calendario').insert({
-        tipo: 'pubblicazione',
-        data: dataStr,
-        ora: oraStr,
-        descrizione: `📱 Pubblica ${contenuto.id_display} – ${contenuto.titolo}`,
-        cliente_id: contenuto.cliente_id,
-        cliente_nome: contenuto.cliente_nome || '',
-        contenuto_id: contenuto.id,
-        id_contenuto_display: contenuto.id_display,
-        canale: contenuto.canale || '',
-        tipo_contenuto: contenuto.tipo || '',
-        persona: 'Elisa',
-        stato: 'Pianificato',
-      });
-    }
-
-    setClpFase('Programmato');
-    setTaskCompletato(true);
-    sounds.taskCompletato();
-    addToast(`📅 CLP programmato per ${format(dataPub, 'd MMM yyyy', { locale: it })}${oraStr ? ' alle ' + oraStr : ''} — verrà pubblicato automaticamente!`, 'success');
-
-    const { data: updated } = await supabase.from('task').select('*').eq('id', task.id).single();
-    if (updated) onUpdate(updated as Task);
-    setSavingProg(false);
-  };
-
-  // ── Upload esportato handler ──────────────────────────────────────────────
-  const handleUploadEsportato = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !task.id_contenuto || !utente?.id || !contenutoRevisione) return;
-
-    setUploading(true);
-    setUploadProgress({ percent: 0, fileName: file.name });
-
-    try {
-      const ext = file.name.split('.').pop() || 'mp4';
-      const mimeType = file.type || 'video/mp4';
-      const slug = (contenutoRevisione.titolo || '').toLowerCase()
-        .replace(/[àáâ]/g,'a').replace(/[èéê]/g,'e').replace(/[ìí]/g,'i')
-        .replace(/[òó]/g,'o').replace(/[ùú]/g,'u')
-        .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
-      const fileName = `${contenutoRevisione.id_display}_${slug}_export.${ext}`;
-
-      // Init resumable upload
-      const initResult = await invokeEdge('google-drive-upload-init', {
-        fileName,
-        mimeType,
-        fileSize: file.size,
-        teamId: utente.id,
-        clientName: contenutoRevisione.cliente_nome || 'Generale',
-        zone: 'file_esportato',
-        contenutoId: task.id_contenuto,
-        idDisplay: contenutoRevisione.id_display,
-        titolo: contenutoRevisione.titolo,
-      });
-
-      const uploadUrl = initResult.uploadUrl;
-      const CHUNK = 4 * 1024 * 1024;
-      let uploaded = 0;
-      let fileId = '';
-
-      while (uploaded < file.size) {
-        const end = Math.min(uploaded + CHUNK, file.size);
-        const chunk = file.slice(uploaded, end);
-        const contentRange = `bytes ${uploaded}-${end - 1}/${file.size}`;
-
-        let result: any = null;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          try {
-            const proxyUrl = `${SUPABASE_URL}/functions/v1/google-drive-upload-chunk`;
-            const res = await fetch(proxyUrl, {
-              method: 'POST',
-              headers: {
-                'apikey': SUPABASE_KEY,
-                'Authorization': `Bearer ${SUPABASE_KEY}`,
-                'x-upload-url': uploadUrl,
-                'x-content-range': contentRange,
-                'x-content-type': mimeType,
-                'Content-Type': 'application/octet-stream',
-              },
-              body: chunk,
-            });
-            if (!res.ok) {
-              const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-              throw new Error(err?.error || `Proxy error ${res.status}`);
-            }
-            result = await res.json();
-            break;
-          } catch (err) {
-            if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-            else throw err;
-          }
-        }
-
-        if (result.status === 308) {
-          uploaded = result.range ? parseInt(result.range.split('-')[1]) + 1 : end;
-        } else if (result.status === 200 || result.status === 201) {
-          fileId = result.fileId;
-          break;
-        }
-
-        setUploadProgress({
-          percent: Math.min(99, Math.round((uploaded / file.size) * 100)),
-          fileName: file.name,
-        });
-      }
-
-      if (!fileId) throw new Error('Upload completato senza fileId');
-
-      const fileUrl = `${SUPABASE_URL}/functions/v1/google-drive-download?fileId=${fileId}`;
-
-      // Update log_riprese with exported file info
-      const { data: clips } = await supabase
-        .from('log_riprese')
-        .select('id')
-        .eq('contenuto_id', task.id_contenuto)
-        .order('riga', { ascending: true })
-        .limit(1);
-
-      if (clips && clips.length > 0) {
-        await supabase.from('log_riprese').update({
-          exported_file_id: fileId,
-          exported_file_url: fileUrl,
-          exported_file_name: fileName,
-          exported_file_size: file.size,
-          exported_file_uploaded_at: new Date().toISOString(),
-          exported_file_mime_type: mimeType,
-        }).eq('id', clips[0].id);
-      } else {
-        // Create a log_riprese entry if none exists
-        await supabase.from('log_riprese').insert({
-          id_clip: contenutoRevisione.id_display || 'CLIP',
-          contenuto_id: task.id_contenuto,
-          cliente_id: contenutoRevisione.cliente_id,
-          cliente_nome: contenutoRevisione.cliente_nome,
-          id_contenuto_display: contenutoRevisione.id_display,
-          titolo: contenutoRevisione.titolo,
-          exported_file_id: fileId,
-          exported_file_url: fileUrl,
-          exported_file_name: fileName,
-          exported_file_size: file.size,
-          exported_file_uploaded_at: new Date().toISOString(),
-          exported_file_mime_type: mimeType,
-          operatore: utente.nome,
-          stato: 'Uploadato',
-          riga: 1,
-        });
-      }
-
-      // Complete task and advance CLP
-      const nuovaFase = await completaTaskEAvanzaFase(task.tipo, task.id_contenuto, team, utente.id);
-      setClpFase(nuovaFase || 'Uploadato');
-      setTaskCompletato(true);
-      sounds.taskCompletato();
-      addToast(`✅ File caricato su Drive — CLP avanzato a "Uploadato"!`, 'success');
-
-      const { data: updated } = await supabase.from('task').select('*').eq('id', task.id).single();
-      if (updated) onUpdate(updated as Task);
-    } catch (err: any) {
-      addToast(`❌ Errore upload: ${err.message}`, 'error');
-    }
-    setUploading(false);
-    setUploadProgress(null);
-    if (uploadInputRef.current) uploadInputRef.current.value = '';
-  };
-
-  // ── Upload versione modificata (task Montaggio dopo revisione) ─────────────
-  const handleUploadModificato = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !task.id_contenuto || !utente?.id || !contenutoRevisione) return;
-
-    setUploading(true);
-    setUploadProgress({ percent: 0, fileName: file.name });
-
-    try {
-      const ext = file.name.split('.').pop() || 'mp4';
-      const mimeType = file.type || 'video/mp4';
-      const slug = (contenutoRevisione.titolo || '').toLowerCase()
-        .replace(/[àáâ]/g,'a').replace(/[èéê]/g,'e').replace(/[ìí]/g,'i')
-        .replace(/[òó]/g,'o').replace(/[ùú]/g,'u')
-        .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
-      const versionNum = allExportedFiles.length + 1;
-      const fileName = `${contenutoRevisione.id_display}_${slug}_export_v${versionNum}.${ext}`;
-
-      const initResult = await invokeEdge('google-drive-upload-init', {
-        fileName,
-        mimeType,
-        fileSize: file.size,
-        teamId: utente.id,
-        clientName: contenutoRevisione.cliente_nome || 'Generale',
-        zone: 'file_esportato',
-        contenutoId: task.id_contenuto,
-        idDisplay: contenutoRevisione.id_display,
-        titolo: contenutoRevisione.titolo,
-      });
-
-      const uploadUrl = initResult.uploadUrl;
-      const CHUNK = 4 * 1024 * 1024;
-      let uploaded = 0;
-      let fileId = '';
-
-      while (uploaded < file.size) {
-        const end = Math.min(uploaded + CHUNK, file.size);
-        const chunk = file.slice(uploaded, end);
-        const contentRange = `bytes ${uploaded}-${end - 1}/${file.size}`;
-
-        let result: any = null;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          try {
-            const proxyUrl = `${SUPABASE_URL}/functions/v1/google-drive-upload-chunk`;
-            const res = await fetch(proxyUrl, {
-              method: 'POST',
-              headers: {
-                'apikey': SUPABASE_KEY,
-                'Authorization': `Bearer ${SUPABASE_KEY}`,
-                'x-upload-url': uploadUrl,
-                'x-content-range': contentRange,
-                'x-content-type': mimeType,
-                'Content-Type': 'application/octet-stream',
-              },
-              body: chunk,
-            });
-            if (!res.ok) {
-              const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-              throw new Error(err?.error || `Proxy error ${res.status}`);
-            }
-            result = await res.json();
-            break;
-          } catch (err) {
-            if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-            else throw err;
-          }
-        }
-
-        if (result.status === 308) {
-          uploaded = result.range ? parseInt(result.range.split('-')[1]) + 1 : end;
-        } else if (result.status === 200 || result.status === 201) {
-          fileId = result.fileId;
-          break;
-        }
-
-        setUploadProgress({
-          percent: Math.min(99, Math.round((uploaded / file.size) * 100)),
-          fileName: file.name,
-        });
-      }
-
-      if (!fileId) throw new Error('Upload completato senza fileId');
-
-      const fileUrl = `${SUPABASE_URL}/functions/v1/google-drive-download?fileId=${fileId}`;
-
-      // Create a NEW log_riprese record for the new version
-      const maxRiga = allExportedFiles.length + 1;
-      await supabase.from('log_riprese').insert({
-        id_clip: `${contenutoRevisione.id_display}_v${versionNum}`,
-        contenuto_id: task.id_contenuto,
-        cliente_id: contenutoRevisione.cliente_id,
-        cliente_nome: contenutoRevisione.cliente_nome,
-        id_contenuto_display: contenutoRevisione.id_display,
-        titolo: contenutoRevisione.titolo,
-        exported_file_id: fileId,
-        exported_file_url: fileUrl,
-        exported_file_name: fileName,
-        exported_file_size: file.size,
-        exported_file_uploaded_at: new Date().toISOString(),
-        exported_file_mime_type: mimeType,
-        operatore: utente.nome,
-        stato: 'Uploadato',
-        riga: maxRiga,
-      });
-
-      // [OLD] await supabase.from('contenuti').update({ fase: 'Uploadato', note_revisione: '' }).eq('id', task.id_contenuto);
-      // [NEW - FaseService centralizzato]
-      const { cambiaFaseCLP } = await import('../services/faseService');
-      console.log('[Step2c] TaskDetailPanel upload esportato via FaseService', { id: task.id_contenuto });
-      await cambiaFaseCLP({ contenutoId: task.id_contenuto, nuovaFase: 'Uploadato', source: 'workflow', userId: utente?.id || 'unknown', oldFase: 'Montato' });
-      await supabase.from('contenuti').update({ note_revisione: '' }).eq('id', task.id_contenuto);
-      await supabase.from('task').update({ stato: 'Completato' }).eq('id', task.id);
-
-      // Create new Revisione task for Elisa
-      const elisa = team.find(m => m.ruolo === 'Admin' || m.nome === 'Elisa');
-      if (elisa) {
-        await supabase.from('task').insert({
-          tipo: 'Revisione montaggio',
-          descrizione: `Revisione v${versionNum}: ${contenutoRevisione.titolo}`,
-          assegnato_a: elisa.nome,
-          assegnato_da: '⚡ Sistema',
-          id_contenuto: task.id_contenuto,
-          cliente_id: contenutoRevisione.cliente_id,
-          cliente_nome: contenutoRevisione.cliente_nome,
-          stato: 'Da fare',
-          priorita: '🔴 Alta',
-          id_display: `TSK${Date.now().toString().slice(-3)}`,
-        });
-      }
-
-      setClpFase('Uploadato');
-      setTaskCompletato(true);
-      sounds.taskCompletato();
-      addToast(`✅ Versione v${versionNum} caricata — nuovo task Revisione creato per Elisa!`, 'success');
-
-      const { data: updated } = await supabase.from('task').select('*').eq('id', task.id).single();
-      if (updated) onUpdate(updated as Task);
-    } catch (err: any) {
-      addToast(`❌ Errore upload: ${err.message}`, 'error');
-    }
-    setUploading(false);
-    setUploadProgress(null);
-    if (montaggioUploadRef.current) montaggioUploadRef.current.value = '';
-  };
-
-
-  // ── Cambia solo lo stato del task (senza toccare il CLP) ──────────────────
-  const handleStatoChange = async (nuovoStato: Task['stato']) => {
-    setSaving(true);
-    const { data, error } = await supabase
-      .from('task')
-      .update({ stato: nuovoStato })
-      .eq('id', task.id)
-      .select()
-      .single();
-
-    if (!error && nuovoStato === 'Completato' && isCLPTask) {
-      sounds.taskCompletato();
-      const nuovaFase = await completaTaskEAvanzaFase(task.tipo, task.id_contenuto!, team, utente?.id);
-      if (nuovaFase) {
-        setClpFase(nuovaFase);
-        setTaskCompletato(true);
-        const isDrive = nuovaFase === 'Montato';
-        addToast(
-          `✅ Task completato → CLP avanzato a "${nuovaFase}"${isDrive ? ' + 📁 Drive in creazione…' : ' — nuovo task creato!'}`,
-          'success'
-        );
-      }
-    } else if (!error) {
-      if (nuovoStato === 'Completato') sounds.taskCompletato();
-      else sounds.salva();
-      addToast(`Stato → ${nuovoStato}`, 'success');
-    }
-
-    setSaving(false);
-    if (!error && data) onUpdate(data as Task);
-  };
-
-  // ── Cambia la fase CLP: se coincide con faseNext → completa task + avanza ─
-  const handleFaseCLPChange = async (nuovaFase: FaseCLP) => {
-    if (!task.id_contenuto || savingFase) return;
-    setSavingFase(true);
-
-    try {
-      const result = await avanzaFaseDaTask(
-        task.id,
-        task.tipo,
-        task.id_contenuto,
-        nuovaFase,
-        team,
-        utente?.id
-      );
-
-      setClpFase(nuovaFase);
-
-      if (result.completatoTask) {
-        setTaskCompletato(true);
-        sounds.taskCompletato();
-        const { data } = await supabase.from('task').select('*').eq('id', task.id).single();
-        if (data) onUpdate(data as Task);
-
-        const msgs: string[] = [`✅ Task completato — CLP → "${nuovaFase}"`];
-        if (result.taskCreato) msgs.push('Nuovo task creato!');
-        if (result.driveTriggered) msgs.push('📁 Drive in creazione…');
-        addToast(msgs.join(' · '), 'success');
-      } else {
-        sounds.salva();
-        addToast(`🔄 Fase CLP → ${nuovaFase}`, 'success');
-      }
-    } catch (err: any) {
-      addToast(`⚠️ ${err.message}`, 'warn');
-    }
-    setSavingFase(false);
-  };
-
-  const handleArchivia = async () => {
-    if (!confirm(`Archiviare il task ${task.id_display}?`)) return;
-    sounds.elimina();
-    await supabase.from('task').update({ stato: 'Archiviato' }).eq('id', task.id);
-    onDelete(task.id);
-    addToast('Task archiviato', 'info');
-  };
-
-  const handleAddNota = async () => {
-    if (!nota.trim()) return;
-    const nuovaNota = task.note ? `${task.note}\n---\n${nota}` : nota;
-    const { data, error } = await supabase
-      .from('task')
-      .update({ note: nuovaNota })
-      .eq('id', task.id)
-      .select()
-      .single();
-    if (!error && data) {
-      sounds.salva();
-      onUpdate(data as Task);
-      setNota('');
-      addToast('Nota aggiunta', 'success');
-    }
-  };
-
-  const handleSpostaA = async (nome: string) => {
-    const { data, error } = await supabase
-      .from('task')
-      .update({ assegnato_a: nome, assegnato_da: utente?.nome || '' })
-      .eq('id', task.id)
-      .select()
-      .single();
-    if (!error && data) {
-      onUpdate(data as Task);
-      addToast(`Task spostato a ${nome}`, 'success');
-    }
-  };
-
-  const statoInfo = STATO_COLORS[task.stato] || STATO_COLORS['Da fare'];
-  const prioritaInfo = PRIORITA_COLORS[task.priorita] || PRIORITA_COLORS['🟡 Media'];
-
-  return (
-    <>
-      <div className="fixed inset-0 z-40 bg-black/20" onClick={onClose} />
-
-      <div
-        className="fixed right-0 top-0 bottom-0 z-50 bg-card flex flex-col animate-slide-in-right"
-        style={{ width: 360, borderLeft: '1px solid hsl(var(--border))', boxShadow: '-4px 0 20px rgba(0,0,0,0.08)' }}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono text-muted-foreground">{task.id_display}</span>
-            {isAutoTask && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                style={{ background: 'hsl(38 92% 50% / 0.15)', color: 'hsl(32 95% 40%)', border: '1px solid hsl(38 92% 50% / 0.35)' }}>
-                ⚡ Auto
-              </span>
-            )}
-          </div>
-          <button onClick={onClose} className="sk-btn-ghost text-lg px-2 py-1">✕</button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-
-          {/* Descrizione */}
-          <p className="text-base font-semibold leading-snug" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
-            {task.descrizione}
-          </p>
-
-          {/* Badges */}
-          <div className="flex flex-wrap gap-2">
-            <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full"
-              style={{ background: statoInfo.bg, color: statoInfo.text }}>
-              {task.stato}
-            </span>
-            <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full"
-              style={{ background: prioritaInfo.bg, color: prioritaInfo.text }}>
-              {task.priorita}
-            </span>
-            {isScaduto && (
-              <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full"
-                style={{ background: '#FEE2E2', color: '#DC2626' }}>⚠ SCADUTO</span>
-            )}
-          </div>
-
-          {/* ── Countdown grande nel dettaglio ──────────────────────────────── */}
-          {task.scadenza && task.stato !== 'Completato' && (
-            <CountdownDettaglio scadenza={task.scadenza} ora={task.ora} />
-          )}
-
-          {/* Info rows */}
-          <div className="space-y-2">
-            {[
-              ['Tipo', task.tipo || '—'],
-              ['Cliente', task.cliente_nome || '—'],
-              ['Contenuto', task.id_contenuto || '—'],
-              ['Assegnato da', task.assegnato_da || '—'],
-              ['Scadenza', task.scadenza
-                ? parseLocalDate(task.scadenza).toLocaleDateString('it-IT')
-                : contenutoRevisione?.data_pubblicazione
-                  ? '📡 ' + parseLocalDate(contenutoRevisione.data_pubblicazione).toLocaleDateString('it-IT')
-                  : '—'],
-              ['Ora', task.ora
-                ? task.ora.slice(0, 5)
-                : contenutoRevisione?.ora_pubblicazione
-                  ? contenutoRevisione.ora_pubblicazione.slice(0, 5)
-                  : '—'],
-            ].map(([label, value]) => (
-              <div key={label} className="flex gap-2">
-                <span className="flex-shrink-0 text-xs font-medium w-28" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>{label}</span>
-                <span className="text-xs" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>{value}</span>
-              </div>
-            ))}
-          </div>
-
-          {task.note && (
-            <div className="rounded-lg p-3 text-xs whitespace-pre-wrap leading-relaxed"
-              style={{ background: 'hsl(210 40% 96%)', color: 'hsl(var(--skorpio-text-secondary))' }}>
-              {task.note}
-            </div>
-          )}
-
-          {/* ─── NOTE REVISIONE (task Montaggio con modifiche richieste) ──── */}
-          {isMontaggioTask && contenutoRevisione?.note_revisione && (
-            <div className="rounded-xl p-3.5 space-y-2"
-              style={{ background: 'hsl(38 92% 50% / 0.08)', border: '1px solid hsl(38 92% 50% / 0.30)' }}>
-              <div className="flex items-center gap-1.5">
-                <span style={{ fontSize: 16 }}>📝</span>
-                <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(32 95% 35%)' }}>
-                  Modifiche richieste da Elisa
-                </p>
-              </div>
-              <p className="text-sm leading-relaxed whitespace-pre-wrap"
-                style={{ color: 'hsl(32 80% 25%)' }}>
-                {contenutoRevisione.note_revisione}
-              </p>
-            </div>
-          )}
-
-          {/* ─── ANTEPRIMA VIDEO per task Montaggio (per vedere cosa modificare) ── */}
-          {isMontaggioTask && exportedFileId && utente?.id && (
-            <div>
-              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
-                🎬 VIDEO DA MODIFICARE
-              </p>
-              <video
-                controls
-                className="w-full rounded-lg border border-border"
-                style={{ maxHeight: 220 }}
-                src={`${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${exportedFileId}&teamId=${utente.id}`}
-              >
-                Il tuo browser non supporta il player video.
-              </video>
-            </div>
-          )}
-
-          {/* ─── UPLOAD VERSIONE MODIFICATA (task Montaggio dopo revisione) ──── */}
-          {isMontaggioConModifiche && !taskCompletato && (
-            <div>
-              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
-                📤 CARICA VERSIONE MODIFICATA
-              </p>
-              <div className="rounded-xl p-3 space-y-3"
-                style={{ background: 'hsl(214 80% 55% / 0.06)', border: '1px solid hsl(214 80% 55% / 0.25)' }}>
-                <p className="text-xs leading-relaxed" style={{ color: 'hsl(214 70% 40%)' }}>
-                  Carica la versione corretta. Il CLP tornerà a <strong>Uploadato</strong> e verrà creato un nuovo task di <strong>Revisione</strong> per Elisa.
-                </p>
-
-                {uploadProgress ? (
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-[11px]" style={{ color: 'hsl(214 70% 40%)' }}>
-                      <span>📁 {uploadProgress.fileName}</span>
-                      <span className="font-mono font-bold">{uploadProgress.percent}%</span>
-                    </div>
-                    <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: 'hsl(214 80% 55% / 0.15)' }}>
-                      <div
-                        className="h-full rounded-full transition-all duration-300"
-                        style={{ width: `${uploadProgress.percent}%`, background: 'hsl(214 80% 55%)' }}
-                      />
-                    </div>
-                    <p className="text-[10px] text-muted-foreground">Caricamento in corso… non chiudere il pannello.</p>
-                  </div>
-                ) : (
-                  <>
-                    <input
-                      ref={montaggioUploadRef}
-                      type="file"
-                      accept="video/*,.mp4,.mov,.avi,.mkv,.webm"
-                      onChange={handleUploadModificato}
-                      className="hidden"
-                    />
-                    <button
-                      onClick={() => montaggioUploadRef.current?.click()}
-                      disabled={uploading}
-                      className="w-full py-3 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2"
-                      style={{
-                        background: 'hsl(214 80% 55%)',
-                        color: 'white',
-                        opacity: uploading ? 0.6 : 1,
-                      }}
-                    >
-                      📤 Carica versione corretta
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-
-          <hr style={{ borderColor: 'hsl(var(--border))' }} />
-
-          {/* ─── ANTEPRIMA VIDEO ESPORTATO (qualsiasi task CLP con file) ──── */}
-          {exportedFileId && utente?.id && !isRevisioneTask && (
-            <div className="mb-4">
-              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
-                📹 ANTEPRIMA FILE ESPORTATO
-              </p>
-              <video
-                controls
-                className="w-full rounded-lg border border-border"
-                style={{ maxHeight: 220 }}
-                src={`${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${exportedFileId}&teamId=${utente.id}`}
-              >
-                Il tuo browser non supporta il player video.
-              </video>
-            </div>
-          )}
-
-          {/* ─── PROGRAMMAZIONE DATE PICKER (task Programmazione) ───────────── */}
-          {isProgrammazioneTask && !taskCompletato && (
-            <div>
-              <p className="text-xs font-medium mb-3" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
-                📅 SCEGLI DATA DI PUBBLICAZIONE
-              </p>
-              <div className="rounded-xl p-4 space-y-3"
-                style={{ background: 'hsl(328 80% 55% / 0.06)', border: '1px solid hsl(328 80% 55% / 0.25)' }}>
-                <p className="text-xs leading-relaxed" style={{ color: 'hsl(328 65% 40%)' }}>
-                  Scegli quando pubblicare questo contenuto. Il CLP passerà a <strong>Programmato</strong> e a quella data diventerà <strong>Pubblicato</strong> in automatico.
-                </p>
-
-                {/* Date picker */}
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button
-                      className="w-full flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-all"
-                      style={{
-                        background: dataPub ? 'hsl(328 80% 55% / 0.10)' : 'hsl(var(--muted))',
-                        border: `1px solid ${dataPub ? 'hsl(328 80% 55% / 0.40)' : 'hsl(var(--border))'}`,
-                        color: dataPub ? 'hsl(328 65% 40%)' : 'hsl(var(--muted-foreground))',
-                      }}
-                    >
-                      <span className="flex items-center gap-2">
-                        <CalendarIcon size={14} />
-                        {dataPub ? format(dataPub, 'd MMMM yyyy', { locale: it }) : 'Seleziona data…'}
-                      </span>
-                      {dataPub && <span className="text-xs opacity-60">cambia</span>}
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={dataPub}
-                      onSelect={setDataPub}
-                      initialFocus
-                      disabled={(d) => d < new Date(new Date().setHours(0,0,0,0))}
-                    />
-                  </PopoverContent>
-                </Popover>
-
-                {/* Ora opzionale */}
-                <div>
-                  <label className="text-xs font-medium mb-1 block" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
-                    Ora pubblicazione (opzionale)
-                  </label>
-                  <input
-                    type="time"
-                    value={oraPub}
-                    onChange={e => setOraPub(e.target.value)}
-                    className="sk-input w-full text-sm"
-                  />
-                </div>
-
-                <button
-                  onClick={handleSalvaProgrammazione}
-                  disabled={!dataPub || savingProg}
-                  className="sk-btn-primary w-full text-sm font-semibold"
-                  style={{ opacity: (!dataPub || savingProg) ? 0.5 : 1 }}
-                >
-                  {savingProg ? '⏳ Salvando…' : `📅 Programma per ${dataPub ? format(dataPub, 'd MMM', { locale: it }) : '…'}`}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {isProgrammazioneTask && taskCompletato && (
-            <div className="rounded-lg px-3 py-2.5 text-xs"
-              style={{ background: 'hsl(142 70% 45% / 0.08)', color: 'hsl(142 60% 35%)', border: '1px solid hsl(142 70% 45% / 0.25)' }}>
-              ✅ Programmato per {task.scadenza ? format(parseLocalDate(task.scadenza), 'd MMM yyyy', { locale: it }) : '—'}
-              {task.ora ? ` alle ${task.ora.slice(0,5)}` : ''} — verrà pubblicato automaticamente!
-            </div>
-          )}
-
-          {/* ─── PIPELINE FASE CLP (solo task workflow NON Programmazione) ──── */}
-          {isCLPTask && !isProgrammazioneTask && (
-            <div>
-              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
-                FASE CLP
-              </p>
-
-              {/* Pipeline visiva */}
-              <div className="flex items-center mb-3 overflow-x-auto pb-1">
-                {FASI_PIPELINE.map((fase, i) => {
-                  const isCurrent = clpFase === fase;
-                  const isPast = clpFase ? FASI_PIPELINE.indexOf(clpFase) > i : false;
-                  const style = FASE_STYLE[fase] || FASE_STYLE['Girato'];
-                  return (
-                    <React.Fragment key={fase}>
-                      <div className="flex flex-col items-center gap-0.5 flex-shrink-0" style={{ minWidth: 52 }}>
-                        <div
-                          className="w-3 h-3 rounded-full border-2"
-                          style={{
-                            background: isCurrent ? style.text : isPast ? style.text : 'hsl(var(--muted))',
-                            borderColor: isCurrent ? style.text : isPast ? style.text : 'hsl(var(--border))',
-                            opacity: isPast ? 0.45 : 1,
-                          }}
-                        />
-                        <span className="text-[9px] font-medium text-center leading-tight"
-                          style={{
-                            color: isCurrent ? style.text : isPast ? style.text : 'hsl(var(--muted-foreground))',
-                            opacity: isPast ? 0.55 : 1,
-                            fontWeight: isCurrent ? 700 : 400,
-                          }}>
-                          {fase}
-                        </span>
-                      </div>
-                      {i < FASI_PIPELINE.length - 1 && (
-                        <div className="flex-1 h-px mx-0.5 flex-shrink-0"
-                          style={{ background: isPast ? style.text : 'hsl(var(--border))', opacity: isPast ? 0.4 : 1, minWidth: 6 }} />
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </div>
-
-              {/* Bottoni fase */}
-              <div className="flex flex-wrap gap-1.5">
-                {FASI_PIPELINE.map(fase => {
-                  const style = FASE_STYLE[fase] || FASE_STYLE['Girato'];
-                  const isCurrent = clpFase === fase;
-                  const isNextStep = workflowStep?.faseNext === fase && !taskCompletato;
-                  return (
-                    <button
-                      key={fase}
-                      onClick={() => handleFaseCLPChange(fase)}
-                      disabled={isCurrent || savingFase || taskCompletato}
-                      className="text-xs px-2.5 py-1.5 rounded-md font-medium transition-all"
-                      style={{
-                        background: isCurrent ? style.text : isNextStep ? style.text : style.bg,
-                        color: isCurrent || isNextStep ? 'white' : style.text,
-                        border: `1px solid ${isNextStep ? style.text : style.border}`,
-                        opacity: (savingFase || taskCompletato) && !isCurrent ? 0.45 : 1,
-                        fontWeight: isCurrent || isNextStep ? 700 : 500,
-                        cursor: isCurrent || taskCompletato ? 'default' : 'pointer',
-                        boxShadow: isNextStep ? `0 0 0 2px ${style.text}40` : 'none',
-                      }}
-                    >
-                      {isCurrent ? `● ${fase}` : isNextStep ? `→ ${fase}` : fase}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Hint contestuale */}
-              {workflowStep && !taskCompletato && (
-                <div className="mt-2 text-[11px] rounded-md px-2.5 py-1.5"
-                  style={{ background: 'hsl(214 80% 55% / 0.08)', color: 'hsl(214 70% 40%)', border: '1px solid hsl(214 80% 55% / 0.25)' }}>
-                  💡 Clicca <strong>→ {workflowStep.faseNext}</strong> per completare il tuo task e passare il lavoro a <strong>{workflowStep.assegnatoKeyword}</strong>
-                  {workflowStep.faseNext === 'Montato' && <> · 📁 Drive verrà creato automaticamente</>}
-                </div>
-              )}
-              {taskCompletato && (
-                <div className="mt-2 text-[11px] rounded-md px-2.5 py-1.5"
-                  style={{ background: 'hsl(142 70% 45% / 0.08)', color: 'hsl(142 60% 35%)', border: '1px solid hsl(142 70% 45% / 0.25)' }}>
-                  ✅ Task completato — il lavoro è stato passato al prossimo membro del team
-                </div>
-              )}
-            </div>
-          )}
-          {/* ─── NOTE REVISIONE (task Upload esportato con modifiche richieste) ── */}
-          {isUploadTask && contenutoRevisione?.note_revisione && (
-            <div className="rounded-xl p-3.5 space-y-2"
-              style={{ background: 'hsl(38 92% 50% / 0.08)', border: '1px solid hsl(38 92% 50% / 0.30)' }}>
-              <div className="flex items-center gap-1.5">
-                <span style={{ fontSize: 16 }}>📝</span>
-                <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(32 95% 35%)' }}>
-                  Modifiche richieste
-                </p>
-                {contenutoRevisione.revision_count && contenutoRevisione.revision_count > 1 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ background: '#FEF3C7', color: '#D97706' }}>
-                    Revisione #{contenutoRevisione.revision_count}
-                  </span>
-                )}
-              </div>
-              <p className="text-sm leading-relaxed whitespace-pre-wrap"
-                style={{ color: 'hsl(32 80% 25%)' }}>
-                {contenutoRevisione.note_revisione}
-              </p>
-            </div>
-          )}
-
-          {/* ─── VIDEO PRECEDENTE (task Upload dopo revisione — per vedere cosa modificare) ── */}
-          {isUploadTask && contenutoRevisione?.note_revisione && exportedFileId && utente?.id && (
-            <div>
-              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
-                🎬 VIDEO DA MODIFICARE
-              </p>
-              <video
-                controls
-                className="w-full rounded-lg border border-border"
-                style={{ maxHeight: 200 }}
-                src={`${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${exportedFileId}&teamId=${utente.id}`}
-              />
-            </div>
-          )}
-
-          {/* ─── UPLOAD ESPORTATO: file picker + progress ──────────────── */}
-          {isUploadTask && !taskCompletato && (
-            <div>
-              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
-                📤 CARICA FILE ESPORTATO
-              </p>
-              <div className="rounded-xl p-3 space-y-3"
-                style={{ background: 'hsl(45 90% 50% / 0.06)', border: '1px solid hsl(45 90% 50% / 0.25)' }}>
-                <p className="text-xs leading-relaxed" style={{ color: 'hsl(45 80% 30%)' }}>
-                  Seleziona il file esportato da caricare su Google Drive nella cartella <strong>file_esportato/</strong>.
-                  Il CLP avanzerà automaticamente a <strong>Uploadato</strong>.
-                </p>
-
-                {uploadProgress ? (
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-[11px]" style={{ color: 'hsl(45 80% 30%)' }}>
-                      <span>📁 {uploadProgress.fileName}</span>
-                      <span className="font-mono font-bold">{uploadProgress.percent}%</span>
-                    </div>
-                    <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: 'hsl(45 90% 50% / 0.15)' }}>
-                      <div
-                        className="h-full rounded-full transition-all duration-300"
-                        style={{ width: `${uploadProgress.percent}%`, background: 'hsl(45 90% 50%)' }}
-                      />
-                    </div>
-                    <p className="text-[10px] text-muted-foreground">Caricamento in corso… non chiudere il pannello.</p>
-                  </div>
-                ) : (
-                  <>
-                    <input
-                      ref={uploadInputRef}
-                      type="file"
-                      accept="video/*,.mp4,.mov,.avi,.mkv,.webm"
-                      onChange={handleUploadEsportato}
-                      className="hidden"
-                    />
-                    <button
-                      onClick={() => uploadInputRef.current?.click()}
-                      disabled={uploading}
-                      className="w-full py-3 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2"
-                      style={{
-                        background: 'hsl(45 90% 50%)',
-                        color: 'white',
-                        opacity: uploading ? 0.6 : 1,
-                      }}
-                    >
-                      📤 Seleziona file da caricare
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-
-          {isUploadTask && taskCompletato && (
-            <div className="rounded-lg px-3 py-2.5 text-xs"
-              style={{ background: 'hsl(142 70% 45% / 0.08)', color: 'hsl(142 60% 35%)', border: '1px solid hsl(142 70% 45% / 0.25)' }}>
-              ✅ File esportato caricato — il task Revisione è stato creato per Elisa!
-            </div>
-          )}
-
-          {/* ─── CLEANUP TASK: bottone elimina file grezzi ──────────────── */}
-          {isCleanupTask && !taskCompletato && (
-            <div>
-              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
-                🗑️ AZIONI CLEANUP
-              </p>
-              <div className="rounded-xl p-3 space-y-2"
-                style={{ background: 'hsl(0 80% 55% / 0.06)', border: '1px solid hsl(0 80% 55% / 0.2)' }}>
-                {loadingCleanup ? (
-                  <p className="text-xs text-muted-foreground">Verifica file su Drive…</p>
-                ) : cleanupInfo ? (
-                  <>
-                    <p className="text-xs" style={{ color: 'hsl(0 70% 40%)' }}>
-                      📁 {cleanupInfo.count} file grezzi · {cleanupInfo.totalSize > 0 ? `${(cleanupInfo.totalSize / 1024 / 1024 / 1024).toFixed(2)} GB` : '—'} da liberare
-                    </p>
-                    {!showCleanupConfirm ? (
-                      <button
-                        onClick={() => setShowCleanupConfirm(true)}
-                        className="w-full py-2 rounded-lg text-xs font-semibold transition-all"
-                        style={{ background: 'hsl(0 80% 55%)', color: 'white' }}
-                      >
-                        🗑️ Cancella file da montare
-                      </button>
-                    ) : (
-                      <div className="space-y-2">
-                        <p className="text-xs font-medium" style={{ color: 'hsl(0 70% 40%)' }}>
-                          Stai per cancellare {cleanupInfo.count} file dalla cartella clip/. Il file esportato non verrà toccato. Confermi?
-                        </p>
-                        <div className="flex gap-2">
-                          <button onClick={handleDeleteRawFiles} disabled={deletingCleanup}
-                            className="flex-1 py-1.5 rounded-lg text-xs font-semibold"
-                            style={{ background: 'hsl(0 80% 55%)', color: 'white', opacity: deletingCleanup ? 0.6 : 1 }}>
-                            {deletingCleanup ? '⏳ Eliminando…' : '✅ Sì, elimina'}
-                          </button>
-                          <button onClick={() => setShowCleanupConfirm(false)}
-                            className="flex-1 py-1.5 rounded-lg text-xs font-medium border border-border hover:bg-muted">
-                            Annulla
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-xs text-muted-foreground">Nessun file trovato nella cartella clip/ — già pulita o Drive non connesso.</p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ─── REVISIONE: Approva / Richiedi modifiche ─────────────────── */}
-          {isRevisioneTask && !taskCompletato && (
-            <div>
-              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
-                👁️ AZIONI REVISIONE
-              </p>
-
-              {/* Video preview — all versions */}
-              {utente?.id && allExportedFiles.length > 0 && (
-                <div className="mb-3 space-y-3">
-                  {allExportedFiles.map((ef, idx) => {
-                    const isLatest = idx === allExportedFiles.length - 1;
-                    const vLabel = allExportedFiles.length > 1
-                      ? `v${idx + 1}${isLatest ? ' (ultima)' : ' (precedente)'}`
-                      : '';
-                    return (
-                      <div key={ef.id}>
-                        <p className="text-[11px] text-muted-foreground mb-1.5">
-                          {isLatest ? '📹' : '📼'} {vLabel ? `Versione ${vLabel}` : 'Anteprima file esportato'}
-                          {ef.uploadedAt && (
-                            <span className="ml-1 opacity-60">
-                              · {new Date(ef.uploadedAt).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          )}
-                        </p>
-                        <video
-                          controls
-                          className="w-full rounded-lg border"
-                          style={{
-                            maxHeight: isLatest ? 200 : 140,
-                            borderColor: isLatest ? 'hsl(214 80% 55% / 0.4)' : 'hsl(var(--border))',
-                            opacity: isLatest ? 1 : 0.75,
-                          }}
-                          src={`${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${ef.fileId}&teamId=${utente.id}`}
-                        >
-                          Il tuo browser non supporta il player video.
-                        </video>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              <div className="rounded-xl p-3 space-y-2"
-                style={{ background: 'hsl(270 60% 55% / 0.06)', border: '1px solid hsl(270 60% 55% / 0.2)' }}>
-
-                {!showModificheForm ? (
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={supervisioneGiovanni}
-                        onChange={e => setSupervisioneGiovanni(e.target.checked)}
-                        className="rounded"
-                      />
-                      <span className="text-xs font-medium" style={{ color: 'hsl(38 80% 35%)' }}>
-                        👁️ Fai supervisionare anche a Giovanni
-                      </span>
-                    </label>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleApprovaRevisione}
-                        disabled={savingRevisione}
-                        className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
-                        style={{ background: 'hsl(142 70% 45%)', color: 'white', opacity: savingRevisione ? 0.6 : 1 }}
-                      >
-                        {savingRevisione ? '⏳…' : supervisioneGiovanni ? '✅ Approva + Supervisione' : '✅ Approvato'}
-                      </button>
-                      <button
-                        onClick={() => setShowModificheForm(true)}
-                        disabled={savingRevisione}
-                        className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
-                        style={{ background: 'hsl(38 92% 50% / 0.15)', color: 'hsl(32 95% 35%)', border: '1px solid hsl(38 92% 50% / 0.35)' }}
-                      >
-                        🔄 Richiedi modifiche
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium" style={{ color: 'hsl(270 50% 40%)' }}>
-                      Descrivi cosa va corretto:
-                    </p>
-                    <textarea
-                      value={noteModifiche}
-                      onChange={e => setNoteModifiche(e.target.value)}
-                      className="sk-textarea w-full text-sm"
-                      rows={3}
-                      placeholder="es. Accorcia l'intro, il logo è fuori inquadratura…"
-                      autoFocus
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleRichiestaModifiche}
-                        disabled={savingRevisione || !noteModifiche.trim()}
-                        className="flex-1 py-1.5 rounded-lg text-xs font-semibold"
-                        style={{ background: 'hsl(38 92% 50%)', color: 'white', opacity: (savingRevisione || !noteModifiche.trim()) ? 0.5 : 1 }}
-                      >
-                        {savingRevisione ? '⏳…' : '🔄 Invia richiesta'}
-                      </button>
-                      <button
-                        onClick={() => { setShowModificheForm(false); setNoteModifiche(''); }}
-                        className="flex-1 py-1.5 rounded-lg text-xs font-medium border border-border hover:bg-muted"
-                      >
-                        Annulla
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <p className="text-[10px] text-muted-foreground mt-1">
-                  ✅ Approvato → CLP avanza a Revisionato + task Programmazione per Elisa<br />
-                  🔄 Modifiche → CLP torna a Montato + task Upload esportato per Alessandro
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* ─── SUPERVISIONE GIOVANNI: Approva / Respingi ─────────────────── */}
-          {isSupervisoneTask && !taskCompletato && (
-            <div className="space-y-3">
-              {allExportedFiles.length > 0 && (
-                <div>
-                  <p className="text-[11px] text-muted-foreground mb-1.5">📹 Anteprima file esportato</p>
-                  <video
-                    controls
-                    className="w-full rounded-lg border"
-                    style={{ maxHeight: 200, borderColor: 'hsl(214 80% 55% / 0.4)' }}
-                    src={`${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${allExportedFiles[allExportedFiles.length - 1].fileId}&teamId=${utente.id}`}
-                  />
-                </div>
-              )}
-
-              <div className="rounded-xl p-3 space-y-2"
-                style={{ background: 'hsl(38 92% 50% / 0.06)', border: '1px solid hsl(38 92% 50% / 0.2)' }}>
-                <p className="text-xs font-semibold" style={{ color: 'hsl(38 80% 35%)' }}>
-                  👁️ Supervisione richiesta da Elisa
-                </p>
-                {contenutoRevisione?.note_revisione && (
-                  <p className="text-xs italic" style={{ color: 'hsl(var(--skorpio-text-secondary))' }}>
-                    Note: {contenutoRevisione.note_revisione}
-                  </p>
-                )}
-                {!showModificheForm ? (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={async () => {
-                        if (!contenutoRevisione) return;
-                        setSavingRevisione(true);
-                        try {
-                          await supabase.from('task').update({ stato: 'Completato' }).eq('id', task.id);
-                          const nomeElisa = team.find(t => t.nome.toLowerCase().includes('elisa'))?.nome || 'Elisa';
-                          const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
-                          await supabase.from('task').insert({
-                            id_display: idData || `TSK${Date.now()}`,
-                            descrizione: `📅 Programmazione ${contenutoRevisione.id_display} – ${contenutoRevisione.titolo}${contenutoRevisione.cliente_nome ? ` (${contenutoRevisione.cliente_nome})` : ''}`,
-                            tipo: 'Programmazione',
-                            stato: 'Da fare',
-                            assegnato_a: nomeElisa,
-                            assegnato_da: '⚡ Sistema',
-                            cliente_id: contenutoRevisione.cliente_id,
-                            cliente_nome: contenutoRevisione.cliente_nome || '',
-                            id_contenuto: contenutoRevisione.id,
-                            priorita: '🔴 Alta',
-                            scadenza: contenutoRevisione.data_pubblicazione || null,
-                          });
-                          await supabase.from('contenuti').update({ supervisione_giovanni: false }).eq('id', contenutoRevisione.id);
-                          setTaskCompletato(true);
-                          sounds.taskCompletato();
-                          addToast('✅ Supervisione approvata → task Programmazione creato per Elisa!', 'success');
-                          const { data } = await supabase.from('task').select('*').eq('id', task.id).single();
-                          if (data) onUpdate(data as Task);
-                        } catch (err: any) {
-                          addToast(`❌ Errore: ${err.message}`, 'error');
-                        }
-                        setSavingRevisione(false);
-                      }}
-                      disabled={savingRevisione}
-                      className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
-                      style={{ background: 'hsl(142 70% 45%)', color: 'white', opacity: savingRevisione ? 0.6 : 1 }}
-                    >
-                      {savingRevisione ? '⏳…' : '✅ Approva'}
-                    </button>
-                    <button
-                      onClick={() => setShowModificheForm(true)}
-                      disabled={savingRevisione}
-                      className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
-                      style={{ background: 'hsl(0 80% 55% / 0.15)', color: 'hsl(0 70% 42%)', border: '1px solid hsl(0 80% 55% / 0.35)' }}
-                    >
-                      🔄 Richiedi modifiche
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <textarea
-                      value={noteModifiche}
-                      onChange={e => setNoteModifiche(e.target.value)}
-                      className="sk-textarea w-full text-sm"
-                      rows={3}
-                      placeholder="Cosa va corretto?"
-                      autoFocus
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={async () => {
-                          if (!contenutoRevisione || !noteModifiche.trim()) return;
-                          setSavingRevisione(true);
-                          try {
-                            await richiestaModifiche(contenutoRevisione, team, noteModifiche.trim(), utente?.id);
-                            setClpFase('Montato');
-                            setTaskCompletato(true);
-                            sounds.salva();
-                            addToast('🔄 Giovanni ha richiesto modifiche → task Upload esportato per Alessandro', 'success');
-                            const { data } = await supabase.from('task').select('*').eq('id', task.id).single();
-                            if (data) onUpdate(data as Task);
-                            setShowModificheForm(false);
-                            setNoteModifiche('');
-                          } catch (err: any) {
-                            addToast(`❌ Errore: ${err.message}`, 'error');
-                          }
-                          setSavingRevisione(false);
-                        }}
-                        disabled={savingRevisione || !noteModifiche.trim()}
-                        className="flex-1 py-1.5 rounded-lg text-xs font-semibold"
-                        style={{ background: 'hsl(38 92% 50%)', color: 'white', opacity: (savingRevisione || !noteModifiche.trim()) ? 0.5 : 1 }}
-                      >
-                        {savingRevisione ? '⏳…' : '🔄 Invia'}
-                      </button>
-                      <button
-                        onClick={() => { setShowModificheForm(false); setNoteModifiche(''); }}
-                        className="flex-1 py-1.5 rounded-lg text-xs font-medium border border-border hover:bg-muted"
-                      >
-                        Annulla
-                      </button>
-                    </div>
-                  </div>
-                )}
-                <p className="text-[10px] text-muted-foreground mt-1">
-                  ✅ Approva → task Programmazione per Elisa<br />
-                  🔄 Modifiche → CLP torna a Montato + task Upload esportato per Alessandro
-                </p>
-              </div>
-            </div>
-          )}
-
-
-          {!isCLPTask && (
-          <div>
-            <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>CAMBIA STATO TASK</p>
-            <div className="flex flex-wrap gap-1.5">
-              {STATI.map(s => (
-                <button
-                  key={s}
-                  onClick={() => handleStatoChange(s)}
-                  disabled={task.stato === s || saving}
-                  className="text-xs px-2.5 py-1.5 rounded-md transition-all font-medium"
-                  style={{
-                    background: task.stato === s ? (STATO_COLORS[s]?.bg || '#F1F5F9') : 'hsl(210 40% 96%)',
-                    color: task.stato === s ? (STATO_COLORS[s]?.text || '#64748B') : '#64748B',
-                    opacity: saving ? 0.5 : 1,
-                    fontWeight: task.stato === s ? 700 : 500,
-                  }}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-          )}
-
-          {/* ─── SPOSTA A ────────────────────────────────────────────────────── */}
-          {(utente?.ruolo === 'Admin' || task.assegnato_a === utente?.nome) && (
-            <div>
-              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>SPOSTA A</p>
-              <div className="flex flex-wrap gap-2">
-                {team.filter(m => m.nome !== task.assegnato_a).map(m => (
-                  <button
-                    key={m.id}
-                    onClick={() => handleSpostaA(m.nome)}
-                    className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md transition-colors"
-                    style={{ background: `${m.colore}15`, color: m.colore, border: `1px solid ${m.colore}30` }}
-                  >
-                    <Avatar nome={m.nome} colore={m.colore} size={16} avatarUrl={m.avatar_url} />
-                    {m.nome}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ─── NOTA ────────────────────────────────────────────────────────── */}
-          <div>
-            <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>AGGIUNGI NOTA</p>
-            <textarea
-              value={nota}
-              onChange={e => setNota(e.target.value)}
-              className="sk-textarea w-full text-sm"
-              rows={2}
-              placeholder="Scrivi una nota…"
-            />
-            <button onClick={handleAddNota} className="sk-btn-primary text-xs mt-1.5 w-full">
-              Aggiungi nota
-            </button>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="p-4 border-t">
-          <button onClick={handleArchivia} className="sk-btn-danger w-full text-sm">
-            🗄️ Archivia task {task.id_display}
-          </button>
-        </div>
-      </div>
-    </>
-  );
+  }
+
+  return ids.length;
+}
+
+/**
+ * Crea il task di cleanup per Elisa quando un CLP viene pubblicato.
+ */
+export async function creaTaskCleanup(contenuto: Contenuto, team: any[]): Promise<void> {
+  const { data: existing } = await supabase
+    .from('task')
+    .select('id')
+    .eq('id_contenuto', contenuto.id)
+    .eq('tipo', 'Cleanup')
+    .neq('stato', 'Completato')
+    .neq('stato', 'Archiviato');
+
+  if (existing && existing.length > 0) return;
+
+  // [UNIFIED - old] const nomeElisa = findMembro(team, 'Elisa');
+  const nomeElisa = findMembro(team, TEAM_ASSIGNMENTS['Cleanup']);
+
+  const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
+
+  await supabase.from('task').insert({
+    id_display: idData ?? `TSK${Date.now()}`,
+    descrizione: `🗑️ Cleanup ${contenuto.id_display} – ${contenuto.titolo}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}`,
+    tipo: 'Cleanup',
+    stato: 'Da fare',
+    assegnato_a: nomeElisa,
+    assegnato_da: '⚡ Sistema',
+    cliente_id: contenuto.cliente_id,
+    cliente_nome: contenuto.cliente_nome || '',
+    id_contenuto: contenuto.id,
+    priorita: '🟢 Bassa',
+    note: `La clip ${contenuto.id_display} è stata pubblicata. Cancella i file grezzi dalla cartella clip/ su Google Drive. Il file esportato resta.`,
+  });
+}
+
+/**
+ * Sync: trova CLPs in fasi workflow che non hanno il task corrispondente e li crea.
+ * Inoltre completa automaticamente i task di fasi precedenti che sono rimasti aperti.
+ * Chiamato all'avvio per recuperare CLPs entrati nel workflow prima dell'automazione.
+ */
+export async function syncMissingWorkflowTasks(): Promise<number> {
+  // [DISABLED] Disabilitato per debug — questa funzione causava regressioni di fase
+  // e task duplicati. L'unico punto autorizzato a cambiare fase è faseService.ts (stored procedure).
+  console.log('[DISABLED] syncMissingWorkflowTasks — disabilitato per debug');
+  return 0;
+}
+
+/**
+ * Recupera i task workflow per un CLP (per la timeline nella tab Riprese)
+ */
+export async function getWorkflowTasks(contenutoId: string): Promise<Array<{
+  tipo: string;
+  stato: string;
+  assegnato_a: string;
+  created_at: string;
+  updated_at: string;
+  scadenza: string | null;
+}>> {
+  const { data } = await supabase
+    .from('task')
+    .select('tipo, stato, assegnato_a, created_at, updated_at, scadenza')
+    .eq('id_contenuto', contenutoId)
+    .order('created_at', { ascending: true });
+  return (data || []) as any[];
 }
