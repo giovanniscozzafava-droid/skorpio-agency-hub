@@ -1,430 +1,1630 @@
-/**
- * KanbanTab — RISCRITTO DA ZERO
- * Principio: DB è l'unica fonte di verità.
- * Ogni azione → scrivi sul DB → loadTasks() → render.
- * Realtime → loadTasks(). Fine.
- */
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useIsMobile } from '@/hooks/use-mobile';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
+
 import { sounds } from '../lib/sounds';
-import type { Task, TeamMember, Cliente } from '../types';
+import { avanzaFaseDaTask, completaTaskEAvanzaFase, WORKFLOW_MAP, richiestaModifiche, approvaRevisione } from '../lib/clpWorkflow';
+import type { Task, TeamMember, FaseCLP, Contenuto } from '../types';
+
 import { Avatar } from './Avatar';
-import { ClienteLogo } from './ClienteLogo';
-import { TaskDetailPanel } from './TaskDetailPanel';
-import { NuovoTaskModal } from './NuovoTaskModal';
+import { Calendar } from './ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import { format } from 'date-fns';
+import { it } from 'date-fns/locale';
+import { CalendarIcon } from 'lucide-react';
 import { parseLocalDate } from '../lib/dateUtils';
-import { completaTaskEAvanzaFase, ricalcolaScadenzeTask } from '../lib/clpWorkflow';
-import { FASE_TIPO_MAP } from '../config/faseConfig';
 
-const COLONNE = [
-  { stato: 'Da fare',        colore: '#F59E0B', bg: '#FFFBEB', border: '#F59E0B', icona: '📋' },
-  { stato: 'In lavorazione', colore: '#3B82F6', bg: '#EFF6FF', border: '#3B82F6', icona: '⚡' },
-  { stato: 'In revisione',   colore: '#8B5CF6', bg: '#F5F3FF', border: '#8B5CF6', icona: '🔍' },
-  { stato: 'Completato',     colore: '#22C55E', bg: '#F0FDF4', border: '#22C55E', icona: '✅' },
-  { stato: 'Non accettato',  colore: '#EF4444', bg: '#FEF2F2', border: '#EF4444', icona: '❌' },
-] as const;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-const COLONNE_CLP = [
-  { stato: 'Girato',      tipo: 'Premontaggio',        colore: '#8B5CF6', bg: 'hsl(270 60% 97%)', border: '#8B5CF6', icona: '🎬', label: 'Girato' },
-  { stato: 'Pre montato', tipo: 'Montaggio',            colore: '#3B82F6', bg: 'hsl(214 80% 97%)', border: '#3B82F6', icona: '✂️', label: 'Pre montato' },
-  { stato: 'Montato',     tipo: 'Upload esportato',     colore: '#F59E0B', bg: 'hsl(38 92% 97%)',  border: '#F59E0B', icona: '📤', label: 'Montato' },
-  { stato: 'Uploadato',   tipo: 'Revisione montaggio',  colore: '#EC4899', bg: 'hsl(328 80% 97%)', border: '#EC4899', icona: '🔍', label: 'Uploadato' },
-  { stato: 'Revisionato', tipo: 'Programmazione',       colore: '#7C3AED', bg: 'hsl(263 70% 97%)', border: '#7C3AED', icona: '📅', label: 'Revisionato' },
-  { stato: 'Programmato', tipo: '',                     colore: '#6D28D9', bg: 'hsl(263 60% 97%)', border: '#6D28D9', icona: '📡', label: 'Programmato' },
-  { stato: 'Pubblicato',  tipo: '',                     colore: '#22C55E', bg: 'hsl(142 76% 97%)', border: '#22C55E', icona: '✅', label: 'Pubblicato' },
-] as const;
-
-const PRIORITA_COLOR: Record<string, string> = { '🔴 Alta': '#EF4444', '🟡 Media': '#F59E0B', '🟢 Bassa': '#22C55E' };
-
-const TIPO_TO_FASE: Record<string, { label: string; bg: string; color: string; border: string }> = {
-  'Premontaggio':        { label: '🎬 Girato',     bg: 'hsl(270 60% 55%/0.1)', color: 'hsl(270 50% 45%)', border: 'hsl(270 60% 55%/0.3)' },
-  'Montaggio':           { label: '✂️ Pre montato', bg: 'hsl(214 80% 55%/0.1)', color: 'hsl(214 70% 44%)', border: 'hsl(214 80% 55%/0.28)' },
-  'Upload esportato':    { label: '📤 Montato',     bg: 'hsl(38 92% 55%/0.1)',  color: 'hsl(38 80% 35%)',  border: 'hsl(38 92% 55%/0.28)' },
-  'Revisione montaggio': { label: '🔍 Uploadato',   bg: 'hsl(328 80% 55%/0.1)', color: 'hsl(328 65% 40%)', border: 'hsl(328 80% 55%/0.28)' },
-  'Programmazione':      { label: '📅 Revisionato', bg: 'hsl(263 70% 55%/0.1)', color: 'hsl(263 55% 40%)', border: 'hsl(263 70% 55%/0.28)' },
-};
-
-const FASE_NEXT: Record<string, string> = {
-  'Girato': 'Pre montato', 'Pre montato': 'Montato', 'Montato': 'Uploadato',
-  'Uploadato': 'Revisionato', 'Revisionato': 'Programmato', 'Programmato': 'Pubblicato',
-};
-
-const TIPO_PER_FASE = FASE_TIPO_MAP;
-
-function getTargetDate(scadenza: string, ora: string | null): Date {
-  return new Date(`${scadenza}T${ora ? ora.slice(0, 5) : '23:59'}:00`);
+// ── Countdown grande per il pannello dettaglio ────────────────────────────────
+function getCountdownMs(scadenza: string, ora: string | null): number {
+  return new Date(`${scadenza}T${ora ? ora.slice(0, 5) : '23:59'}:00`).getTime() - Date.now();
 }
 
-function LiveClock({ scadenza, ora }: { scadenza: string; ora: string | null }) {
-  const [diff, setDiff] = useState(() => getTargetDate(scadenza, ora).getTime() - Date.now());
-  useEffect(() => { const id = setInterval(() => setDiff(getTargetDate(scadenza, ora).getTime() - Date.now()), 60000); return () => clearInterval(id); }, [scadenza, ora]);
-  const abs = Math.abs(diff);
-  const d = Math.floor(abs / 86400000), h = Math.floor((abs % 86400000) / 3600000), m = Math.floor((abs % 3600000) / 60000);
-  const isScaduto = diff <= 0;
-  const text = isScaduto ? (d > 0 ? `da ${d}g` : `da ${h}h`) : d > 7 ? `${d}gg` : d >= 1 ? `${d}g ${h}h` : h >= 1 ? `${h}h ${m}min` : `${m}min`;
-  const level = isScaduto ? 'scaduto' : d > 7 ? 'ok' : d >= 1 ? 'warn' : 'urgent';
-  const s = { ok: { bg: 'hsl(214 80% 55%/0.1)', c: 'hsl(214 70% 44%)', b: 'hsl(214 80% 55%/0.25)' }, warn: { bg: 'hsl(38 92% 50%/0.12)', c: 'hsl(32 95% 35%)', b: 'hsl(38 92% 50%/0.35)' }, urgent: { bg: 'hsl(0 80% 55%/0.12)', c: 'hsl(0 70% 42%)', b: 'hsl(0 80% 55%/0.4)' }, scaduto: { bg: 'hsl(0 80% 55%/0.14)', c: 'hsl(0 70% 38%)', b: 'hsl(0 80% 55%/0.5)' } }[level];
-  return (
-    <div className={`mt-2 flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-semibold${level === 'urgent' ? ' animate-pulse' : ''}`} style={{ background: s.bg, border: `1px solid ${s.b}`, color: s.c }}>
-      <span className="uppercase tracking-wide" style={{ fontSize: '0.65rem' }}>{isScaduto ? 'SCADUTO' : level === 'urgent' ? 'URGENTE' : level === 'warn' ? 'IN SCADENZA' : 'SCADE TRA'}</span>
-      <span className="font-mono tabular-nums" style={{ fontSize: '0.72rem' }}>{text}</span>
-    </div>
-  );
+function isScadenzaOggi(scadenza: string): boolean {
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return scadenza === today;
 }
 
-// ── TaskCard ──────────────────────────────────────────────────────────────────
+function CountdownDettaglio({ scadenza, ora }: { scadenza: string; ora: string | null }) {
+  const [diff, setDiff] = useState(() => getCountdownMs(scadenza, ora));
 
-function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate, revisionCount, isProgrammato, canEditProgrammazione, onRiprogramma, onEditPubDate, clientLogoUrl }: {
-  task: Task; team: TeamMember[]; utente: TeamMember | null; draggingId: string | null;
-  onDragStart: () => void; onDragEnd: () => void; onClick: () => void;
-  showFaseBadge?: boolean; pubDate?: { data: string | null; ora: string | null } | null; revisionCount?: number;
-  isProgrammato?: boolean; canEditProgrammazione?: boolean; onRiprogramma?: () => void; onEditPubDate?: (d: string, o: string | null) => void;
-  clientLogoUrl?: string | null;
-}) {
-  const member = team.find(m => m.nome === task.assegnato_a);
-  const isAuto = task.assegnato_da?.includes('Sistema') || task.assegnato_da?.includes('⚡');
-  const [editPub, setEditPub] = useState(false);
-  const [eDate, setEDate] = useState(pubDate?.data || '');
-  const [eOra, setEOra] = useState(pubDate?.ora?.slice(0, 5) || '');
-  const [showMenu, setShowMenu] = useState(false);
-
-  const scadInfo = (() => {
-    if (!task.scadenza) return null;
-    const oggi = new Date(); oggi.setHours(0,0,0,0);
-    const scad = parseLocalDate(task.scadenza); scad.setHours(0,0,0,0);
-    const diff = Math.floor((scad.getTime() - oggi.getTime()) / 86400000);
-    if (diff < 0) return { label: '⚠ SCADUTO', color: '#EF4444', bg: '#FEF2F2' };
-    if (diff === 0) return { label: '⏰ OGGI', color: '#D97706', bg: '#FEF3C7' };
-    if (diff === 1) return { label: '⏰ DOMANI', color: '#D97706', bg: '#FEF3C7' };
-    return { label: `📅 ${scad.toLocaleDateString('it-IT', { day:'2-digit', month:'2-digit' })}`, color: '#64748B', bg: '#F1F5F9' };
-  })();
-
-  return (
-    <div className={`task-card ${draggingId === task.id ? 'dragging' : ''}`} draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onClick={onClick}
-      style={{ borderLeft: `3px solid ${PRIORITA_COLOR[task.priorita] || '#64748B'}`, ...(scadInfo?.label.includes('SCADUTO') ? { borderColor: '#EF4444' } : {}) }}>
-      <div className="flex items-center gap-1.5 mb-1">
-        {isAuto && <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: 'hsl(38 92% 50%/0.15)', color: 'hsl(32 95% 40%)' }}>⚡ Auto</span>}
-        {(revisionCount ?? 0) >= 3 && <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A' }}>⚠️ {revisionCount} rev</span>}
-      </div>
-      <div className="flex items-start gap-2 mb-2">
-        <div className="w-2 h-2 rounded-full mt-1 flex-shrink-0" style={{ backgroundColor: PRIORITA_COLOR[task.priorita] || '#64748B' }} />
-        <p className="text-sm font-medium flex-1 leading-snug" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>{task.descrizione.length > 80 ? task.descrizione.slice(0, 80) + '…' : task.descrizione}</p>
-      </div>
-      <div className="flex items-center justify-between gap-1 mt-2">
-        <div className="flex items-center gap-1 min-w-0">
-          <span className="text-xs font-mono" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>{task.id_display}</span>
-          {showFaseBadge && task.tipo && (() => { const f = TIPO_TO_FASE[task.tipo]; return f ? <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ background: f.bg, color: f.color, border: `1px solid ${f.border}` }}>{f.label}</span> : null; })()}
-        </div>
-        {member && <Avatar nome={member.nome} colore={member.colore} size={20} avatarUrl={member.avatar_url} />}
-      </div>
-      {task.cliente_nome && <div className="flex items-center gap-1.5 mt-1 truncate"><ClienteLogo nome={task.cliente_nome} logoUrl={clientLogoUrl} size={16} /><span className="text-xs truncate" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>{task.cliente_nome.slice(0, 20)}</span></div>}
-
-      {pubDate?.data ? (
-        <div className="mt-1.5">
-          <div className="flex items-center justify-between">
-            <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: '#7C3AED', opacity: 0.7 }}>📡 Pubblicazione</p>
-            {isProgrammato && canEditProgrammazione && <button onClick={e => { e.stopPropagation(); setEditPub(v => !v); setEDate(pubDate.data || ''); setEOra(pubDate.ora?.slice(0, 5) || ''); }} className="text-[10px] px-1 py-0.5 rounded" style={{ color: '#7C3AED' }}>✏️</button>}
-          </div>
-          {editPub && isProgrammato && canEditProgrammazione ? (
-            <div className="mt-1 space-y-1" onClick={e => e.stopPropagation()}>
-              <input type="date" className="w-full text-[11px] px-1.5 py-1 rounded border" style={{ borderColor: '#C4B5FD' }} value={eDate} onChange={e => setEDate(e.target.value)} />
-              <input type="time" className="w-full text-[11px] px-1.5 py-1 rounded border" style={{ borderColor: '#C4B5FD' }} value={eOra} onChange={e => setEOra(e.target.value)} />
-              <div className="flex gap-1">
-                <button className="flex-1 text-[10px] px-2 py-1 rounded font-semibold" style={{ background: '#7C3AED', color: 'white' }} onClick={() => { onEditPubDate?.(eDate, eOra || null); setEditPub(false); }}>Salva</button>
-                <button className="text-[10px] px-2 py-1 rounded" style={{ background: '#F1F5F9' }} onClick={() => setEditPub(false)}>✕</button>
-              </div>
-            </div>
-          ) : (
-            <>
-              {isProgrammato && pubDate.data && <p className="text-[11px] font-bold mt-0.5" style={{ color: '#6D28D9' }}>{new Date(pubDate.data + 'T00:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: '2-digit', month: '2-digit' })}{pubDate.ora && <span className="ml-1 font-mono">{pubDate.ora.slice(0, 5)}</span>}</p>}
-              <LiveClock scadenza={pubDate.data} ora={pubDate.ora} />
-            </>
-          )}
-        </div>
-      ) : task.scadenza ? <LiveClock scadenza={task.scadenza} ora={task.ora} /> : scadInfo ? (
-        <div className="inline-flex items-center text-xs px-1.5 py-0.5 rounded mt-1.5 font-medium" style={{ background: scadInfo.bg, color: scadInfo.color }}>{scadInfo.label}</div>
-      ) : null}
-
-      {isProgrammato && canEditProgrammazione && (
-        <div className="relative mt-1.5">
-          <button onClick={e => { e.stopPropagation(); setShowMenu(v => !v); }} className="text-xs px-1.5 py-0.5 rounded hover:bg-purple-100" style={{ color: '#7C3AED' }}>⋮</button>
-          {showMenu && <div className="absolute right-0 top-full mt-1 rounded-lg border shadow-lg py-1 z-50" style={{ background: 'hsl(var(--background))', borderColor: 'hsl(var(--border))', minWidth: 160 }} onClick={e => e.stopPropagation()}>
-            <button className="w-full text-left text-xs px-3 py-1.5 hover:bg-purple-50" onClick={() => { setShowMenu(false); onRiprogramma?.(); }}>🔄 Riprogramma</button>
-          </div>}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── MAIN COMPONENT ────────────────────────────────────────────────────────────
-
-export function KanbanTab({ team, clienti, personaView }: { team: TeamMember[]; clienti: Cliente[]; personaView: string | null }) {
-  const { utente, addToast } = useApp();
-  const isMobile = useIsMobile();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [clpFasi, setClpFasi] = useState<Record<string, string>>({});
-  const [clpPubDates, setClpPubDates] = useState<Record<string, { data: string | null; ora: string | null }>>({});
-  const [clpRevisionCount, setClpRevisionCount] = useState<Record<string, number>>({});
-
-  // Mappa cliente_id → logo_url per le card
-  const clientLogoMap: Record<string, string | null> = {};
-  for (const c of clienti) { if (c.logo_url) clientLogoMap[c.id] = c.logo_url; }
-  // Anche per nome (fallback quando il task ha solo cliente_nome)
-  const clientLogoByName: Record<string, string | null> = {};
-  for (const c of clienti) { if (c.logo_url) clientLogoByName[c.nome] = c.logo_url; }
-  const [loading, setLoading] = useState(true);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [showNuovoTask, setShowNuovoTask] = useState(false);
-  const [dragItem, setDragItem] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filtraOggi, setFiltraOggi] = useState(false);
-  const [boardMode, setBoardMode] = useState<'standard' | 'clp' | 'both'>('both');
-  const [mobileCol, setMobileCol] = useState('Da fare');
-  const [mobileCLPCol, setMobileCLPCol] = useState('Girato');
-  const [riprogrammaConfirm, setRiprogrammaConfirm] = useState<{ taskId: string; contenutoId: string; desc: string } | null>(null);
-  const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const canEditProgrammazione = utente?.nome === 'Elisa' || utente?.nome === 'Giovanni' || utente?.ruolo === 'Admin';
-
-  // ── L'UNICA FUNZIONE CHE LEGGE DAL DB ────────────────────────────────────
-  const loadTasks = useCallback(async () => {
-    try {
-      const [{ data: td }, { data: cd }] = await Promise.all([
-        supabase.from('task').select('*').neq('stato', 'Archiviato').order('created_at', { ascending: false }),
-        supabase.from('contenuti').select('id, fase, data_pubblicazione, ora_pubblicazione, revision_count'),
-      ]);
-      setTasks(td || []);
-      setClpFasi(Object.fromEntries((cd || []).map(c => [c.id, c.fase || ''])));
-      setClpPubDates(Object.fromEntries((cd || []).map(c => [c.id, { data: c.data_pubblicazione, ora: c.ora_pubblicazione }])));
-      setClpRevisionCount(Object.fromEntries((cd || []).map(c => [c.id, c.revision_count || 0])));
-    } catch (e) { console.error('[Kanban] loadTasks:', e); }
-    setLoading(false);
-  }, []);
-
-  // Debounced reload per realtime (evita 10 reload in 1 secondo)
-  const debouncedReload = useCallback(() => {
-    if (reloadTimer.current) clearTimeout(reloadTimer.current);
-    reloadTimer.current = setTimeout(() => loadTasks(), 500);
-  }, [loadTasks]);
-
-  // ── REALTIME: qualsiasi cambiamento → ricarica (debounced) ───────────────
   useEffect(() => {
-    loadTasks();
-    const ch = supabase.channel('kanban-v3')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'task' }, () => debouncedReload())
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'contenuti' }, () => debouncedReload())
-      .subscribe();
-    return () => { supabase.removeChannel(ch); if (reloadTimer.current) clearTimeout(reloadTimer.current); };
-  }, [loadTasks, debouncedReload]);
+    const id = setInterval(() => setDiff(getCountdownMs(scadenza, ora)), 60000);
+    return () => clearInterval(id);
+  }, [scadenza, ora]);
 
-  // ── FILTRI ───────────────────────────────────────────────────────────────
-  const matchSearch = (t: Task) => !searchQuery.trim() || (t.descrizione + t.cliente_nome + t.id_display + t.id_contenuto + t.assegnato_a + t.tipo).toLowerCase().includes(searchQuery.toLowerCase());
+  const d = Math.floor(Math.abs(diff) / 86400000);
+  const h = Math.floor((Math.abs(diff) % 86400000) / 3600000);
+  const m = Math.floor((Math.abs(diff) % 3600000) / 60000);
 
-  const PRIO_ORDER = { '🔴 Alta': 0, '🟡 Media': 1, '🟢 Bassa': 2 };
-  const sortByUrgenza = (a, b) => {
-    const now = Date.now();
-    const msA = a.scadenza ? getTargetDate(a.scadenza, a.ora).getTime() : Infinity;
-    const msB = b.scadenza ? getTargetDate(b.scadenza, b.ora).getTime() : Infinity;
-    const scadutoA = msA < now ? -1 : 0;
-    const scadutoB = msB < now ? -1 : 0;
-    if (scadutoA !== scadutoB) return scadutoA - scadutoB;
-    if (msA !== msB) return msA - msB;
-    return (PRIO_ORDER[a.priorita] ?? 1) - (PRIO_ORDER[b.priorita] ?? 1);
-  };
-  const filteredStandard = (stato: string) => tasks.filter(t => {
-    if (t.stato !== stato || (t.id_contenuto && t.id_contenuto.trim())) return false;
-    if (personaView && t.assegnato_a !== personaView) return false;
-    if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
-    if (!matchSearch(t)) return false;
-    if (filtraOggi && t.scadenza) { const ms = getTargetDate(t.scadenza, t.ora).getTime(); if (ms > Date.now() + 86400000 || ms < Date.now() - 86400000) return false; }
-    else if (filtraOggi) return false;
-    return true;
- }).sort(sortByUrgenza);
+  const isScaduto = diff <= 0;
+  // Task senza ora che scade oggi → urgente (deve essere gestito entro oggi)
+  const isUrgent  = !isScaduto && (diff < 24 * 3600000 || (isScadenzaOggi(scadenza) && !ora));
+  const isWarning = !isScaduto && !isUrgent && diff < 7 * 86400000;
 
-  const filteredCLP = (faseCLP: string) => {
-    const tipoCol = TIPO_PER_FASE[faseCLP];
-    return tasks.filter(t => {
-      if (!t.id_contenuto?.trim() || !matchSearch(t)) return false;
-      const fase = clpFasi[t.id_contenuto];
-      if (!fase) return false;
-      if (faseCLP === 'Programmato') return fase === 'Programmato' && t.tipo === 'Programmazione';
-      if (faseCLP === 'Pubblicato') return fase === 'Pubblicato' && (t.tipo === 'Cleanup' || (t.stato === 'Completato' && t.tipo === 'Programmazione'));
-      if (personaView && t.assegnato_a !== personaView) return false;
-      if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
-      // Revisionato: mostra sia Programmazione che Supervisione
-      if (faseCLP === 'Revisionato' && fase === 'Revisionato' && t.tipo === 'Supervisione' && t.stato !== 'Completato') return true;
-      return fase === faseCLP && tipoCol === t.tipo && t.stato !== 'Completato';
-    }).sort(sortByUrgenza);
-  };
+  const level = isScaduto ? 'scaduto' : isUrgent ? 'urgent' : isWarning ? 'warn' : 'ok';
+  const colors = {
+    ok:      { bg: 'hsl(214 80% 55% / 0.08)', color: 'hsl(214 70% 44%)', border: 'hsl(214 80% 55% / 0.20)', label: 'SCADE TRA' },
+    warn:    { bg: 'hsl(38 92% 50% / 0.10)',  color: 'hsl(32 95% 35%)',  border: 'hsl(38 92% 50% / 0.30)', label: 'IN SCADENZA' },
+    urgent:  { bg: 'hsl(0 80% 55% / 0.10)',   color: 'hsl(0 70% 42%)',   border: 'hsl(0 80% 55% / 0.35)', label: '⚡ URGENTE' },
+    scaduto: { bg: 'hsl(0 80% 55% / 0.13)',   color: 'hsl(0 70% 38%)',   border: 'hsl(0 80% 55% / 0.45)', label: '⚠️ SCADUTO DA' },
+  }[level];
 
-  // ── HANDLERS: azione → DB → loadTasks() ──────────────────────────────────
-  const handleDropStandard = async (nuovoStato: string) => {
-    if (!dragItem) return;
-    setDropTarget(null);
-    const task = tasks.find(t => t.id === dragItem);
-    if (!task || task.stato === nuovoStato || task.stato === 'Archiviato') { setDragItem(null); return; }
-    setDragItem(null);
-    const { error } = await supabase.from('task').update({ stato: nuovoStato }).eq('id', task.id);
-    if (error) { sounds.errore(); addToast('Errore', 'error'); }
-    else if (nuovoStato === 'Completato') { sounds.taskCompletato(); addToast('✅ Task completato!', 'success'); }
-    else { sounds.drop(); addToast(`↕️ → ${nuovoStato}`, 'info'); }
-    await loadTasks();
-  };
-
-  const handleDropCLP = async (faseCLP: string) => {
-    if (!dragItem) return;
-    setDropTarget(null);
-    const task = tasks.find(t => t.id === dragItem);
-    if (!task?.id_contenuto) { setDragItem(null); return; }
-    const faseCorr = Object.entries(TIPO_PER_FASE).find(([, tipo]) => tipo === task.tipo)?.[0];
-    const fasePrev = faseCorr ? FASE_NEXT[faseCorr] : null;
-    if (fasePrev && fasePrev !== faseCLP) { addToast(`⚠️ Solo alla fase successiva: ${fasePrev}`, 'warn'); setDragItem(null); return; }
-    setDragItem(null);
-    addToast('⏳ Avanzamento…', 'info');
-    try {
-      const nf = await completaTaskEAvanzaFase(task.tipo, task.id_contenuto, team, utente?.id);
-      if (nf) { sounds.taskCompletato(); addToast(`✅ ${task.tipo} → ${nf}`, 'success'); }
-    } catch (e: any) { sounds.errore(); addToast('❌ ' + (e?.message || 'Errore'), 'error'); }
-    await loadTasks();
-    // Backup reload — in caso il primo arrivi prima che il DB abbia committato
-    setTimeout(() => loadTasks(), 1000);
-  };
-
-  const handleRiprogramma = async (contenutoId: string) => {
-    setRiprogrammaConfirm(null);
-    addToast('⏳ Riprogrammazione…', 'info');
-    const { cambiaFaseCLP } = await import('../services/faseService');
-    const r = await cambiaFaseCLP({ contenutoId, nuovaFase: 'Revisionato', source: 'kanban', userId: utente?.id || 'unknown', oldFase: 'Programmato' });
-    addToast(r.success ? '🔄 Riprogrammato' : '❌ ' + (r.errors[0] || 'Errore'), r.success ? 'success' : 'error');
-    await loadTasks();
-  };
-
-  const handleEditPubDate = async (contenutoId: string, newDate: string, newOra: string | null) => {
-    if (!newDate) return;
-    await supabase.from('contenuti').update({ data_pubblicazione: newDate, ora_pubblicazione: newOra }).eq('id', contenutoId);
-    await supabase.from('calendario').update({ data: newDate, ora: newOra }).eq('contenuto_id', contenutoId).eq('tipo', 'pubblicazione');
-    const { data: c } = await supabase.from('contenuti').select('tipo').eq('id', contenutoId).single();
-    const count = await ricalcolaScadenzeTask(contenutoId, newDate, newOra, c?.tipo);
-    addToast(`📅 Data aggiornata — ${count} scadenze ricalcolate`, 'success');
-    await loadTasks();
-  };
-
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="sk-spinner" style={{ color: '#3B82F6' }} /></div>;
-  const showStd = boardMode === 'standard' || boardMode === 'both';
-  const showCLP = boardMode === 'clp' || boardMode === 'both';
+  // Se scade oggi senza ora esplicita, mostra "oggi · Xh Ymin"
+  const todayNoOra = isScadenzaOggi(scadenza) && !ora && !isScaduto;
+  const timeText = isScaduto
+    ? d > 0 ? `${d}g ${h}h` : `${h}h ${m}min`
+    : d > 7 ? `${d} giorni`
+    : todayNoOra ? `oggi · ${h}h ${m}min`
+    : d >= 1 ? `${d}g ${h}h`
+    : h >= 1 ? `${h}h ${m}min`
+    : `${m} min`;
 
   return (
-    <div className="p-4 max-w-full overflow-x-hidden">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <h2 className="font-bold text-lg" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>Kanban Board</h2>
-          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: '#DCFCE7', color: '#16A34A' }}>
-            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#22C55E', boxShadow: '0 0 0 3px #BBF7D0' }} /> LIVE
+    <div
+      className={`flex items-center justify-between rounded-xl px-4 py-3${level === 'urgent' ? ' animate-pulse' : ''}`}
+      style={{ background: colors.bg, border: `1px solid ${colors.border}` }}
+    >
+      <div>
+        <p className="text-xs font-bold uppercase tracking-wider" style={{ color: colors.color, opacity: 0.8 }}>
+          {colors.label}
+        </p>
+        <p className="text-2xl font-black mt-0.5 font-mono tabular-nums" style={{ color: colors.color }}>
+          {timeText}
+        </p>
+      </div>
+      <span style={{ fontSize: 28 }}>{isScaduto ? '⏰' : isUrgent ? '🔴' : isWarning ? '🟡' : '📅'}</span>
+    </div>
+  );
+}
+
+async function invokeEdge(path: string, body: object) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/${path}`, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || `Edge error ${res.status}`);
+  return data;
+}
+
+const STATI: Task['stato'][] = ['Da fare', 'In lavorazione', 'In revisione', 'Completato', 'Non accettato'];
+
+const STATO_COLORS: Record<string, { bg: string; text: string }> = {
+  'Da fare':        { bg: '#FEF3C7', text: '#D97706' },
+  'In lavorazione': { bg: '#DBEAFE', text: '#2563EB' },
+  'In revisione':   { bg: '#EDE9FE', text: '#7C3AED' },
+  'Completato':     { bg: '#DCFCE7', text: '#16A34A' },
+  'Non accettato':  { bg: '#FEE2E2', text: '#DC2626' },
+  'Archiviato':     { bg: '#F1F5F9', text: '#64748B' },
+};
+
+const PRIORITA_COLORS: Record<string, { dot: string; bg: string; text: string }> = {
+  '🔴 Alta':  { dot: '#EF4444', bg: '#FEE2E2', text: '#DC2626' },
+  '🟡 Media': { dot: '#F59E0B', bg: '#FEF3C7', text: '#D97706' },
+  '🟢 Bassa': { dot: '#22C55E', bg: '#DCFCE7', text: '#16A34A' },
+};
+
+const FASI_PIPELINE: FaseCLP[] = ['Girato', 'Pre montato', 'Montato', 'Uploadato', 'Revisionato', 'Programmato', 'Pubblicato'];
+
+const FASE_STYLE: Record<string, { bg: string; text: string; border: string }> = {
+  'Girato':      { bg: 'hsl(271 80% 55% / 0.12)', text: 'hsl(271 60% 40%)',  border: 'hsl(271 80% 55% / 0.35)' },
+  'Pre montato': { bg: 'hsl(214 80% 55% / 0.12)', text: 'hsl(214 70% 40%)',  border: 'hsl(214 80% 55% / 0.35)' },
+  'Montato':     { bg: 'hsl(25 90% 55% / 0.12)',  text: 'hsl(25 70% 40%)',   border: 'hsl(25 90% 55% / 0.35)' },
+  'Uploadato':   { bg: 'hsl(45 90% 50% / 0.12)',  text: 'hsl(45 80% 30%)',   border: 'hsl(45 90% 50% / 0.35)' },
+  'Revisionato': { bg: 'hsl(328 80% 55% / 0.12)', text: 'hsl(328 65% 40%)',  border: 'hsl(328 80% 55% / 0.35)' },
+  'Programmato': { bg: 'hsl(142 70% 45% / 0.12)', text: 'hsl(142 60% 35%)',  border: 'hsl(142 70% 45% / 0.35)' },
+  'Pubblicato':  { bg: 'hsl(142 70% 45% / 0.20)', text: 'hsl(142 60% 30%)',  border: 'hsl(142 70% 45% / 0.50)' },
+};
+
+interface TaskDetailPanelProps {
+  task: Task;
+  team: TeamMember[];
+  onClose: () => void;
+  onUpdate: (updated: Task) => void;
+  onDelete: (id: string) => void;
+}
+
+export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: TaskDetailPanelProps) {
+  const { utente, addToast } = useApp();
+  const [nota, setNota] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [clpFase, setClpFase] = useState<FaseCLP | null>(null);
+  const [savingFase, setSavingFase] = useState(false);
+  const [taskCompletato, setTaskCompletato] = useState(task.stato === 'Completato');
+
+  // ── Cleanup task state ─────────────────────────────────────────────────────
+  const [cleanupInfo, setCleanupInfo] = useState<{ count: number; totalSize: number; clipFolderId: string } | null>(null);
+  const [loadingCleanup, setLoadingCleanup] = useState(false);
+  const [showCleanupConfirm, setShowCleanupConfirm] = useState(false);
+  const [deletingCleanup, setDeletingCleanup] = useState(false);
+  const isCleanupTask = task.tipo === 'Cleanup';
+
+  // ── Revisione state ────────────────────────────────────────────────────────
+  const [showModificheForm, setShowModificheForm] = useState(false);
+  const [noteModifiche, setNoteModifiche] = useState('');
+  const [savingRevisione, setSavingRevisione] = useState(false);
+  const [contenutoRevisione, setContenutoRevisione] = useState<Contenuto | null>(null);
+  const [exportedFileId, setExportedFileId] = useState<string | null>(null);
+  const [allExportedFiles, setAllExportedFiles] = useState<{ id: string; fileId: string; fileName: string; uploadedAt: string }[]>([]);
+  const [supervisioneGiovanni, setSupervisioneGiovanni] = useState(false);
+  const isRevisioneTask = task.tipo === 'Revisione montaggio';
+  const isSupervisoneTask = task.tipo === 'Supervisione';
+  const isAutoTask = task.assegnato_da?.includes('Sistema') || task.assegnato_da?.includes('⚡');
+
+  // ── Programmazione date picker ─────────────────────────────────────────────
+  const [dataPub, setDataPub] = useState<Date | undefined>(
+    task.scadenza ? parseLocalDate(task.scadenza) : undefined
+  );
+  const [oraPub, setOraPub] = useState<string>(task.ora ? task.ora.slice(0, 5) : '');
+  const [savingProg, setSavingProg] = useState(false);
+  const isProgrammazioneTask = task.tipo === 'Programmazione';
+  // Pre-fill data/ora dal CLP se il task non ha scadenza propria
+  useEffect(() => {
+    if (isProgrammazioneTask && !task.scadenza && contenutoRevisione?.data_pubblicazione) {
+      setDataPub(parseLocalDate(contenutoRevisione.data_pubblicazione));
+      if (contenutoRevisione.ora_pubblicazione) {
+        setOraPub(contenutoRevisione.ora_pubblicazione.slice(0, 5));
+      }
+    }
+  }, [contenutoRevisione, isProgrammazioneTask, task.scadenza]);
+  const isUploadTask = task.tipo === 'Upload esportato';
+  const isMontaggioTask = task.tipo === 'Montaggio';
+  const isMontaggioConModifiche = isMontaggioTask && !!contenutoRevisione?.note_revisione;
+
+  // ── Upload esportato state (shared by Upload and Montaggio re-upload) ──────
+  const [uploadProgress, setUploadProgress] = useState<{ percent: number; fileName: string } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const montaggioUploadRef = useRef<HTMLInputElement>(null);
+  
+
+  const isCLPTask = !!(task.id_contenuto && WORKFLOW_MAP[task.tipo]);
+  const workflowStep = WORKFLOW_MAP[task.tipo];
+
+  // Load cleanup info when it's a Cleanup task
+  useEffect(() => {
+    if (!isCleanupTask || !task.id_contenuto) return;
+    setLoadingCleanup(true);
+    supabase
+      .from('contenuti')
+      .select('drive_clip_folder_id')
+      .eq('id', task.id_contenuto)
+      .single()
+      .then(async ({ data }) => {
+        if (!data?.drive_clip_folder_id || !utente?.id) { setLoadingCleanup(false); return; }
+        try {
+          const result = await invokeEdge('google-drive-list-files', { folderId: data.drive_clip_folder_id, teamId: utente.id });
+          setCleanupInfo({ count: result.count, totalSize: result.totalSize, clipFolderId: data.drive_clip_folder_id });
+        } catch { /* ignore */ }
+        setLoadingCleanup(false);
+      });
+  }, [task.id_contenuto, isCleanupTask, utente?.id]);
+
+  const handleDeleteRawFiles = async () => {
+    if (!cleanupInfo || !utente?.id) return;
+    setDeletingCleanup(true);
+    try {
+      await invokeEdge('google-drive-delete-folder-contents', { folderId: cleanupInfo.clipFolderId, teamId: utente.id });
+      // Mark raw files deleted in DB
+      if (task.id_contenuto) {
+        const { data: clips } = await supabase.from('log_riprese').select('id').eq('contenuto_id', task.id_contenuto);
+        if (clips && clips.length > 0) {
+          await supabase.from('log_riprese').update({ file_deleted_at: new Date().toISOString(), file_id: null, file_url: null }).in('id', clips.map((c: any) => c.id));
+        }
+      }
+      await supabase.from('task').update({ stato: 'Completato' }).eq('id', task.id);
+      const { data: updated } = await supabase.from('task').select('*').eq('id', task.id).single();
+      if (updated) onUpdate(updated as Task);
+      addToast('🗑️ File grezzi eliminati. File esportato conservato.', 'success');
+      setShowCleanupConfirm(false);
+      setTaskCompletato(true);
+    } catch (err: any) {
+      addToast(`❌ Errore eliminazione: ${err.message}`, 'error');
+    }
+    setDeletingCleanup(false);
+  };
+
+  // Load contenuto for Revisione tasks (video preview + approve/reject)
+  useEffect(() => {
+    if (!task.id_contenuto) return;
+    supabase
+      .from('contenuti')
+      .select('*')
+      .eq('id', task.id_contenuto)
+      .single()
+      .then(({ data }) => {
+        if (data) setContenutoRevisione(data as Contenuto);
+      });
+    // Load ALL exported files from log_riprese for version history
+    supabase
+      .from('log_riprese')
+      .select('id, exported_file_id, exported_file_name, exported_file_uploaded_at')
+      .eq('contenuto_id', task.id_contenuto)
+      .not('exported_file_id', 'is', null)
+      .order('exported_file_uploaded_at', { ascending: true })
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          setExportedFileId(data[data.length - 1].exported_file_id);
+          setAllExportedFiles(data.map(d => ({
+            id: d.id,
+            fileId: d.exported_file_id!,
+            fileName: d.exported_file_name || 'export',
+            uploadedAt: d.exported_file_uploaded_at || '',
+          })));
+        }
+      });
+  }, [task.id_contenuto]);
+
+  const handleApprovaRevisione = async () => {
+    if (!contenutoRevisione) return;
+    setSavingRevisione(true);
+    try {
+      await approvaRevisione(contenutoRevisione, team);
+      
+      if (supervisioneGiovanni) {
+        // Archivia il task Programmazione appena creato dalla SP
+        const { data: progTasks } = await supabase
+          .from('task')
+          .select('id')
+          .eq('id_contenuto', contenutoRevisione.id)
+          .eq('tipo', 'Programmazione')
+          .neq('stato', 'Completato')
+          .neq('stato', 'Archiviato');
+        if (progTasks && progTasks.length > 0) {
+          await supabase.from('task').update({ stato: 'Archiviato' }).in('id', progTasks.map(t => t.id));
+        }
+        // Crea task Supervisione per Giovanni
+        const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
+        const nomeGiovanni = team.find(t => t.nome.toLowerCase().includes('giovanni'))?.nome || 'Giovanni';
+        await supabase.from('task').insert({
+          id_display: idData || `TSK${Date.now()}`,
+          descrizione: `👁️ Supervisione ${contenutoRevisione.id_display} – ${contenutoRevisione.titolo}${contenutoRevisione.cliente_nome ? ` (${contenutoRevisione.cliente_nome})` : ''}`,
+          tipo: 'Supervisione',
+          stato: 'Da fare',
+          assegnato_a: nomeGiovanni,
+          assegnato_da: '⚡ Sistema',
+          cliente_id: contenutoRevisione.cliente_id,
+          cliente_nome: contenutoRevisione.cliente_nome || '',
+          id_contenuto: contenutoRevisione.id,
+          priorita: '🔴 Alta',
+        });
+        await supabase.from('contenuti').update({ supervisione_giovanni: true }).eq('id', contenutoRevisione.id);
+        addToast('✅ Revisione approvata → inviata a Giovanni per supervisione', 'success');
+      } else {
+        addToast('✅ Revisione approvata → CLP avanzato a Revisionato — task Programmazione creato!', 'success');
+      }
+      
+      setClpFase('Revisionato');
+      setTaskCompletato(true);
+      sounds.taskCompletato();
+      const { data } = await supabase.from('task').select('*').eq('id', task.id).single();
+      if (data) onUpdate(data as Task);
+    } catch (err: any) {
+      addToast(`❌ Errore: ${err.message}`, 'error');
+    }
+    setSavingRevisione(false);
+  };
+
+  const handleRichiestaModifiche = async () => {
+    if (!contenutoRevisione || !noteModifiche.trim()) {
+      addToast('⚠️ Scrivi cosa va corretto', 'warn');
+      return;
+    }
+    setSavingRevisione(true);
+    try {
+      await richiestaModifiche(contenutoRevisione, team, noteModifiche.trim());
+      setClpFase('Montato');
+      setTaskCompletato(true);
+      sounds.salva();
+      addToast('🔄 Richiesta modifiche inviata → task Upload esportato creato per Alessandro', 'success');
+      const { data } = await supabase.from('task').select('*').eq('id', task.id).single();
+      if (data) onUpdate(data as Task);
+      setShowModificheForm(false);
+      setNoteModifiche('');
+    } catch (err: any) {
+      addToast(`❌ Errore: ${err.message}`, 'error');
+    }
+    setSavingRevisione(false);
+  };
+
+  useEffect(() => {
+    if (!task.id_contenuto) return;
+    supabase
+      .from('contenuti')
+      .select('fase')
+      .eq('id', task.id_contenuto)
+      .single()
+      .then(({ data }) => {
+        if (data) setClpFase(data.fase as FaseCLP);
+      });
+  }, [task.id_contenuto]);
+
+  useEffect(() => {
+    setTaskCompletato(task.stato === 'Completato');
+  }, [task.stato]);
+
+  useEffect(() => {
+    setDataPub(task.scadenza ? parseLocalDate(task.scadenza) : undefined);
+    setOraPub(task.ora ? task.ora.slice(0, 5) : '');
+  }, [task.scadenza, task.ora]);
+
+  const scad = task.scadenza ? parseLocalDate(task.scadenza) : null;
+  const oggi = new Date(); oggi.setHours(0, 0, 0, 0);
+  const isScaduto = scad && scad < oggi && task.stato !== 'Completato';
+
+  // ── Salva data/ora di pubblicazione (task Programmazione) ─────────────────
+  const handleSalvaProgrammazione = async () => {
+    if (!dataPub || !task.id_contenuto) return;
+    setSavingProg(true);
+    const dataStr = format(dataPub, 'yyyy-MM-dd');
+    const oraStr = oraPub || null;
+
+    // Aggiorna scadenza del task e data_pubblicazione del CLP
+    await Promise.all([
+      supabase.from('task').update({ scadenza: dataStr, ora: oraStr }).eq('id', task.id),
+      supabase.from('contenuti').update({
+        data_pubblicazione: dataStr,
+        ora_pubblicazione: oraStr,
+      }).eq('id', task.id_contenuto),
+    ]);
+
+    const { cambiaFaseCLP } = await import('../services/faseService');
+    await cambiaFaseCLP({
+      contenutoId: task.id_contenuto,
+      nuovaFase: 'Programmato',
+      source: 'kanban',
+      userId: utente?.id || 'workflow',
+      oldFase: clpFase || 'Revisionato',
+    });
+
+    // Completa il task
+    
+    // Completa il task e aggiunge evento calendario
+    await supabase.from('task').update({ stato: 'Completato' }).eq('id', task.id);
+
+    // Crea evento calendario per la pubblicazione
+    const { data: contenuto } = await supabase
+      .from('contenuti')
+      .select('*')
+      .eq('id', task.id_contenuto)
+      .single();
+
+    if (contenuto) {
+      await supabase.from('calendario').insert({
+        tipo: 'pubblicazione',
+        data: dataStr,
+        ora: oraStr,
+        descrizione: `📱 Pubblica ${contenuto.id_display} – ${contenuto.titolo}`,
+        cliente_id: contenuto.cliente_id,
+        cliente_nome: contenuto.cliente_nome || '',
+        contenuto_id: contenuto.id,
+        id_contenuto_display: contenuto.id_display,
+        canale: contenuto.canale || '',
+        tipo_contenuto: contenuto.tipo || '',
+        persona: 'Elisa',
+        stato: 'Pianificato',
+      });
+    }
+
+    setClpFase('Programmato');
+    setTaskCompletato(true);
+    sounds.taskCompletato();
+    addToast(`📅 CLP programmato per ${format(dataPub, 'd MMM yyyy', { locale: it })}${oraStr ? ' alle ' + oraStr : ''} — verrà pubblicato automaticamente!`, 'success');
+
+    const { data: updated } = await supabase.from('task').select('*').eq('id', task.id).single();
+    if (updated) onUpdate(updated as Task);
+    setSavingProg(false);
+  };
+
+  // ── Upload esportato handler ──────────────────────────────────────────────
+  const handleUploadEsportato = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !task.id_contenuto || !utente?.id || !contenutoRevisione) return;
+
+    setUploading(true);
+    setUploadProgress({ percent: 0, fileName: file.name });
+
+    try {
+      const ext = file.name.split('.').pop() || 'mp4';
+      const mimeType = file.type || 'video/mp4';
+      const slug = (contenutoRevisione.titolo || '').toLowerCase()
+        .replace(/[àáâ]/g,'a').replace(/[èéê]/g,'e').replace(/[ìí]/g,'i')
+        .replace(/[òó]/g,'o').replace(/[ùú]/g,'u')
+        .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+      const fileName = `${contenutoRevisione.id_display}_${slug}_export.${ext}`;
+
+      // Init resumable upload
+      const initResult = await invokeEdge('google-drive-upload-init', {
+        fileName,
+        mimeType,
+        fileSize: file.size,
+        teamId: utente.id,
+        clientName: contenutoRevisione.cliente_nome || 'Generale',
+        zone: 'file_esportato',
+        contenutoId: task.id_contenuto,
+        idDisplay: contenutoRevisione.id_display,
+        titolo: contenutoRevisione.titolo,
+      });
+
+      const uploadUrl = initResult.uploadUrl;
+      const CHUNK = 4 * 1024 * 1024;
+      let uploaded = 0;
+      let fileId = '';
+
+      while (uploaded < file.size) {
+        const end = Math.min(uploaded + CHUNK, file.size);
+        const chunk = file.slice(uploaded, end);
+        const contentRange = `bytes ${uploaded}-${end - 1}/${file.size}`;
+
+        let result: any = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const proxyUrl = `${SUPABASE_URL}/functions/v1/google-drive-upload-chunk`;
+            const res = await fetch(proxyUrl, {
+              method: 'POST',
+              headers: {
+                'apikey': SUPABASE_KEY,
+                'Authorization': `Bearer ${SUPABASE_KEY}`,
+                'x-upload-url': uploadUrl,
+                'x-content-range': contentRange,
+                'x-content-type': mimeType,
+                'Content-Type': 'application/octet-stream',
+              },
+              body: chunk,
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+              throw new Error(err?.error || `Proxy error ${res.status}`);
+            }
+            result = await res.json();
+            break;
+          } catch (err) {
+            if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+            else throw err;
+          }
+        }
+
+        if (result.status === 308) {
+          uploaded = result.range ? parseInt(result.range.split('-')[1]) + 1 : end;
+        } else if (result.status === 200 || result.status === 201) {
+          fileId = result.fileId;
+          break;
+        }
+
+        setUploadProgress({
+          percent: Math.min(99, Math.round((uploaded / file.size) * 100)),
+          fileName: file.name,
+        });
+      }
+
+      if (!fileId) throw new Error('Upload completato senza fileId');
+
+      const fileUrl = `${SUPABASE_URL}/functions/v1/google-drive-download?fileId=${fileId}`;
+
+      // Update log_riprese with exported file info
+      const { data: clips } = await supabase
+        .from('log_riprese')
+        .select('id')
+        .eq('contenuto_id', task.id_contenuto)
+        .order('riga', { ascending: true })
+        .limit(1);
+
+      if (clips && clips.length > 0) {
+        await supabase.from('log_riprese').update({
+          exported_file_id: fileId,
+          exported_file_url: fileUrl,
+          exported_file_name: fileName,
+          exported_file_size: file.size,
+          exported_file_uploaded_at: new Date().toISOString(),
+          exported_file_mime_type: mimeType,
+        }).eq('id', clips[0].id);
+      } else {
+        // Create a log_riprese entry if none exists
+        await supabase.from('log_riprese').insert({
+          id_clip: contenutoRevisione.id_display || 'CLIP',
+          contenuto_id: task.id_contenuto,
+          cliente_id: contenutoRevisione.cliente_id,
+          cliente_nome: contenutoRevisione.cliente_nome,
+          id_contenuto_display: contenutoRevisione.id_display,
+          titolo: contenutoRevisione.titolo,
+          exported_file_id: fileId,
+          exported_file_url: fileUrl,
+          exported_file_name: fileName,
+          exported_file_size: file.size,
+          exported_file_uploaded_at: new Date().toISOString(),
+          exported_file_mime_type: mimeType,
+          operatore: utente.nome,
+          stato: 'Uploadato',
+          riga: 1,
+        });
+      }
+
+      // Complete task and advance CLP
+      const nuovaFase = await completaTaskEAvanzaFase(task.tipo, task.id_contenuto, team, utente.id);
+      setClpFase(nuovaFase || 'Uploadato');
+      setTaskCompletato(true);
+      sounds.taskCompletato();
+      addToast(`✅ File caricato su Drive — CLP avanzato a "Uploadato"!`, 'success');
+
+      const { data: updated } = await supabase.from('task').select('*').eq('id', task.id).single();
+      if (updated) onUpdate(updated as Task);
+    } catch (err: any) {
+      addToast(`❌ Errore upload: ${err.message}`, 'error');
+    }
+    setUploading(false);
+    setUploadProgress(null);
+    if (uploadInputRef.current) uploadInputRef.current.value = '';
+  };
+
+  // ── Upload versione modificata (task Montaggio dopo revisione) ─────────────
+  const handleUploadModificato = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !task.id_contenuto || !utente?.id || !contenutoRevisione) return;
+
+    setUploading(true);
+    setUploadProgress({ percent: 0, fileName: file.name });
+
+    try {
+      const ext = file.name.split('.').pop() || 'mp4';
+      const mimeType = file.type || 'video/mp4';
+      const slug = (contenutoRevisione.titolo || '').toLowerCase()
+        .replace(/[àáâ]/g,'a').replace(/[èéê]/g,'e').replace(/[ìí]/g,'i')
+        .replace(/[òó]/g,'o').replace(/[ùú]/g,'u')
+        .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+      const versionNum = allExportedFiles.length + 1;
+      const fileName = `${contenutoRevisione.id_display}_${slug}_export_v${versionNum}.${ext}`;
+
+      const initResult = await invokeEdge('google-drive-upload-init', {
+        fileName,
+        mimeType,
+        fileSize: file.size,
+        teamId: utente.id,
+        clientName: contenutoRevisione.cliente_nome || 'Generale',
+        zone: 'file_esportato',
+        contenutoId: task.id_contenuto,
+        idDisplay: contenutoRevisione.id_display,
+        titolo: contenutoRevisione.titolo,
+      });
+
+      const uploadUrl = initResult.uploadUrl;
+      const CHUNK = 4 * 1024 * 1024;
+      let uploaded = 0;
+      let fileId = '';
+
+      while (uploaded < file.size) {
+        const end = Math.min(uploaded + CHUNK, file.size);
+        const chunk = file.slice(uploaded, end);
+        const contentRange = `bytes ${uploaded}-${end - 1}/${file.size}`;
+
+        let result: any = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const proxyUrl = `${SUPABASE_URL}/functions/v1/google-drive-upload-chunk`;
+            const res = await fetch(proxyUrl, {
+              method: 'POST',
+              headers: {
+                'apikey': SUPABASE_KEY,
+                'Authorization': `Bearer ${SUPABASE_KEY}`,
+                'x-upload-url': uploadUrl,
+                'x-content-range': contentRange,
+                'x-content-type': mimeType,
+                'Content-Type': 'application/octet-stream',
+              },
+              body: chunk,
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+              throw new Error(err?.error || `Proxy error ${res.status}`);
+            }
+            result = await res.json();
+            break;
+          } catch (err) {
+            if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+            else throw err;
+          }
+        }
+
+        if (result.status === 308) {
+          uploaded = result.range ? parseInt(result.range.split('-')[1]) + 1 : end;
+        } else if (result.status === 200 || result.status === 201) {
+          fileId = result.fileId;
+          break;
+        }
+
+        setUploadProgress({
+          percent: Math.min(99, Math.round((uploaded / file.size) * 100)),
+          fileName: file.name,
+        });
+      }
+
+      if (!fileId) throw new Error('Upload completato senza fileId');
+
+      const fileUrl = `${SUPABASE_URL}/functions/v1/google-drive-download?fileId=${fileId}`;
+
+      // Create a NEW log_riprese record for the new version
+      const maxRiga = allExportedFiles.length + 1;
+      await supabase.from('log_riprese').insert({
+        id_clip: `${contenutoRevisione.id_display}_v${versionNum}`,
+        contenuto_id: task.id_contenuto,
+        cliente_id: contenutoRevisione.cliente_id,
+        cliente_nome: contenutoRevisione.cliente_nome,
+        id_contenuto_display: contenutoRevisione.id_display,
+        titolo: contenutoRevisione.titolo,
+        exported_file_id: fileId,
+        exported_file_url: fileUrl,
+        exported_file_name: fileName,
+        exported_file_size: file.size,
+        exported_file_uploaded_at: new Date().toISOString(),
+        exported_file_mime_type: mimeType,
+        operatore: utente.nome,
+        stato: 'Uploadato',
+        riga: maxRiga,
+      });
+
+      // [OLD] await supabase.from('contenuti').update({ fase: 'Uploadato', note_revisione: '' }).eq('id', task.id_contenuto);
+      // [NEW - FaseService centralizzato]
+      const { cambiaFaseCLP } = await import('../services/faseService');
+      console.log('[Step2c] TaskDetailPanel upload esportato via FaseService', { id: task.id_contenuto });
+      await cambiaFaseCLP({ contenutoId: task.id_contenuto, nuovaFase: 'Uploadato', source: 'workflow', userId: utente?.id || 'unknown', oldFase: 'Montato' });
+      await supabase.from('contenuti').update({ note_revisione: '' }).eq('id', task.id_contenuto);
+      await supabase.from('task').update({ stato: 'Completato' }).eq('id', task.id);
+
+      // Create new Revisione task for Elisa
+      const elisa = team.find(m => m.ruolo === 'Admin' || m.nome === 'Elisa');
+      if (elisa) {
+        await supabase.from('task').insert({
+          tipo: 'Revisione montaggio',
+          descrizione: `Revisione v${versionNum}: ${contenutoRevisione.titolo}`,
+          assegnato_a: elisa.nome,
+          assegnato_da: '⚡ Sistema',
+          id_contenuto: task.id_contenuto,
+          cliente_id: contenutoRevisione.cliente_id,
+          cliente_nome: contenutoRevisione.cliente_nome,
+          stato: 'Da fare',
+          priorita: '🔴 Alta',
+          id_display: `TSK${Date.now().toString().slice(-3)}`,
+        });
+      }
+
+      setClpFase('Uploadato');
+      setTaskCompletato(true);
+      sounds.taskCompletato();
+      addToast(`✅ Versione v${versionNum} caricata — nuovo task Revisione creato per Elisa!`, 'success');
+
+      const { data: updated } = await supabase.from('task').select('*').eq('id', task.id).single();
+      if (updated) onUpdate(updated as Task);
+    } catch (err: any) {
+      addToast(`❌ Errore upload: ${err.message}`, 'error');
+    }
+    setUploading(false);
+    setUploadProgress(null);
+    if (montaggioUploadRef.current) montaggioUploadRef.current.value = '';
+  };
+
+
+  // ── Cambia solo lo stato del task (senza toccare il CLP) ──────────────────
+  const handleStatoChange = async (nuovoStato: Task['stato']) => {
+    setSaving(true);
+    const { data, error } = await supabase
+      .from('task')
+      .update({ stato: nuovoStato })
+      .eq('id', task.id)
+      .select()
+      .single();
+
+    if (!error && nuovoStato === 'Completato' && isCLPTask) {
+      sounds.taskCompletato();
+      const nuovaFase = await completaTaskEAvanzaFase(task.tipo, task.id_contenuto!, team, utente?.id);
+      if (nuovaFase) {
+        setClpFase(nuovaFase);
+        setTaskCompletato(true);
+        const isDrive = nuovaFase === 'Montato';
+        addToast(
+          `✅ Task completato → CLP avanzato a "${nuovaFase}"${isDrive ? ' + 📁 Drive in creazione…' : ' — nuovo task creato!'}`,
+          'success'
+        );
+      }
+    } else if (!error) {
+      if (nuovoStato === 'Completato') sounds.taskCompletato();
+      else sounds.salva();
+      addToast(`Stato → ${nuovoStato}`, 'success');
+    }
+
+    setSaving(false);
+    if (!error && data) onUpdate(data as Task);
+  };
+
+  // ── Cambia la fase CLP: se coincide con faseNext → completa task + avanza ─
+  const handleFaseCLPChange = async (nuovaFase: FaseCLP) => {
+    if (!task.id_contenuto || savingFase) return;
+    setSavingFase(true);
+
+    try {
+      const result = await avanzaFaseDaTask(
+        task.id,
+        task.tipo,
+        task.id_contenuto,
+        nuovaFase,
+        team,
+        utente?.id
+      );
+
+      setClpFase(nuovaFase);
+
+      if (result.completatoTask) {
+        setTaskCompletato(true);
+        sounds.taskCompletato();
+        const { data } = await supabase.from('task').select('*').eq('id', task.id).single();
+        if (data) onUpdate(data as Task);
+
+        const msgs: string[] = [`✅ Task completato — CLP → "${nuovaFase}"`];
+        if (result.taskCreato) msgs.push('Nuovo task creato!');
+        if (result.driveTriggered) msgs.push('📁 Drive in creazione…');
+        addToast(msgs.join(' · '), 'success');
+      } else {
+        sounds.salva();
+        addToast(`🔄 Fase CLP → ${nuovaFase}`, 'success');
+      }
+    } catch (err: any) {
+      addToast(`⚠️ ${err.message}`, 'warn');
+    }
+    setSavingFase(false);
+  };
+
+  const handleArchivia = async () => {
+    if (!confirm(`Archiviare il task ${task.id_display}?`)) return;
+    sounds.elimina();
+    await supabase.from('task').update({ stato: 'Archiviato' }).eq('id', task.id);
+    onDelete(task.id);
+    addToast('Task archiviato', 'info');
+  };
+
+  const handleAddNota = async () => {
+    if (!nota.trim()) return;
+    const nuovaNota = task.note ? `${task.note}\n---\n${nota}` : nota;
+    const { data, error } = await supabase
+      .from('task')
+      .update({ note: nuovaNota })
+      .eq('id', task.id)
+      .select()
+      .single();
+    if (!error && data) {
+      sounds.salva();
+      onUpdate(data as Task);
+      setNota('');
+      addToast('Nota aggiunta', 'success');
+    }
+  };
+
+  const handleSpostaA = async (nome: string) => {
+    const { data, error } = await supabase
+      .from('task')
+      .update({ assegnato_a: nome, assegnato_da: utente?.nome || '' })
+      .eq('id', task.id)
+      .select()
+      .single();
+    if (!error && data) {
+      onUpdate(data as Task);
+      addToast(`Task spostato a ${nome}`, 'success');
+    }
+  };
+
+  const statoInfo = STATO_COLORS[task.stato] || STATO_COLORS['Da fare'];
+  const prioritaInfo = PRIORITA_COLORS[task.priorita] || PRIORITA_COLORS['🟡 Media'];
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/20" onClick={onClose} />
+
+      <div
+        className="fixed right-0 top-0 bottom-0 z-50 bg-card flex flex-col animate-slide-in-right"
+        style={{ width: 360, borderLeft: '1px solid hsl(var(--border))', boxShadow: '-4px 0 20px rgba(0,0,0,0.08)' }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono text-muted-foreground">{task.id_display}</span>
+            {isAutoTask && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                style={{ background: 'hsl(38 92% 50% / 0.15)', color: 'hsl(32 95% 40%)', border: '1px solid hsl(38 92% 50% / 0.35)' }}>
+                ⚡ Auto
+              </span>
+            )}
           </div>
-          <button onClick={() => setFiltraOggi(f => !f)} className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold"
-            style={filtraOggi ? { background: '#FEE2E2', color: '#DC2626', border: '1px solid rgba(220,38,38,0.4)' } : { background: '#F1F5F9', color: '#64748B', border: '1px solid #E2E8F0' }}>
-            ⏰ {!isMobile && 'In scadenza oggi '}{filtraOggi && '×'}
-          </button>
+          <button onClick={onClose} className="sk-btn-ghost text-lg px-2 py-1">✕</button>
         </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <div className="relative flex-1 sm:flex-none">
-            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs" style={{ color: 'hsl(var(--muted-foreground))' }}>🔍</span>
-            <input type="text" placeholder="Cerca task..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-              className="pl-8 pr-3 py-1.5 rounded-lg text-xs border outline-none w-full sm:w-44"
-              style={{ background: 'hsl(var(--background))', borderColor: searchQuery ? 'hsl(var(--primary))' : 'hsl(var(--border))', color: 'hsl(var(--foreground))' }} />
-            {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs">✕</button>}
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+
+          {/* Descrizione */}
+          <p className="text-base font-semibold leading-snug" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
+            {task.descrizione}
+          </p>
+
+          {/* Badges */}
+          <div className="flex flex-wrap gap-2">
+            <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full"
+              style={{ background: statoInfo.bg, color: statoInfo.text }}>
+              {task.stato}
+            </span>
+            <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full"
+              style={{ background: prioritaInfo.bg, color: prioritaInfo.text }}>
+              {task.priorita}
+            </span>
+            {isScaduto && (
+              <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full"
+                style={{ background: '#FEE2E2', color: '#DC2626' }}>⚠ SCADUTO</span>
+            )}
           </div>
-          <div className="flex rounded-lg overflow-hidden border border-border text-xs flex-shrink-0">
-            {(['both', 'standard', 'clp'] as const).map(mode => (
-              <button key={mode} onClick={() => setBoardMode(mode)} className="px-2.5 py-1 font-medium"
-                style={boardMode === mode ? { background: 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))' } : { background: 'hsl(var(--background))', color: 'hsl(var(--muted-foreground))' }}>
-                {mode === 'both' ? 'Tutte' : mode === 'standard' ? 'Task' : '🎬 CLP'}
-              </button>
+
+          {/* ── Countdown grande nel dettaglio ──────────────────────────────── */}
+          {task.scadenza && task.stato !== 'Completato' && (
+            <CountdownDettaglio scadenza={task.scadenza} ora={task.ora} />
+          )}
+
+          {/* Info rows */}
+          <div className="space-y-2">
+            {[
+              ['Tipo', task.tipo || '—'],
+              ['Cliente', task.cliente_nome || '—'],
+              ['Contenuto', task.id_contenuto || '—'],
+              ['Assegnato da', task.assegnato_da || '—'],
+              ['Scadenza', task.scadenza
+                ? parseLocalDate(task.scadenza).toLocaleDateString('it-IT')
+                : contenutoRevisione?.data_pubblicazione
+                  ? '📡 ' + parseLocalDate(contenutoRevisione.data_pubblicazione).toLocaleDateString('it-IT')
+                  : '—'],
+              ['Ora', task.ora
+                ? task.ora.slice(0, 5)
+                : contenutoRevisione?.ora_pubblicazione
+                  ? contenutoRevisione.ora_pubblicazione.slice(0, 5)
+                  : '—'],
+            ].map(([label, value]) => (
+              <div key={label} className="flex gap-2">
+                <span className="flex-shrink-0 text-xs font-medium w-28" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>{label}</span>
+                <span className="text-xs" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>{value}</span>
+              </div>
             ))}
           </div>
-          <button onClick={() => setShowNuovoTask(true)} className="sk-btn-primary text-sm hidden sm:inline-flex">+ Nuovo Task</button>
-        </div>
-      </div>
 
-      {/* BOARD CLP */}
-      {showCLP && (
-        <div className="mb-6">
-          <div className="flex items-center gap-2 mb-2 flex-wrap">
-            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(var(--muted-foreground))' }}>🎬 Workflow Produzione CLP</span>
-            <div className="flex-1 h-px hidden sm:block" style={{ background: 'hsl(var(--border))' }} />
-          </div>
-          {isMobile && <div className="flex gap-1 overflow-x-auto pb-2 mb-2">{COLONNE_CLP.map(col => <button key={col.stato} onClick={() => setMobileCLPCol(col.stato)} className="px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex-shrink-0" style={{ background: mobileCLPCol === col.stato ? col.colore : `${col.colore}15`, color: mobileCLPCol === col.stato ? '#fff' : col.colore }}>{col.icona} {col.stato} ({filteredCLP(col.stato).length})</button>)}</div>}
-          <div className={isMobile ? '' : 'flex gap-3 overflow-x-auto pb-2'}>
-            {COLONNE_CLP.filter(col => !isMobile || col.stato === mobileCLPCol).map(col => {
-              const ct = filteredCLP(col.stato);
-              return (
-                <div key={col.stato} className={`kanban-col ${dropTarget === `clp__${col.stato}` ? 'kanban-drop-target' : ''}`}
-                  style={{ background: col.bg, border: `1px solid ${col.border}30`, minWidth: isMobile ? '100%' : 180 }}
-                  onDragOver={e => { e.preventDefault(); setDropTarget(`clp__${col.stato}`); }} onDragLeave={() => setDropTarget(null)} onDrop={() => handleDropCLP(col.stato)}>
-                  <div className="kanban-col-header" style={{ borderBottom: `2px solid ${col.border}40` }}>
-                    <div className="flex items-center gap-1.5"><span>{col.icona}</span><span className="text-xs font-semibold" style={{ color: col.colore }}>{col.stato}</span></div>
-                    <span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ background: `${col.colore}20`, color: col.colore }}>{ct.length}</span>
+          {task.note && (
+            <div className="rounded-lg p-3 text-xs whitespace-pre-wrap leading-relaxed"
+              style={{ background: 'hsl(210 40% 96%)', color: 'hsl(var(--skorpio-text-secondary))' }}>
+              {task.note}
+            </div>
+          )}
+
+          {/* ─── NOTE REVISIONE (task Montaggio con modifiche richieste) ──── */}
+          {isMontaggioTask && contenutoRevisione?.note_revisione && (
+            <div className="rounded-xl p-3.5 space-y-2"
+              style={{ background: 'hsl(38 92% 50% / 0.08)', border: '1px solid hsl(38 92% 50% / 0.30)' }}>
+              <div className="flex items-center gap-1.5">
+                <span style={{ fontSize: 16 }}>📝</span>
+                <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(32 95% 35%)' }}>
+                  Modifiche richieste da Elisa
+                </p>
+              </div>
+              <p className="text-sm leading-relaxed whitespace-pre-wrap"
+                style={{ color: 'hsl(32 80% 25%)' }}>
+                {contenutoRevisione.note_revisione}
+              </p>
+            </div>
+          )}
+
+          {/* ─── ANTEPRIMA VIDEO per task Montaggio (per vedere cosa modificare) ── */}
+          {isMontaggioTask && exportedFileId && utente?.id && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                🎬 VIDEO DA MODIFICARE
+              </p>
+              <video
+                controls
+                className="w-full rounded-lg border border-border"
+                style={{ maxHeight: 220 }}
+                src={`${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${exportedFileId}&teamId=${utente.id}`}
+              >
+                Il tuo browser non supporta il player video.
+              </video>
+            </div>
+          )}
+
+          {/* ─── UPLOAD VERSIONE MODIFICATA (task Montaggio dopo revisione) ──── */}
+          {isMontaggioConModifiche && !taskCompletato && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                📤 CARICA VERSIONE MODIFICATA
+              </p>
+              <div className="rounded-xl p-3 space-y-3"
+                style={{ background: 'hsl(214 80% 55% / 0.06)', border: '1px solid hsl(214 80% 55% / 0.25)' }}>
+                <p className="text-xs leading-relaxed" style={{ color: 'hsl(214 70% 40%)' }}>
+                  Carica la versione corretta. Il CLP tornerà a <strong>Uploadato</strong> e verrà creato un nuovo task di <strong>Revisione</strong> per Elisa.
+                </p>
+
+                {uploadProgress ? (
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-[11px]" style={{ color: 'hsl(214 70% 40%)' }}>
+                      <span>📁 {uploadProgress.fileName}</span>
+                      <span className="font-mono font-bold">{uploadProgress.percent}%</span>
+                    </div>
+                    <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: 'hsl(214 80% 55% / 0.15)' }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-300"
+                        style={{ width: `${uploadProgress.percent}%`, background: 'hsl(214 80% 55%)' }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">Caricamento in corso… non chiudere il pannello.</p>
                   </div>
-                  <div className="kanban-col-body">
-                    {ct.map(t => <TaskCard key={t.id} task={t} team={team} utente={utente} draggingId={dragItem} onDragStart={() => setDragItem(t.id)} onDragEnd={() => setDragItem(null)} onClick={() => setSelectedTask(t)} showFaseBadge={false} pubDate={t.id_contenuto ? clpPubDates[t.id_contenuto] : null} revisionCount={t.id_contenuto ? clpRevisionCount[t.id_contenuto] : undefined} isProgrammato={col.stato === 'Programmato'} canEditProgrammazione={canEditProgrammazione} onRiprogramma={() => t.id_contenuto && setRiprogrammaConfirm({ taskId: t.id, contenutoId: t.id_contenuto, desc: t.descrizione.slice(0, 50) })} onEditPubDate={(d, o) => t.id_contenuto && handleEditPubDate(t.id_contenuto, d, o)} clientLogoUrl={t.cliente_id ? clientLogoMap[t.cliente_id] : clientLogoByName[t.cliente_nome]} />)}
-                    {ct.length === 0 && <div className="flex items-center justify-center h-12 text-xs rounded-lg" style={{ color: 'hsl(var(--muted-foreground))', border: `1px dashed ${col.border}40` }}>Nessun task</div>}
-                  </div>
+                ) : (
+                  <>
+                    <input
+                      ref={montaggioUploadRef}
+                      type="file"
+                      accept="video/*,.mp4,.mov,.avi,.mkv,.webm"
+                      onChange={handleUploadModificato}
+                      className="hidden"
+                    />
+                    <button
+                      onClick={() => montaggioUploadRef.current?.click()}
+                      disabled={uploading}
+                      className="w-full py-3 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2"
+                      style={{
+                        background: 'hsl(214 80% 55%)',
+                        color: 'white',
+                        opacity: uploading ? 0.6 : 1,
+                      }}
+                    >
+                      📤 Carica versione corretta
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          <hr style={{ borderColor: 'hsl(var(--border))' }} />
+
+          {/* ─── ANTEPRIMA VIDEO ESPORTATO (qualsiasi task CLP con file) ──── */}
+          {exportedFileId && utente?.id && !isRevisioneTask && (
+            <div className="mb-4">
+              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                📹 ANTEPRIMA FILE ESPORTATO
+              </p>
+              <video
+                controls
+                className="w-full rounded-lg border border-border"
+                style={{ maxHeight: 220 }}
+                src={`${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${exportedFileId}&teamId=${utente.id}`}
+              >
+                Il tuo browser non supporta il player video.
+              </video>
+            </div>
+          )}
+
+          {/* ─── PROGRAMMAZIONE DATE PICKER (task Programmazione) ───────────── */}
+          {isProgrammazioneTask && !taskCompletato && (
+            <div>
+              <p className="text-xs font-medium mb-3" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                📅 SCEGLI DATA DI PUBBLICAZIONE
+              </p>
+              <div className="rounded-xl p-4 space-y-3"
+                style={{ background: 'hsl(328 80% 55% / 0.06)', border: '1px solid hsl(328 80% 55% / 0.25)' }}>
+                <p className="text-xs leading-relaxed" style={{ color: 'hsl(328 65% 40%)' }}>
+                  Scegli quando pubblicare questo contenuto. Il CLP passerà a <strong>Programmato</strong> e a quella data diventerà <strong>Pubblicato</strong> in automatico.
+                </p>
+
+                {/* Date picker */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      className="w-full flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-all"
+                      style={{
+                        background: dataPub ? 'hsl(328 80% 55% / 0.10)' : 'hsl(var(--muted))',
+                        border: `1px solid ${dataPub ? 'hsl(328 80% 55% / 0.40)' : 'hsl(var(--border))'}`,
+                        color: dataPub ? 'hsl(328 65% 40%)' : 'hsl(var(--muted-foreground))',
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        <CalendarIcon size={14} />
+                        {dataPub ? format(dataPub, 'd MMMM yyyy', { locale: it }) : 'Seleziona data…'}
+                      </span>
+                      {dataPub && <span className="text-xs opacity-60">cambia</span>}
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={dataPub}
+                      onSelect={setDataPub}
+                      initialFocus
+                      disabled={(d) => d < new Date(new Date().setHours(0,0,0,0))}
+                    />
+                  </PopoverContent>
+                </Popover>
+
+                {/* Ora opzionale */}
+                <div>
+                  <label className="text-xs font-medium mb-1 block" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                    Ora pubblicazione (opzionale)
+                  </label>
+                  <input
+                    type="time"
+                    value={oraPub}
+                    onChange={e => setOraPub(e.target.value)}
+                    className="sk-input w-full text-sm"
+                  />
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
-      {/* Conferma riprogramma */}
-      {riprogrammaConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => setRiprogrammaConfirm(null)}>
-          <div className="rounded-xl border shadow-xl p-5 max-w-sm w-full mx-4" style={{ background: 'hsl(var(--background))' }} onClick={e => e.stopPropagation()}>
-            <p className="text-sm font-semibold mb-2">🔄 Riprogramma CLP</p>
-            <p className="text-xs mb-4" style={{ color: 'hsl(var(--muted-foreground))' }}>Vuoi riprogrammare "{riprogrammaConfirm.desc}"?</p>
-            <div className="flex gap-2">
-              <button className="flex-1 text-xs px-3 py-2 rounded-lg font-semibold" style={{ background: 'hsl(38 92% 50%)', color: 'white' }} onClick={() => handleRiprogramma(riprogrammaConfirm.contenutoId)}>Conferma</button>
-              <button className="text-xs px-3 py-2 rounded-lg font-semibold" style={{ background: 'hsl(var(--muted))' }} onClick={() => setRiprogrammaConfirm(null)}>Annulla</button>
+                <button
+                  onClick={handleSalvaProgrammazione}
+                  disabled={!dataPub || savingProg}
+                  className="sk-btn-primary w-full text-sm font-semibold"
+                  style={{ opacity: (!dataPub || savingProg) ? 0.5 : 1 }}
+                >
+                  {savingProg ? '⏳ Salvando…' : `📅 Programma per ${dataPub ? format(dataPub, 'd MMM', { locale: it }) : '…'}`}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {isProgrammazioneTask && taskCompletato && (
+            <div className="rounded-lg px-3 py-2.5 text-xs"
+              style={{ background: 'hsl(142 70% 45% / 0.08)', color: 'hsl(142 60% 35%)', border: '1px solid hsl(142 70% 45% / 0.25)' }}>
+              ✅ Programmato per {task.scadenza ? format(parseLocalDate(task.scadenza), 'd MMM yyyy', { locale: it }) : '—'}
+              {task.ora ? ` alle ${task.ora.slice(0,5)}` : ''} — verrà pubblicato automaticamente!
+            </div>
+          )}
+
+          {/* ─── PIPELINE FASE CLP (solo task workflow NON Programmazione) ──── */}
+          {isCLPTask && !isProgrammazioneTask && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                FASE CLP
+              </p>
+
+              {/* Pipeline visiva */}
+              <div className="flex items-center mb-3 overflow-x-auto pb-1">
+                {FASI_PIPELINE.map((fase, i) => {
+                  const isCurrent = clpFase === fase;
+                  const isPast = clpFase ? FASI_PIPELINE.indexOf(clpFase) > i : false;
+                  const style = FASE_STYLE[fase] || FASE_STYLE['Girato'];
+                  return (
+                    <React.Fragment key={fase}>
+                      <div className="flex flex-col items-center gap-0.5 flex-shrink-0" style={{ minWidth: 52 }}>
+                        <div
+                          className="w-3 h-3 rounded-full border-2"
+                          style={{
+                            background: isCurrent ? style.text : isPast ? style.text : 'hsl(var(--muted))',
+                            borderColor: isCurrent ? style.text : isPast ? style.text : 'hsl(var(--border))',
+                            opacity: isPast ? 0.45 : 1,
+                          }}
+                        />
+                        <span className="text-[9px] font-medium text-center leading-tight"
+                          style={{
+                            color: isCurrent ? style.text : isPast ? style.text : 'hsl(var(--muted-foreground))',
+                            opacity: isPast ? 0.55 : 1,
+                            fontWeight: isCurrent ? 700 : 400,
+                          }}>
+                          {fase}
+                        </span>
+                      </div>
+                      {i < FASI_PIPELINE.length - 1 && (
+                        <div className="flex-1 h-px mx-0.5 flex-shrink-0"
+                          style={{ background: isPast ? style.text : 'hsl(var(--border))', opacity: isPast ? 0.4 : 1, minWidth: 6 }} />
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+
+              {/* Bottoni fase */}
+              <div className="flex flex-wrap gap-1.5">
+                {FASI_PIPELINE.map(fase => {
+                  const style = FASE_STYLE[fase] || FASE_STYLE['Girato'];
+                  const isCurrent = clpFase === fase;
+                  const isNextStep = workflowStep?.faseNext === fase && !taskCompletato;
+                  return (
+                    <button
+                      key={fase}
+                      onClick={() => handleFaseCLPChange(fase)}
+                      disabled={isCurrent || savingFase || taskCompletato}
+                      className="text-xs px-2.5 py-1.5 rounded-md font-medium transition-all"
+                      style={{
+                        background: isCurrent ? style.text : isNextStep ? style.text : style.bg,
+                        color: isCurrent || isNextStep ? 'white' : style.text,
+                        border: `1px solid ${isNextStep ? style.text : style.border}`,
+                        opacity: (savingFase || taskCompletato) && !isCurrent ? 0.45 : 1,
+                        fontWeight: isCurrent || isNextStep ? 700 : 500,
+                        cursor: isCurrent || taskCompletato ? 'default' : 'pointer',
+                        boxShadow: isNextStep ? `0 0 0 2px ${style.text}40` : 'none',
+                      }}
+                    >
+                      {isCurrent ? `● ${fase}` : isNextStep ? `→ ${fase}` : fase}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Hint contestuale */}
+              {workflowStep && !taskCompletato && (
+                <div className="mt-2 text-[11px] rounded-md px-2.5 py-1.5"
+                  style={{ background: 'hsl(214 80% 55% / 0.08)', color: 'hsl(214 70% 40%)', border: '1px solid hsl(214 80% 55% / 0.25)' }}>
+                  💡 Clicca <strong>→ {workflowStep.faseNext}</strong> per completare il tuo task e passare il lavoro a <strong>{workflowStep.assegnatoKeyword}</strong>
+                  {workflowStep.faseNext === 'Montato' && <> · 📁 Drive verrà creato automaticamente</>}
+                </div>
+              )}
+              {taskCompletato && (
+                <div className="mt-2 text-[11px] rounded-md px-2.5 py-1.5"
+                  style={{ background: 'hsl(142 70% 45% / 0.08)', color: 'hsl(142 60% 35%)', border: '1px solid hsl(142 70% 45% / 0.25)' }}>
+                  ✅ Task completato — il lavoro è stato passato al prossimo membro del team
+                </div>
+              )}
+            </div>
+          )}
+          {/* ─── NOTE REVISIONE (task Upload esportato con modifiche richieste) ── */}
+          {isUploadTask && contenutoRevisione?.note_revisione && (
+            <div className="rounded-xl p-3.5 space-y-2"
+              style={{ background: 'hsl(38 92% 50% / 0.08)', border: '1px solid hsl(38 92% 50% / 0.30)' }}>
+              <div className="flex items-center gap-1.5">
+                <span style={{ fontSize: 16 }}>📝</span>
+                <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(32 95% 35%)' }}>
+                  Modifiche richieste
+                </p>
+                {contenutoRevisione.revision_count && contenutoRevisione.revision_count > 1 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ background: '#FEF3C7', color: '#D97706' }}>
+                    Revisione #{contenutoRevisione.revision_count}
+                  </span>
+                )}
+              </div>
+              <p className="text-sm leading-relaxed whitespace-pre-wrap"
+                style={{ color: 'hsl(32 80% 25%)' }}>
+                {contenutoRevisione.note_revisione}
+              </p>
+            </div>
+          )}
+
+          {/* ─── VIDEO PRECEDENTE (task Upload dopo revisione — per vedere cosa modificare) ── */}
+          {isUploadTask && contenutoRevisione?.note_revisione && exportedFileId && utente?.id && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                🎬 VIDEO DA MODIFICARE
+              </p>
+              <video
+                controls
+                className="w-full rounded-lg border border-border"
+                style={{ maxHeight: 200 }}
+                src={`${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${exportedFileId}&teamId=${utente.id}`}
+              />
+            </div>
+          )}
+
+          {/* ─── UPLOAD ESPORTATO: file picker + progress ──────────────── */}
+          {isUploadTask && !taskCompletato && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                📤 CARICA FILE ESPORTATO
+              </p>
+              <div className="rounded-xl p-3 space-y-3"
+                style={{ background: 'hsl(45 90% 50% / 0.06)', border: '1px solid hsl(45 90% 50% / 0.25)' }}>
+                <p className="text-xs leading-relaxed" style={{ color: 'hsl(45 80% 30%)' }}>
+                  Seleziona il file esportato da caricare su Google Drive nella cartella <strong>file_esportato/</strong>.
+                  Il CLP avanzerà automaticamente a <strong>Uploadato</strong>.
+                </p>
+
+                {uploadProgress ? (
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-[11px]" style={{ color: 'hsl(45 80% 30%)' }}>
+                      <span>📁 {uploadProgress.fileName}</span>
+                      <span className="font-mono font-bold">{uploadProgress.percent}%</span>
+                    </div>
+                    <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: 'hsl(45 90% 50% / 0.15)' }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-300"
+                        style={{ width: `${uploadProgress.percent}%`, background: 'hsl(45 90% 50%)' }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">Caricamento in corso… non chiudere il pannello.</p>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      ref={uploadInputRef}
+                      type="file"
+                      accept="video/*,.mp4,.mov,.avi,.mkv,.webm"
+                      onChange={handleUploadEsportato}
+                      className="hidden"
+                    />
+                    <button
+                      onClick={() => uploadInputRef.current?.click()}
+                      disabled={uploading}
+                      className="w-full py-3 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2"
+                      style={{
+                        background: 'hsl(45 90% 50%)',
+                        color: 'white',
+                        opacity: uploading ? 0.6 : 1,
+                      }}
+                    >
+                      📤 Seleziona file da caricare
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {isUploadTask && taskCompletato && (
+            <div className="rounded-lg px-3 py-2.5 text-xs"
+              style={{ background: 'hsl(142 70% 45% / 0.08)', color: 'hsl(142 60% 35%)', border: '1px solid hsl(142 70% 45% / 0.25)' }}>
+              ✅ File esportato caricato — il task Revisione è stato creato per Elisa!
+            </div>
+          )}
+
+          {/* ─── CLEANUP TASK: bottone elimina file grezzi ──────────────── */}
+          {isCleanupTask && !taskCompletato && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                🗑️ AZIONI CLEANUP
+              </p>
+              <div className="rounded-xl p-3 space-y-2"
+                style={{ background: 'hsl(0 80% 55% / 0.06)', border: '1px solid hsl(0 80% 55% / 0.2)' }}>
+                {loadingCleanup ? (
+                  <p className="text-xs text-muted-foreground">Verifica file su Drive…</p>
+                ) : cleanupInfo ? (
+                  <>
+                    <p className="text-xs" style={{ color: 'hsl(0 70% 40%)' }}>
+                      📁 {cleanupInfo.count} file grezzi · {cleanupInfo.totalSize > 0 ? `${(cleanupInfo.totalSize / 1024 / 1024 / 1024).toFixed(2)} GB` : '—'} da liberare
+                    </p>
+                    {!showCleanupConfirm ? (
+                      <button
+                        onClick={() => setShowCleanupConfirm(true)}
+                        className="w-full py-2 rounded-lg text-xs font-semibold transition-all"
+                        style={{ background: 'hsl(0 80% 55%)', color: 'white' }}
+                      >
+                        🗑️ Cancella file da montare
+                      </button>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium" style={{ color: 'hsl(0 70% 40%)' }}>
+                          Stai per cancellare {cleanupInfo.count} file dalla cartella clip/. Il file esportato non verrà toccato. Confermi?
+                        </p>
+                        <div className="flex gap-2">
+                          <button onClick={handleDeleteRawFiles} disabled={deletingCleanup}
+                            className="flex-1 py-1.5 rounded-lg text-xs font-semibold"
+                            style={{ background: 'hsl(0 80% 55%)', color: 'white', opacity: deletingCleanup ? 0.6 : 1 }}>
+                            {deletingCleanup ? '⏳ Eliminando…' : '✅ Sì, elimina'}
+                          </button>
+                          <button onClick={() => setShowCleanupConfirm(false)}
+                            className="flex-1 py-1.5 rounded-lg text-xs font-medium border border-border hover:bg-muted">
+                            Annulla
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Nessun file trovato nella cartella clip/ — già pulita o Drive non connesso.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ─── REVISIONE: Approva / Richiedi modifiche ─────────────────── */}
+          {isRevisioneTask && !taskCompletato && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                👁️ AZIONI REVISIONE
+              </p>
+
+              {/* Video preview — all versions */}
+              {utente?.id && allExportedFiles.length > 0 && (
+                <div className="mb-3 space-y-3">
+                  {allExportedFiles.map((ef, idx) => {
+                    const isLatest = idx === allExportedFiles.length - 1;
+                    const vLabel = allExportedFiles.length > 1
+                      ? `v${idx + 1}${isLatest ? ' (ultima)' : ' (precedente)'}`
+                      : '';
+                    return (
+                      <div key={ef.id}>
+                        <p className="text-[11px] text-muted-foreground mb-1.5">
+                          {isLatest ? '📹' : '📼'} {vLabel ? `Versione ${vLabel}` : 'Anteprima file esportato'}
+                          {ef.uploadedAt && (
+                            <span className="ml-1 opacity-60">
+                              · {new Date(ef.uploadedAt).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          )}
+                        </p>
+                        <video
+                          controls
+                          className="w-full rounded-lg border"
+                          style={{
+                            maxHeight: isLatest ? 200 : 140,
+                            borderColor: isLatest ? 'hsl(214 80% 55% / 0.4)' : 'hsl(var(--border))',
+                            opacity: isLatest ? 1 : 0.75,
+                          }}
+                          src={`${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${ef.fileId}&teamId=${utente.id}`}
+                        >
+                          Il tuo browser non supporta il player video.
+                        </video>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="rounded-xl p-3 space-y-2"
+                style={{ background: 'hsl(270 60% 55% / 0.06)', border: '1px solid hsl(270 60% 55% / 0.2)' }}>
+
+                {!showModificheForm ? (
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={supervisioneGiovanni}
+                        onChange={e => setSupervisioneGiovanni(e.target.checked)}
+                        className="rounded"
+                      />
+                      <span className="text-xs font-medium" style={{ color: 'hsl(38 80% 35%)' }}>
+                        👁️ Fai supervisionare anche a Giovanni
+                      </span>
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleApprovaRevisione}
+                        disabled={savingRevisione}
+                        className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
+                        style={{ background: 'hsl(142 70% 45%)', color: 'white', opacity: savingRevisione ? 0.6 : 1 }}
+                      >
+                        {savingRevisione ? '⏳…' : supervisioneGiovanni ? '✅ Approva + Supervisione' : '✅ Approvato'}
+                      </button>
+                      <button
+                        onClick={() => setShowModificheForm(true)}
+                        disabled={savingRevisione}
+                        className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
+                        style={{ background: 'hsl(38 92% 50% / 0.15)', color: 'hsl(32 95% 35%)', border: '1px solid hsl(38 92% 50% / 0.35)' }}
+                      >
+                        🔄 Richiedi modifiche
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium" style={{ color: 'hsl(270 50% 40%)' }}>
+                      Descrivi cosa va corretto:
+                    </p>
+                    <textarea
+                      value={noteModifiche}
+                      onChange={e => setNoteModifiche(e.target.value)}
+                      className="sk-textarea w-full text-sm"
+                      rows={3}
+                      placeholder="es. Accorcia l'intro, il logo è fuori inquadratura…"
+                      autoFocus
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleRichiestaModifiche}
+                        disabled={savingRevisione || !noteModifiche.trim()}
+                        className="flex-1 py-1.5 rounded-lg text-xs font-semibold"
+                        style={{ background: 'hsl(38 92% 50%)', color: 'white', opacity: (savingRevisione || !noteModifiche.trim()) ? 0.5 : 1 }}
+                      >
+                        {savingRevisione ? '⏳…' : '🔄 Invia richiesta'}
+                      </button>
+                      <button
+                        onClick={() => { setShowModificheForm(false); setNoteModifiche(''); }}
+                        className="flex-1 py-1.5 rounded-lg text-xs font-medium border border-border hover:bg-muted"
+                      >
+                        Annulla
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  ✅ Approvato → CLP avanza a Revisionato + task Programmazione per Elisa<br />
+                  🔄 Modifiche → CLP torna a Montato + task Upload esportato per Alessandro
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ─── SUPERVISIONE GIOVANNI: Approva / Respingi ─────────────────── */}
+          {isSupervisoneTask && !taskCompletato && (
+            <div className="space-y-3">
+              {allExportedFiles.length > 0 && (
+                <div>
+                  <p className="text-[11px] text-muted-foreground mb-1.5">📹 Anteprima file esportato</p>
+                  <video
+                    controls
+                    className="w-full rounded-lg border"
+                    style={{ maxHeight: 200, borderColor: 'hsl(214 80% 55% / 0.4)' }}
+                    src={`${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${allExportedFiles[allExportedFiles.length - 1].fileId}&teamId=${utente.id}`}
+                  />
+                </div>
+              )}
+
+              <div className="rounded-xl p-3 space-y-2"
+                style={{ background: 'hsl(38 92% 50% / 0.06)', border: '1px solid hsl(38 92% 50% / 0.2)' }}>
+                <p className="text-xs font-semibold" style={{ color: 'hsl(38 80% 35%)' }}>
+                  👁️ Supervisione richiesta da Elisa
+                </p>
+                {contenutoRevisione?.note_revisione && (
+                  <p className="text-xs italic" style={{ color: 'hsl(var(--skorpio-text-secondary))' }}>
+                    Note: {contenutoRevisione.note_revisione}
+                  </p>
+                )}
+                {!showModificheForm ? (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={async () => {
+                        if (!contenutoRevisione) return;
+                        setSavingRevisione(true);
+                        try {
+                          await supabase.from('task').update({ stato: 'Completato' }).eq('id', task.id);
+                          const nomeElisa = team.find(t => t.nome.toLowerCase().includes('elisa'))?.nome || 'Elisa';
+                          const { data: idData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
+                          await supabase.from('task').insert({
+                            id_display: idData || `TSK${Date.now()}`,
+                            descrizione: `📅 Programmazione ${contenutoRevisione.id_display} – ${contenutoRevisione.titolo}${contenutoRevisione.cliente_nome ? ` (${contenutoRevisione.cliente_nome})` : ''}`,
+                            tipo: 'Programmazione',
+                            stato: 'Da fare',
+                            assegnato_a: nomeElisa,
+                            assegnato_da: '⚡ Sistema',
+                            cliente_id: contenutoRevisione.cliente_id,
+                            cliente_nome: contenutoRevisione.cliente_nome || '',
+                            id_contenuto: contenutoRevisione.id,
+                            priorita: '🔴 Alta',
+                            scadenza: contenutoRevisione.data_pubblicazione || null,
+                          });
+                          await supabase.from('contenuti').update({ supervisione_giovanni: false }).eq('id', contenutoRevisione.id);
+                          setTaskCompletato(true);
+                          sounds.taskCompletato();
+                          addToast('✅ Supervisione approvata → task Programmazione creato per Elisa!', 'success');
+                          const { data } = await supabase.from('task').select('*').eq('id', task.id).single();
+                          if (data) onUpdate(data as Task);
+                        } catch (err: any) {
+                          addToast(`❌ Errore: ${err.message}`, 'error');
+                        }
+                        setSavingRevisione(false);
+                      }}
+                      disabled={savingRevisione}
+                      className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
+                      style={{ background: 'hsl(142 70% 45%)', color: 'white', opacity: savingRevisione ? 0.6 : 1 }}
+                    >
+                      {savingRevisione ? '⏳…' : '✅ Approva'}
+                    </button>
+                    <button
+                      onClick={() => setShowModificheForm(true)}
+                      disabled={savingRevisione}
+                      className="flex-1 py-2 rounded-lg text-xs font-semibold transition-all"
+                      style={{ background: 'hsl(0 80% 55% / 0.15)', color: 'hsl(0 70% 42%)', border: '1px solid hsl(0 80% 55% / 0.35)' }}
+                    >
+                      🔄 Richiedi modifiche
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <textarea
+                      value={noteModifiche}
+                      onChange={e => setNoteModifiche(e.target.value)}
+                      className="sk-textarea w-full text-sm"
+                      rows={3}
+                      placeholder="Cosa va corretto?"
+                      autoFocus
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={async () => {
+                          if (!contenutoRevisione || !noteModifiche.trim()) return;
+                          setSavingRevisione(true);
+                          try {
+                            await richiestaModifiche(contenutoRevisione, team, noteModifiche.trim(), utente?.id);
+                            setClpFase('Montato');
+                            setTaskCompletato(true);
+                            sounds.salva();
+                            addToast('🔄 Giovanni ha richiesto modifiche → task Upload esportato per Alessandro', 'success');
+                            const { data } = await supabase.from('task').select('*').eq('id', task.id).single();
+                            if (data) onUpdate(data as Task);
+                            setShowModificheForm(false);
+                            setNoteModifiche('');
+                          } catch (err: any) {
+                            addToast(`❌ Errore: ${err.message}`, 'error');
+                          }
+                          setSavingRevisione(false);
+                        }}
+                        disabled={savingRevisione || !noteModifiche.trim()}
+                        className="flex-1 py-1.5 rounded-lg text-xs font-semibold"
+                        style={{ background: 'hsl(38 92% 50%)', color: 'white', opacity: (savingRevisione || !noteModifiche.trim()) ? 0.5 : 1 }}
+                      >
+                        {savingRevisione ? '⏳…' : '🔄 Invia'}
+                      </button>
+                      <button
+                        onClick={() => { setShowModificheForm(false); setNoteModifiche(''); }}
+                        className="flex-1 py-1.5 rounded-lg text-xs font-medium border border-border hover:bg-muted"
+                      >
+                        Annulla
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  ✅ Approva → task Programmazione per Elisa<br />
+                  🔄 Modifiche → CLP torna a Montato + task Upload esportato per Alessandro
+                </p>
+              </div>
+            </div>
+          )}
+
+
+          {!isCLPTask && (
+          <div>
+            <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>CAMBIA STATO TASK</p>
+            <div className="flex flex-wrap gap-1.5">
+              {STATI.map(s => (
+                <button
+                  key={s}
+                  onClick={() => handleStatoChange(s)}
+                  disabled={task.stato === s || saving}
+                  className="text-xs px-2.5 py-1.5 rounded-md transition-all font-medium"
+                  style={{
+                    background: task.stato === s ? (STATO_COLORS[s]?.bg || '#F1F5F9') : 'hsl(210 40% 96%)',
+                    color: task.stato === s ? (STATO_COLORS[s]?.text || '#64748B') : '#64748B',
+                    opacity: saving ? 0.5 : 1,
+                    fontWeight: task.stato === s ? 700 : 500,
+                  }}
+                >
+                  {s}
+                </button>
+              ))}
             </div>
           </div>
-        </div>
-      )}
+          )}
 
-      {/* BOARD STANDARD */}
-      {showStd && (
-        <div>
-          {boardMode === 'both' && <div className="flex items-center gap-2 mb-2"><span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'hsl(var(--muted-foreground))' }}>📋 Task generali</span><div className="flex-1 h-px" style={{ background: 'hsl(var(--border))' }} /></div>}
-          {isMobile && <div className="flex gap-1 overflow-x-auto pb-2 mb-2">{COLONNE.map(col => <button key={col.stato} onClick={() => setMobileCol(col.stato)} className="px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex-shrink-0" style={{ background: mobileCol === col.stato ? col.colore : `${col.colore}15`, color: mobileCol === col.stato ? '#fff' : col.colore }}>{col.icona} {col.stato} ({filteredStandard(col.stato).length})</button>)}</div>}
-          <div className={isMobile ? '' : 'flex gap-4 overflow-x-auto pb-4'}>
-            {COLONNE.filter(col => !isMobile || col.stato === mobileCol).map(col => {
-              const ct = filteredStandard(col.stato);
-              return (
-                <div key={col.stato} className={`kanban-col ${dropTarget === col.stato ? 'kanban-drop-target' : ''}`}
-                  style={{ background: col.bg, border: `1px solid ${col.border}30`, minWidth: isMobile ? '100%' : undefined }}
-                  onDragOver={e => { e.preventDefault(); setDropTarget(col.stato); }} onDragLeave={() => setDropTarget(null)} onDrop={() => handleDropStandard(col.stato)}>
-                  <div className="kanban-col-header" style={{ borderBottom: `2px solid ${col.border}40` }}>
-                    <div className="flex items-center gap-2"><span>{col.icona}</span><span style={{ color: col.colore }}>{col.stato}</span></div>
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: `${col.colore}20`, color: col.colore }}>{ct.length}</span>
-                  </div>
-                  <div className="kanban-col-body">
-                    {ct.map(t => <TaskCard key={t.id} task={t} team={team} utente={utente} draggingId={dragItem} onDragStart={() => setDragItem(t.id)} onDragEnd={() => setDragItem(null)} onClick={() => setSelectedTask(t)} showFaseBadge={true} revisionCount={t.id_contenuto ? clpRevisionCount[t.id_contenuto] : undefined} clientLogoUrl={t.cliente_id ? clientLogoMap[t.cliente_id] : clientLogoByName[t.cliente_nome]} />)}
-                    {ct.length === 0 && <div className="flex items-center justify-center h-16 text-xs rounded-lg" style={{ color: 'hsl(var(--skorpio-text-tertiary))', border: `1px dashed ${col.border}40` }}>Nessun task</div>}
-                  </div>
-                </div>
-              );
-            })}
+          {/* ─── SPOSTA A ────────────────────────────────────────────────────── */}
+          {(utente?.ruolo === 'Admin' || task.assegnato_a === utente?.nome) && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>SPOSTA A</p>
+              <div className="flex flex-wrap gap-2">
+                {team.filter(m => m.nome !== task.assegnato_a).map(m => (
+                  <button
+                    key={m.id}
+                    onClick={() => handleSpostaA(m.nome)}
+                    className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md transition-colors"
+                    style={{ background: `${m.colore}15`, color: m.colore, border: `1px solid ${m.colore}30` }}
+                  >
+                    <Avatar nome={m.nome} colore={m.colore} size={16} avatarUrl={m.avatar_url} />
+                    {m.nome}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ─── NOTA ────────────────────────────────────────────────────────── */}
+          <div>
+            <p className="text-xs font-medium mb-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>AGGIUNGI NOTA</p>
+            <textarea
+              value={nota}
+              onChange={e => setNota(e.target.value)}
+              className="sk-textarea w-full text-sm"
+              rows={2}
+              placeholder="Scrivi una nota…"
+            />
+            <button onClick={handleAddNota} className="sk-btn-primary text-xs mt-1.5 w-full">
+              Aggiungi nota
+            </button>
           </div>
         </div>
-      )}
 
-      {isMobile && <button onClick={() => setShowNuovoTask(true)} className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-2xl text-white" style={{ background: 'hsl(var(--primary))' }}>+</button>}
-
-      {selectedTask && <TaskDetailPanel task={selectedTask} team={team} onClose={() => setSelectedTask(null)} onUpdate={async (_updated: Task) => { await loadTasks(); }} onDelete={async (_id: string) => { setSelectedTask(null); await loadTasks(); }} />}
-      {showNuovoTask && <NuovoTaskModal team={team} clienti={clienti} utente={utente} onClose={() => setShowNuovoTask(false)} onCreated={async (t) => { addToast(`✅ Task ${t.id_display} creato`, 'success'); setShowNuovoTask(false); await loadTasks(); }} />}
-    </div>
+        {/* Footer */}
+        <div className="p-4 border-t">
+          <button onClick={handleArchivia} className="sk-btn-danger w-full text-sm">
+            🗄️ Archivia task {task.id_display}
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
