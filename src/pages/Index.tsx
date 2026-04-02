@@ -33,6 +33,8 @@ function MainApp() {
 
   useEffect(() => {
     loadSharedData();
+    const interval = setInterval(loadSharedData, 30000);
+    return () => clearInterval(interval);
   }, [loadSharedData, tab]);
 
   // 1. Non autenticato → Landing Page
