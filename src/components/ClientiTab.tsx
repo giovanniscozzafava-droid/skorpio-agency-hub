@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import { toDateStr } from '../lib/dateUtils';
 import type { Cliente } from '../types';
+import { ClienteLogo } from './ClienteLogo';
+import { LogoUploader } from './LogoUploader';
 
 // ─── helpers mese ────────────────────────────────────────────────────────────
 function meseRange(year: number, month: number) {
@@ -193,12 +195,7 @@ function ClienteCard({
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div
-            className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0 shadow-sm"
-            style={{ background: color }}
-          >
-            {getInitial(cliente.nome)}
-          </div>
+          <ClienteLogo nome={cliente.nome} logoUrl={cliente.logo_url} size={40} />
           <div className="min-w-0">
             <div className="font-semibold text-sm text-foreground truncate leading-tight">{cliente.nome}</div>
             {cliente.referente && (
@@ -476,6 +473,15 @@ function DetailPanel({ cliente, onClose, onUpdate, onDelete }: DetailPanelProps)
           <div className={sectionCls}>
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">👤 Anagrafica</p>
             <div className="space-y-3">
+              <div>
+                <label className={labelCls}>Logo</label>
+                <LogoUploader
+                  clienteId={cliente.id}
+                  clienteNome={form.nome}
+                  currentLogoUrl={form.logo_url}
+                  onSaved={(url) => setForm(prev => ({ ...prev, logo_url: url || null }))}
+                />
+              </div>
               <div>
                 <label className={labelCls}>Nome *</label>
                 <input className={inputCls} value={form.nome} onChange={e => set('nome', e.target.value)} />
