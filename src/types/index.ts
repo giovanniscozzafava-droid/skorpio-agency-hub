@@ -32,6 +32,7 @@ export type Cliente = {
   adv_attivo: boolean;
   note: string;
   link_drive: string;
+  logo_url?: string | null;
   data_inizio: string | null;
   created_at: string;
   updated_at: string;
@@ -90,6 +91,8 @@ export type Contenuto = {
   drive_clip_folder_id?: string | null;
   drive_export_folder_id?: string | null;
   generato_da_ai: boolean;
+  supervisione_giovanni?: boolean;
+  revision_count?: number;
   created_at: string;
   updated_at: string;
 };
