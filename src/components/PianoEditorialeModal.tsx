@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import type { Cliente, Contenuto } from '../types';
 
 interface PianoEditorialeModalProps {
@@ -58,9 +56,12 @@ export function PianoEditorialeModal({ cliente, onClose }: PianoEditorialeModalP
     'Pubblicato': 'Pubblicato',
   };
 
-  const generatePDF = () => {
+  const generatePDF = async () => {
     setGenerating(true);
     try {
+    const { jsPDF } = await import('jspdf');
+    const autoTableModule = await import('jspdf-autotable');
+    const autoTable = autoTableModule.default;
 
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pageWidth = doc.internal.pageSize.getWidth();
