@@ -11,6 +11,7 @@ import { useApp } from '../context/AppContext';
 import { sounds } from '../lib/sounds';
 import type { Task, TeamMember, Cliente } from '../types';
 import { Avatar } from './Avatar';
+import { ClienteLogo } from './ClienteLogo';
 import { TaskDetailPanel } from './TaskDetailPanel';
 import { NuovoTaskModal } from './NuovoTaskModal';
 import { parseLocalDate } from '../lib/dateUtils';
@@ -75,11 +76,12 @@ function LiveClock({ scadenza, ora }: { scadenza: string; ora: string | null }) 
 
 // ── TaskCard ──────────────────────────────────────────────────────────────────
 
-function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate, revisionCount, isProgrammato, canEditProgrammazione, onRiprogramma, onEditPubDate }: {
+function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate, revisionCount, isProgrammato, canEditProgrammazione, onRiprogramma, onEditPubDate, clientLogoUrl }: {
   task: Task; team: TeamMember[]; utente: TeamMember | null; draggingId: string | null;
   onDragStart: () => void; onDragEnd: () => void; onClick: () => void;
   showFaseBadge?: boolean; pubDate?: { data: string | null; ora: string | null } | null; revisionCount?: number;
   isProgrammato?: boolean; canEditProgrammazione?: boolean; onRiprogramma?: () => void; onEditPubDate?: (d: string, o: string | null) => void;
+  clientLogoUrl?: string | null;
 }) {
   const member = team.find(m => m.nome === task.assegnato_a);
   const isAuto = task.assegnato_da?.includes('Sistema') || task.assegnato_da?.includes('⚡');
@@ -117,7 +119,7 @@ function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onCl
         </div>
         {member && <Avatar nome={member.nome} colore={member.colore} size={20} avatarUrl={member.avatar_url} />}
       </div>
-      {task.cliente_nome && <p className="text-xs mt-1 truncate" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>👤 {task.cliente_nome.slice(0, 22)}</p>}
+      {task.cliente_nome && <div className="flex items-center gap-1.5 mt-1 truncate"><ClienteLogo nome={task.cliente_nome} logoUrl={clientLogoUrl} size={16} /><span className="text-xs truncate" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>{task.cliente_nome.slice(0, 20)}</span></div>}
 
       {pubDate?.data ? (
         <div className="mt-1.5">
@@ -166,6 +168,13 @@ export function KanbanTab({ team, clienti, personaView }: { team: TeamMember[]; 
   const [clpFasi, setClpFasi] = useState<Record<string, string>>({});
   const [clpPubDates, setClpPubDates] = useState<Record<string, { data: string | null; ora: string | null }>>({});
   const [clpRevisionCount, setClpRevisionCount] = useState<Record<string, number>>({});
+
+  // Mappa cliente_id → logo_url per le card
+  const clientLogoMap: Record<string, string | null> = {};
+  for (const c of clienti) { if (c.logo_url) clientLogoMap[c.id] = c.logo_url; }
+  // Anche per nome (fallback quando il task ha solo cliente_nome)
+  const clientLogoByName: Record<string, string | null> = {};
+  for (const c of clienti) { if (c.logo_url) clientLogoByName[c.nome] = c.logo_url; }
   const [loading, setLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showNuovoTask, setShowNuovoTask] = useState(false);
@@ -245,8 +254,10 @@ export function KanbanTab({ team, clienti, personaView }: { team: TeamMember[]; 
       if (faseCLP === 'Pubblicato') return fase === 'Pubblicato' && (t.tipo === 'Cleanup' || (t.stato === 'Completato' && t.tipo === 'Programmazione'));
       if (personaView && t.assegnato_a !== personaView) return false;
       if (utente?.ruolo !== 'Admin' && t.assegnato_a !== utente?.nome) return false;
+      // Revisionato: mostra sia Programmazione che Supervisione
+      if (faseCLP === 'Revisionato' && fase === 'Revisionato' && t.tipo === 'Supervisione' && t.stato !== 'Completato') return true;
       return fase === faseCLP && tipoCol === t.tipo && t.stato !== 'Completato';
-    }).sort((a, b) => (a.posizione ?? 0) - (b.posizione ?? 0));
+    }).sort(sortByUrgenza);
   };
 
   // ── HANDLERS: azione → DB → loadTasks() ──────────────────────────────────
@@ -359,7 +370,7 @@ export function KanbanTab({ team, clienti, personaView }: { team: TeamMember[]; 
                     <span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ background: `${col.colore}20`, color: col.colore }}>{ct.length}</span>
                   </div>
                   <div className="kanban-col-body">
-                    {ct.map(t => <TaskCard key={t.id} task={t} team={team} utente={utente} draggingId={dragItem} onDragStart={() => setDragItem(t.id)} onDragEnd={() => setDragItem(null)} onClick={() => setSelectedTask(t)} showFaseBadge={false} pubDate={t.id_contenuto ? clpPubDates[t.id_contenuto] : null} revisionCount={t.id_contenuto ? clpRevisionCount[t.id_contenuto] : undefined} isProgrammato={col.stato === 'Programmato'} canEditProgrammazione={canEditProgrammazione} onRiprogramma={() => t.id_contenuto && setRiprogrammaConfirm({ taskId: t.id, contenutoId: t.id_contenuto, desc: t.descrizione.slice(0, 50) })} onEditPubDate={(d, o) => t.id_contenuto && handleEditPubDate(t.id_contenuto, d, o)} />)}
+                    {ct.map(t => <TaskCard key={t.id} task={t} team={team} utente={utente} draggingId={dragItem} onDragStart={() => setDragItem(t.id)} onDragEnd={() => setDragItem(null)} onClick={() => setSelectedTask(t)} showFaseBadge={false} pubDate={t.id_contenuto ? clpPubDates[t.id_contenuto] : null} revisionCount={t.id_contenuto ? clpRevisionCount[t.id_contenuto] : undefined} isProgrammato={col.stato === 'Programmato'} canEditProgrammazione={canEditProgrammazione} onRiprogramma={() => t.id_contenuto && setRiprogrammaConfirm({ taskId: t.id, contenutoId: t.id_contenuto, desc: t.descrizione.slice(0, 50) })} onEditPubDate={(d, o) => t.id_contenuto && handleEditPubDate(t.id_contenuto, d, o)} clientLogoUrl={t.cliente_id ? clientLogoMap[t.cliente_id] : clientLogoByName[t.cliente_nome]} />)}
                     {ct.length === 0 && <div className="flex items-center justify-center h-12 text-xs rounded-lg" style={{ color: 'hsl(var(--muted-foreground))', border: `1px dashed ${col.border}40` }}>Nessun task</div>}
                   </div>
                 </div>
@@ -400,7 +411,7 @@ export function KanbanTab({ team, clienti, personaView }: { team: TeamMember[]; 
                     <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: `${col.colore}20`, color: col.colore }}>{ct.length}</span>
                   </div>
                   <div className="kanban-col-body">
-                    {ct.map(t => <TaskCard key={t.id} task={t} team={team} utente={utente} draggingId={dragItem} onDragStart={() => setDragItem(t.id)} onDragEnd={() => setDragItem(null)} onClick={() => setSelectedTask(t)} showFaseBadge={true} revisionCount={t.id_contenuto ? clpRevisionCount[t.id_contenuto] : undefined} />)}
+                    {ct.map(t => <TaskCard key={t.id} task={t} team={team} utente={utente} draggingId={dragItem} onDragStart={() => setDragItem(t.id)} onDragEnd={() => setDragItem(null)} onClick={() => setSelectedTask(t)} showFaseBadge={true} revisionCount={t.id_contenuto ? clpRevisionCount[t.id_contenuto] : undefined} clientLogoUrl={t.cliente_id ? clientLogoMap[t.cliente_id] : clientLogoByName[t.cliente_nome]} />)}
                     {ct.length === 0 && <div className="flex items-center justify-center h-16 text-xs rounded-lg" style={{ color: 'hsl(var(--skorpio-text-tertiary))', border: `1px dashed ${col.border}40` }}>Nessun task</div>}
                   </div>
                 </div>
