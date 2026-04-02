@@ -307,7 +307,7 @@ export function PianoEditorialeModal({ cliente, onClose }: PianoEditorialeModalP
         {/* Footer */}
         <div className="p-5 border-t flex gap-2" style={{ borderColor: 'hsl(var(--border))' }}>
           <button
-            onClick={generatePDF}
+           onClick={() => { console.log('CLICK PDF', contenuti.length, generating); generatePDF(); }}
             disabled={generating || contenuti.length === 0}
             className="flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all"
             style={{
