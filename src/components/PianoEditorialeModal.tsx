@@ -166,7 +166,10 @@ export function PianoEditorialeModal({ cliente, onClose }: PianoEditorialeModalP
         <div className="p-5 border-t flex gap-2" style={{ borderColor: 'hsl(var(--border))' }}>
           <button onClick={generatePDF} disabled={generating || contenuti.length === 0}
             className="flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer"
-            style={{ background: contenuti.length > 0 ? 'hsl(270 60% 55%)' : 'hsl(var(--muted))', color: contenuti.length > 0 ? 'white' : 'hsl(var(--skorpio-text-tertiary))', opacity: generating ? 0.6 : 1, cursor: 'pointer', position: 'relative', zIndex: 10 }}>
+            style={{ background: contenuti.length > 0 ? 'hsl(270 60% 55%)' : 'hsl(var(--muted))', color: contenuti.length > 0 ? 'white' : 'hsl(var(--skorpio-text-tertiary))', opacity: generating ? 0.6 : 1, cursor: "pointer", position: "relative", zIndex: 10 }}>
+            {generating ? '⏳ Generazione...' : '📄 Scarica PDF (' + contenuti.length + ' contenuti)'}
+          </button>
+          <button onClick={onClose} className="px-4 py-2.5 rounded-lg text-sm font-medium border cursor-pointer" style={{ borderColor: 'hsl(var(--border))' }}>Chiudi</button>
         </div>
       </div>
     </div>
