@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import type { Cliente, Contenuto } from '../types';
 
@@ -116,10 +117,10 @@ export function PianoEditorialeModal({ cliente, onClose }: PianoEditorialeModalP
     setGenerating(false);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}
+  return createPortal(
+    <div className="fixed inset-0 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)', zIndex: 99999 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden" style={{ background: 'hsl(var(--background))' }}
+      <div className="w-full max-w-lg rounded-2xl shadow-2xl" style={{ background: 'hsl(var(--background))', position: 'relative', zIndex: 999999 }}
         onClick={(e) => e.stopPropagation()}>
         <div className="p-5 border-b" style={{ borderColor: 'hsl(var(--border))' }}>
           <div className="flex items-center justify-between">
@@ -163,15 +164,16 @@ export function PianoEditorialeModal({ cliente, onClose }: PianoEditorialeModalP
             </div>
           )}
         </div>
-        <div className="p-5 border-t flex gap-2" style={{ borderColor: 'hsl(var(--border))' }}>
-          <button onClick={generatePDF} disabled={generating || contenuti.length === 0}
-            className="flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all cursor-pointer"
-            style={{ background: contenuti.length > 0 ? 'hsl(270 60% 55%)' : 'hsl(var(--muted))', color: contenuti.length > 0 ? 'white' : 'hsl(var(--skorpio-text-tertiary))', opacity: generating ? 0.6 : 1, cursor: "pointer", position: "relative", zIndex: 10 }}>
+        <div className="p-5 border-t flex gap-2" style={{ borderColor: 'hsl(var(--border))', position: 'relative', zIndex: 999999, pointerEvents: 'auto' }}>
+          <button onClick={(e) => { e.stopPropagation(); e.preventDefault(); generatePDF(); }} disabled={generating || contenuti.length === 0}
+            className="flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all"
+            style={{ background: contenuti.length > 0 ? 'hsl(270 60% 55%)' : 'hsl(var(--muted))', color: contenuti.length > 0 ? 'white' : 'hsl(var(--skorpio-text-tertiary))', opacity: generating ? 0.6 : 1, cursor: 'pointer', pointerEvents: 'auto' }}>
             {generating ? '⏳ Generazione...' : '📄 Scarica PDF (' + contenuti.length + ' contenuti)'}
           </button>
-          <button onClick={onClose} className="px-4 py-2.5 rounded-lg text-sm font-medium border cursor-pointer" style={{ borderColor: 'hsl(var(--border))' }}>Chiudi</button>
+          <button onClick={onClose} className="px-4 py-2.5 rounded-lg text-sm font-medium border" style={{ borderColor: 'hsl(var(--border))', cursor: 'pointer', pointerEvents: 'auto' }}>Chiudi</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
