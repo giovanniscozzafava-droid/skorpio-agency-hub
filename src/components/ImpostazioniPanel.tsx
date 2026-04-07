@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import { Avatar } from './Avatar';
 import type { TeamMember } from '../types';
+import { DailyPriorityManager } from './DailyPriorityManager';
 
 const SUPABASE_URL        = import.meta.env.VITE_SUPABASE_URL as string;
 const GCAL_REDIRECT_URI   = `${window.location.origin}/gcal-callback`;
@@ -44,7 +45,7 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
   const [riassegnaA, setRiassegnaA]     = useState('');
   const [deleting, setDeleting]         = useState(false);
 
-  const [section, setSection] = useState<'profilo' | 'team' | 'integrazioni' | 'audit'>('profilo');
+  const [section, setSection] = useState<'profilo' | 'team' | 'integrazioni' | 'audit' | 'priorita'>('profilo');
 
   // ── Snapshot dati ──────────────────────────────────────────────────────────
   const [snapshotRunning, setSnapshotRunning] = useState(false);
@@ -555,6 +556,19 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
               }}
             >
               🔍 Audit
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              onClick={() => setSection('priorita')}
+              className="flex-1 py-2.5 text-xs font-semibold transition-colors"
+              style={{
+                color: section === 'priorita' ? '#6C5CE7' : 'hsl(var(--skorpio-text-secondary))',
+                borderBottom: section === 'priorita' ? '2px solid #6C5CE7' : '2px solid transparent',
+                background: 'transparent',
+              }}
+            >
+              Daily Priority
             </button>
           )}
         </div>
@@ -1154,6 +1168,13 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
                   </p>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── SEZIONE DAILY PRIORITY ── */}
+          {section === 'priorita' && isAdmin && (
+            <div className="px-5 py-5">
+              <DailyPriorityManager team={team} utente={utente} />
             </div>
           )}
         </div>
