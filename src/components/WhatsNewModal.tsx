@@ -80,12 +80,12 @@ interface Props {
 }
 
 const POSITIONS = [
-  { top: '80px', left: '20px' },
-  { top: '160px', right: '20px' },
-  { top: '300px', left: '40px' },
-  { top: '120px', left: '50%' },
-  { bottom: '140px', right: '40px' },
-  { bottom: '80px', left: '30px' },
+  { top: '70px', left: '24px' },
+  { top: '70px', right: '24px' },
+  { top: '280px', left: '24px' },
+  { top: '280px', right: '24px' },
+  { bottom: '120px', left: '24px' },
+  { bottom: '120px', right: '24px' },
 ];
 
 const ROTATIONS = [-3, 2, -2, 3, -1, 2];
@@ -120,13 +120,13 @@ export function WhatsNewModal({ userName, onClose }: Props) {
   return (
     <div className="fixed inset-0" style={{ zIndex: 99998, pointerEvents: 'none' }}>
       {/* Sfondo leggero */}
-      <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.15)', pointerEvents: 'auto' }} onClick={dismissAll} />
+      <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.15)', pointerEvents: 'auto' }} />
 
       {/* Counter */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full shadow-lg text-xs font-bold"
         style={{ background: 'hsl(var(--background))', border: '1px solid hsl(var(--border))', color: 'hsl(var(--skorpio-text-primary))', pointerEvents: 'auto', zIndex: 99999 }}>
         {remaining.length > 0
-          ? `${remaining.length} novita da scoprire — clicca le ✕ per leggere`
+          ? `${remaining.length} novita da leggere — clicca "Ho capito" su ognuna`
           : 'Tutto letto!'}
       </div>
 
@@ -137,7 +137,7 @@ export function WhatsNewModal({ userName, onClose }: Props) {
         const rot = ROTATIONS[i % ROTATIONS.length];
         return (
           <div key={f.id}
-            className="absolute w-56 rounded-xl shadow-2xl transition-all duration-500"
+            className="absolute w-72 rounded-xl shadow-2xl transition-all duration-500"
             style={{
               ...pos,
               transform: `rotate(${rot}deg)${entering ? ' scale(0.8) translateY(20px)' : ' scale(1) translateY(0)'}`,
@@ -155,31 +155,27 @@ export function WhatsNewModal({ userName, onClose }: Props) {
               <div className="flex items-center gap-2 px-3 pt-3 pb-1">
                 <span className="text-lg">{f.icon}</span>
                 <span className="text-xs font-bold flex-1" style={{ color: f.color }}>{f.title}</span>
-                <button onClick={() => dismiss(f)}
-                  className="w-5 h-5 rounded-full flex items-center justify-center text-xs cursor-pointer hover:scale-110 transition-transform"
-                  style={{ background: f.color, color: 'white' }}>
-                  ✓
-                </button>
+                
               </div>
               {/* Body */}
               <div className="px-3 pb-3">
-                <p className="text-[11px] leading-relaxed" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
+                <p className="text-xs leading-relaxed" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
                   {f.description}
                 </p>
+              </div>
+              <div className="px-3 pb-3 pt-1">
+                <button onClick={() => dismiss(f)}
+                  className="w-full py-2 rounded-lg text-[11px] font-bold cursor-pointer transition-all hover:brightness-110"
+                  style={{ background: f.color, color: 'white' }}>
+                  Ho capito
+                </button>
               </div>
             </div>
           </div>
         );
       })}
 
-      {/* Salta tutto */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2" style={{ pointerEvents: 'auto', zIndex: 99999 }}>
-        <button onClick={dismissAll}
-          className="px-5 py-2.5 rounded-full shadow-lg text-xs font-semibold cursor-pointer transition-all hover:scale-105"
-          style={{ background: 'hsl(var(--background))', border: '1px solid hsl(var(--border))', color: 'hsl(var(--skorpio-text-secondary))' }}>
-          Ho capito tutto, chiudi
-        </button>
-      </div>
+
     </div>
   );
 }
