@@ -15,6 +15,7 @@ import { ChatPopup } from '../components/ChatPopup';
 import { DeadlineAlertModal } from '../components/DeadlineAlertModal';
 import { DailyPriorityPopup, useDailyPopup } from '../components/DailyPriorityPopup';
 import { TaskDetailPanel } from '../components/TaskDetailPanel';
+import { WhatsNewModal, useWhatsNew } from '../components/WhatsNewModal';
 import { parseLocalDate } from '../lib/dateUtils';
 import type { TeamMember, Cliente, Task } from '../types';
 import { supabase } from '../integrations/supabase/client';
@@ -27,6 +28,7 @@ function MainApp() {
   const [personaView, setPersonaView] = useState<string | null>(null);
   const dailyPopup = useDailyPopup(utente);
   const [popupTask, setPopupTask] = useState<Task | null>(null);
+  const whatsNew = useWhatsNew(utente?.nome ?? null);
 
   const loadSharedData = useCallback(() => {
     if (!utente) return;
@@ -100,6 +102,9 @@ function MainApp() {
           onUpdate={async () => { setPopupTask(null); }}
           onDelete={async () => { setPopupTask(null); }}
         />
+      )}
+      {whatsNew.show && utente && (
+        <WhatsNewModal userName={utente.nome} onClose={whatsNew.close} />
       )}
     </div>
   );
