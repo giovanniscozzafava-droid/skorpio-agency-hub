@@ -225,19 +225,21 @@ export function KanbanTab({ team, clienti, personaView }: { team: TeamMember[]; 
 
   const PRIO_ORDER = { '🔴 Alta': 0, '🟡 Media': 1, '🟢 Bassa': 2 };
   const sortByUrgenza = (a, b) => {
-    // 1. Priorità prima di tutto: 🔴 Alta in cima
-    const prioA = PRIO_ORDER[a.priorita] ?? 1;
-    const prioB = PRIO_ORDER[b.priorita] ?? 1;
-    if (prioA !== prioB) return prioA - prioB;
-    // 2. A parità di priorità: scaduti prima, poi per scadenza vicina
+    // 1. Scaduti sempre in cima
     const now = Date.now();
     const msA = a.scadenza ? getTargetDate(a.scadenza, a.ora).getTime() : Infinity;
     const msB = b.scadenza ? getTargetDate(b.scadenza, b.ora).getTime() : Infinity;
     const scadutoA = msA < now ? -1 : 0;
     const scadutoB = msB < now ? -1 : 0;
     if (scadutoA !== scadutoB) return scadutoA - scadutoB;
+    // 2. Chi ha scadenza prima di chi non ce l'ha
+    const hasA = a.scadenza ? 0 : 1;
+    const hasB = b.scadenza ? 0 : 1;
+    if (hasA !== hasB) return hasA - hasB;
+    // 3. Scadenza più vicina in cima
     if (msA !== msB) return msA - msB;
-    return 0;
+    // 4. A parità: priorità
+    return (PRIO_ORDER[a.priorita] ?? 1) - (PRIO_ORDER[b.priorita] ?? 1);
   };
   const filteredStandard = (stato: string) => tasks.filter(t => {
     if (t.stato !== stato || (t.id_contenuto && t.id_contenuto.trim())) return false;
