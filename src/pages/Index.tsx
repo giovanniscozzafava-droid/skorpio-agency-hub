@@ -13,6 +13,7 @@ import { CalendarioTab } from '../components/CalendarioTab';
 import { CreativeEngineTab } from '../components/CreativeEngineTab';
 import { ChatPopup } from '../components/ChatPopup';
 import { DeadlineAlertModal } from '../components/DeadlineAlertModal';
+import { DailyPriorityPopup, useDailyPopup } from '../components/DailyPriorityPopup';
 import { parseLocalDate } from '../lib/dateUtils';
 import type { TeamMember, Cliente, Task } from '../types';
 import { supabase } from '../integrations/supabase/client';
@@ -23,6 +24,7 @@ function MainApp() {
   const [clienti, setClienti] = useState<Cliente[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [personaView, setPersonaView] = useState<string | null>(null);
+  const dailyPopup = useDailyPopup(utente);
 
   const loadSharedData = useCallback(() => {
     if (!utente) return;
@@ -80,6 +82,13 @@ function MainApp() {
         utente={utente}
         onGoToTask={() => setTab('kanban')}
       />
+      {dailyPopup.show && utente && (
+        <DailyPriorityPopup
+          utente={utente}
+          onClose={dailyPopup.close}
+          onTaskClick={() => { dailyPopup.close(); setTab('kanban'); }}
+        />
+      )}
     </div>
   );
 }
