@@ -13,6 +13,37 @@ function parseLocalDate(str: string): Date {
   return new Date(y, m - 1, d);
 }
 
+function getTargetDate(scadenza: string, ora: string | null): Date {
+  const d = parseLocalDate(scadenza);
+  if (ora) { const [h, m] = ora.split(':').map(Number); d.setHours(h, m, 0, 0); }
+  else { d.setHours(23, 59, 59, 0); }
+  return d;
+}
+
+function LiveCountdown({ scadenza, ora }: { scadenza: string; ora: string | null }) {
+  const [diff, setDiff] = useState(() => getTargetDate(scadenza, ora).getTime() - Date.now());
+  useEffect(() => { const id = setInterval(() => setDiff(getTargetDate(scadenza, ora).getTime() - Date.now()), 60000); return () => clearInterval(id); }, [scadenza, ora]);
+  const abs = Math.abs(diff);
+  const d = Math.floor(abs / 86400000), h = Math.floor((abs % 86400000) / 3600000), m = Math.floor((abs % 3600000) / 60000);
+  const isScaduto = diff <= 0;
+  const text = isScaduto ? (d > 0 ? `da ${d}g ${h}h` : `da ${h}h ${m}min`) : d > 7 ? `${d}gg` : d >= 1 ? `${d}g ${h}h` : h >= 1 ? `${h}h ${m}min` : `${m}min`;
+  const level = isScaduto ? 'scaduto' : d > 7 ? 'ok' : d >= 1 ? 'warn' : 'urgent';
+  const styles: Record<string, { bg: string; c: string; label: string }> = {
+    ok:      { bg: 'hsl(214 80% 55%/0.1)',  c: 'hsl(214 70% 44%)',  label: 'SCADE TRA' },
+    warn:    { bg: 'hsl(38 92% 50%/0.12)',  c: 'hsl(32 95% 35%)',   label: 'IN SCADENZA' },
+    urgent:  { bg: 'hsl(0 80% 55%/0.12)',   c: 'hsl(0 70% 42%)',    label: 'URGENTE' },
+    scaduto: { bg: 'hsl(0 80% 55%/0.14)',   c: 'hsl(0 70% 38%)',    label: 'SCADUTO' },
+  };
+  const s = styles[level];
+  return (
+    <div className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] font-bold flex-shrink-0${level === 'urgent' ? ' animate-pulse' : ''}`}
+      style={{ background: s.bg, color: s.c }}>
+      <span className="uppercase" style={{ fontSize: 9 }}>{s.label}</span>
+      <span className="font-mono tabular-nums">{text}</span>
+    </div>
+  );
+}
+
 export function DailyPriorityPopup({ utente, onClose, onTaskClick }: DailyPriorityPopupProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -160,7 +191,6 @@ export function DailyPriorityPopup({ utente, onClose, onTaskClick }: DailyPriori
             <div className="space-y-2">
               {tasks.map(t => {
                 const done = t.stato === 'Completato';
-                const countdown = getCountdownLabel(t);
                 return (
                   <div key={t.id}
                     className="flex items-center gap-3 p-3 rounded-xl transition-all"
@@ -198,11 +228,8 @@ export function DailyPriorityPopup({ utente, onClose, onTaskClick }: DailyPriori
                     </div>
 
                     {/* Countdown */}
-                    {countdown && !done && (
-                      <div className="text-[10px] font-bold px-2 py-1 rounded-md flex-shrink-0"
-                        style={{ background: countdown.bg, color: countdown.color }}>
-                        {countdown.text}
-                      </div>
+                    {!done && (t as any)._ms < Infinity && (
+                      <LiveCountdown scadenza={(t as any)._pubData || t.scadenza || ''} ora={t.ora || null} />
                     )}
                     {done && (
                       <span className="text-[10px] font-bold flex-shrink-0" style={{ color: 'hsl(142 70% 45%)' }}>Fatto</span>
