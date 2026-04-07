@@ -261,7 +261,7 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
                     </button>
 
                     {/* Task info */}
-                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onTaskClick?.(t)}>
+                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => { setMinimized(true); onTaskClick?.(t); }}>
                       <div className="flex items-center gap-1.5">
                         {(t as any)._isManual && (
                           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0"
