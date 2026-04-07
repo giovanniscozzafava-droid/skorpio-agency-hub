@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import { Avatar } from './Avatar';
 import type { TeamMember } from '../types';
 import { DailyPriorityManager } from './DailyPriorityManager';
+import { FeatureLearningAdmin } from './WhatsNewModal';
 
 const SUPABASE_URL        = import.meta.env.VITE_SUPABASE_URL as string;
 const GCAL_REDIRECT_URI   = `${window.location.origin}/gcal-callback`;
@@ -1175,6 +1176,9 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
           {section === 'priorita' && isAdmin && (
             <div className="px-5 py-5">
               <DailyPriorityManager team={team} utente={utente} />
+              <div className="mt-8 pt-6" style={{ borderTop: '1px solid hsl(var(--border))' }}>
+                <FeatureLearningAdmin team={team} />
+              </div>
             </div>
           )}
         </div>
