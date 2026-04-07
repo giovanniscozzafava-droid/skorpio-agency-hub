@@ -52,8 +52,26 @@ export function DailyPriorityPopup({ utente, onClose, onTaskClick }: DailyPriori
 
   const loadPriorities = useCallback(async () => {
     const now = new Date();
-    setIsEvening(now.getHours() >= 17);
+    const isMorning = now.getHours() < 17;
+    setIsEvening(!isMorning);
 
+    // 1. Fetch manually assigned priorities from Elisa/Admin
+    const { data: manualPrios } = await supabase
+      .from('daily_priorities')
+      .select('task_id, nota, show_morning, show_evening, creato_da')
+      .eq('assegnato_a', utente.nome)
+      .eq('attivo', true);
+
+    const manualTaskIds = new Set<string>();
+    const manualNotes: Record<string, string> = {};
+    const manualCreators: Record<string, string> = {};
+    if (manualPrios) {
+      manualPrios
+        .filter(p => isMorning ? p.show_morning : p.show_evening)
+        .forEach(p => { manualTaskIds.add(p.task_id); manualNotes[p.task_id] = p.nota || ''; manualCreators[p.task_id] = p.creato_da; });
+    }
+
+    // 2. Fetch all tasks for this user
     const { data } = await supabase
       .from('task')
       .select('*')
@@ -98,10 +116,14 @@ export function DailyPriorityPopup({ utente, onClose, onTaskClick }: DailyPriori
         // Boost per priorità alta
         if (t.priorita === '🔴 Alta') score -= 5;
 
-        return { ...t, _score: score, _ms: ms, _isScaduto: isScaduto, _diffDays: diffDays, _pubData: t.id_contenuto ? pubDates[t.id_contenuto]?.data : null };
+        // Boost per priorità assegnate manualmente da admin
+        const isManual = manualTaskIds.has(t.id);
+        if (isManual) score = -20;
+
+        return { ...t, _score: score, _ms: ms, _isScaduto: isScaduto, _diffDays: diffDays, _pubData: t.id_contenuto ? pubDates[t.id_contenuto]?.data : null, _isManual: isManual, _manualNote: manualNotes[t.id] || '', _manualCreator: manualCreators[t.id] || '' };
       })
       .sort((a, b) => a._score - b._score || a._ms - b._ms)
-      .slice(0, 8); // max 8 task
+      .slice(0, 10); // max 10 task
 
     // Per la sera: mostra anche i completati di oggi
     if (now.getHours() >= 17) {
@@ -215,16 +237,30 @@ export function DailyPriorityPopup({ utente, onClose, onTaskClick }: DailyPriori
 
                     {/* Task info */}
                     <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onTaskClick?.(t)}>
-                      <p className="text-sm font-medium truncate" style={{
-                        color: 'hsl(var(--skorpio-text-primary))',
-                        textDecoration: done ? 'line-through' : 'none',
-                      }}>
-                        {t.descrizione.length > 55 ? t.descrizione.slice(0, 55) + '...' : t.descrizione}
-                      </p>
+                      <div className="flex items-center gap-1.5">
+                        {(t as any)._isManual && (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0"
+                            style={{ background: 'hsl(270 60% 55% / 0.15)', color: 'hsl(270 60% 55%)' }}>
+                            PRIORITA
+                          </span>
+                        )}
+                        <p className="text-sm font-medium truncate" style={{
+                          color: 'hsl(var(--skorpio-text-primary))',
+                          textDecoration: done ? 'line-through' : 'none',
+                        }}>
+                          {t.descrizione.length > 50 ? t.descrizione.slice(0, 50) + '...' : t.descrizione}
+                        </p>
+                      </div>
                       <div className="flex items-center gap-2 mt-1">
                         {t.cliente_nome && <span className="text-[10px] text-muted-foreground">{t.cliente_nome}</span>}
                         <span className="text-[10px] font-mono text-muted-foreground">{t.id_display}</span>
+                        {(t as any)._manualCreator && <span className="text-[10px]" style={{ color: 'hsl(270 60% 55%)' }}>da {(t as any)._manualCreator}</span>}
                       </div>
+                      {(t as any)._manualNote && (
+                        <p className="text-[10px] mt-1 italic" style={{ color: 'hsl(38 80% 35%)' }}>
+                          {(t as any)._manualNote}
+                        </p>
+                      )}
                     </div>
 
                     {/* Countdown */}
