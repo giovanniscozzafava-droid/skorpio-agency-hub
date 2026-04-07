@@ -76,12 +76,12 @@ function LiveClock({ scadenza, ora }: { scadenza: string; ora: string | null }) 
 
 // ── TaskCard ──────────────────────────────────────────────────────────────────
 
-function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate, revisionCount, isProgrammato, canEditProgrammazione, onRiprogramma, onEditPubDate, clientLogoUrl }: {
+function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate, revisionCount, isProgrammato, canEditProgrammazione, onRiprogramma, onEditPubDate, clientLogoUrl, onPriorityChange }: {
   task: Task; team: TeamMember[]; utente: TeamMember | null; draggingId: string | null;
   onDragStart: () => void; onDragEnd: () => void; onClick: () => void;
   showFaseBadge?: boolean; pubDate?: { data: string | null; ora: string | null } | null; revisionCount?: number;
   isProgrammato?: boolean; canEditProgrammazione?: boolean; onRiprogramma?: () => void; onEditPubDate?: (d: string, o: string | null) => void;
-  clientLogoUrl?: string | null;
+  clientLogoUrl?: string | null; onPriorityChange?: (taskId: string, newPrio: string) => void;
 }) {
   const member = team.find(m => m.nome === task.assegnato_a);
   const isAuto = task.assegnato_da?.includes('Sistema') || task.assegnato_da?.includes('⚡');
@@ -109,7 +109,7 @@ function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onCl
         {(revisionCount ?? 0) >= 3 && <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A' }}>⚠️ {revisionCount} rev</span>}
       </div>
       <div className="flex items-start gap-2 mb-2">
-        <div className="w-2 h-2 rounded-full mt-1 flex-shrink-0" style={{ backgroundColor: PRIORITA_COLOR[task.priorita] || '#64748B' }} />
+        <div className="w-2 h-2 rounded-full mt-1 flex-shrink-0 cursor-pointer hover:scale-150 transition-transform" title={`Priorità: ${task.priorita || 'Media'} — clicca per cambiare`} style={{ backgroundColor: PRIORITA_COLOR[task.priorita] || '#64748B' }} onClick={e => { e.stopPropagation(); const cycle = ['🔴 Alta', '🟡 Media', '🟢 Bassa']; const idx = cycle.indexOf(task.priorita); const next = cycle[(idx + 1) % 3]; onPriorityChange?.(task.id, next); }} />
         <p className="text-sm font-medium flex-1 leading-snug" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>{task.descrizione.length > 80 ? task.descrizione.slice(0, 80) + '…' : task.descrizione}</p>
       </div>
       <div className="flex items-center justify-between gap-1 mt-2">
@@ -273,6 +273,11 @@ export function KanbanTab({ team, clienti, personaView }: { team: TeamMember[]; 
   };
 
   // ── HANDLERS: azione → DB → loadTasks() ──────────────────────────────────
+  const handlePriorityChange = async (taskId: string, newPrio: string) => {
+    await supabase.from('task').update({ priorita: newPrio }).eq('id', taskId);
+    await loadTasks();
+  };
+
   const handleDropStandard = async (nuovoStato: string) => {
     if (!dragItem) return;
     setDropTarget(null);
@@ -382,7 +387,7 @@ export function KanbanTab({ team, clienti, personaView }: { team: TeamMember[]; 
                     <span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ background: `${col.colore}20`, color: col.colore }}>{ct.length}</span>
                   </div>
                   <div className="kanban-col-body">
-                    {ct.map(t => <TaskCard key={t.id} task={t} team={team} utente={utente} draggingId={dragItem} onDragStart={() => setDragItem(t.id)} onDragEnd={() => setDragItem(null)} onClick={() => setSelectedTask(t)} showFaseBadge={false} pubDate={t.id_contenuto ? clpPubDates[t.id_contenuto] : null} revisionCount={t.id_contenuto ? clpRevisionCount[t.id_contenuto] : undefined} isProgrammato={col.stato === 'Programmato'} canEditProgrammazione={canEditProgrammazione} onRiprogramma={() => t.id_contenuto && setRiprogrammaConfirm({ taskId: t.id, contenutoId: t.id_contenuto, desc: t.descrizione.slice(0, 50) })} onEditPubDate={(d, o) => t.id_contenuto && handleEditPubDate(t.id_contenuto, d, o)} clientLogoUrl={t.cliente_id ? clientLogoMap[t.cliente_id] : clientLogoByName[t.cliente_nome]} />)}
+                    {ct.map(t => <TaskCard key={t.id} task={t} team={team} utente={utente} draggingId={dragItem} onDragStart={() => setDragItem(t.id)} onDragEnd={() => setDragItem(null)} onClick={() => setSelectedTask(t)} showFaseBadge={false} pubDate={t.id_contenuto ? clpPubDates[t.id_contenuto] : null} revisionCount={t.id_contenuto ? clpRevisionCount[t.id_contenuto] : undefined} isProgrammato={col.stato === 'Programmato'} canEditProgrammazione={canEditProgrammazione} onRiprogramma={() => t.id_contenuto && setRiprogrammaConfirm({ taskId: t.id, contenutoId: t.id_contenuto, desc: t.descrizione.slice(0, 50) })} onEditPubDate={(d, o) => t.id_contenuto && handleEditPubDate(t.id_contenuto, d, o)} clientLogoUrl={t.cliente_id ? clientLogoMap[t.cliente_id] : clientLogoByName[t.cliente_nome]} onPriorityChange={handlePriorityChange} />)}
                     {ct.length === 0 && <div className="flex items-center justify-center h-12 text-xs rounded-lg" style={{ color: 'hsl(var(--muted-foreground))', border: `1px dashed ${col.border}40` }}>Nessun task</div>}
                   </div>
                 </div>
@@ -423,7 +428,7 @@ export function KanbanTab({ team, clienti, personaView }: { team: TeamMember[]; 
                     <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: `${col.colore}20`, color: col.colore }}>{ct.length}</span>
                   </div>
                   <div className="kanban-col-body">
-                    {ct.map(t => <TaskCard key={t.id} task={t} team={team} utente={utente} draggingId={dragItem} onDragStart={() => setDragItem(t.id)} onDragEnd={() => setDragItem(null)} onClick={() => setSelectedTask(t)} showFaseBadge={true} revisionCount={t.id_contenuto ? clpRevisionCount[t.id_contenuto] : undefined} clientLogoUrl={t.cliente_id ? clientLogoMap[t.cliente_id] : clientLogoByName[t.cliente_nome]} />)}
+                    {ct.map(t => <TaskCard key={t.id} task={t} team={team} utente={utente} draggingId={dragItem} onDragStart={() => setDragItem(t.id)} onDragEnd={() => setDragItem(null)} onClick={() => setSelectedTask(t)} showFaseBadge={true} revisionCount={t.id_contenuto ? clpRevisionCount[t.id_contenuto] : undefined} clientLogoUrl={t.cliente_id ? clientLogoMap[t.cliente_id] : clientLogoByName[t.cliente_nome]} onPriorityChange={handlePriorityChange} />)}
                     {ct.length === 0 && <div className="flex items-center justify-center h-16 text-xs rounded-lg" style={{ color: 'hsl(var(--skorpio-text-tertiary))', border: `1px dashed ${col.border}40` }}>Nessun task</div>}
                   </div>
                 </div>
