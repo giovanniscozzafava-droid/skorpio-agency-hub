@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 
-// ── FEATURES: aggiungi qui ogni volta che implementi qualcosa ──
-// Cambia CURRENT_VERSION per far riapparire il tour
 const CURRENT_VERSION = '2026-04-07';
 
 export interface Feature {
@@ -19,23 +17,23 @@ export const FEATURES: Feature[] = [
     id: 'daily-priority',
     icon: '📋',
     title: 'Daily Priority',
-    description: 'Ogni mattina e alle 17:00 appare un popup con le tue priorità del giorno. Puoi completare i task direttamente dal popup, minimizzarlo a icona, e cliccare un task per vedere i dettagli.',
+    description: 'Ogni mattina appare un popup con le tue priorita. Puoi completarle, minimizzare a icona, o cliccare per i dettagli.',
     color: '#6C5CE7',
     version: '2026-04-07',
   },
   {
     id: 'priority-click',
     icon: '🔴',
-    title: 'Priorità cliccabile',
-    description: 'Il pallino colorato nella card del Kanban ora è cliccabile. Cliccalo per cambiare la priorità: Rosso (Alta) → Giallo (Media) → Verde (Bassa). I task si riordinano automaticamente.',
+    title: 'Priorita cliccabile',
+    description: 'Clicca il pallino colorato nella card per cambiare priorita. I task si riordinano in automatico.',
     color: '#EF4444',
     version: '2026-04-07',
   },
   {
     id: 'urgency-sort',
     icon: '⏱️',
-    title: 'Ordinamento per urgenza',
-    description: 'I task nel Kanban sono ordinati per data di pubblicazione del CLP. Chi scade prima sta in cima. I task scaduti sono sempre in cima con badge rosso.',
+    title: 'Ordinamento urgenza',
+    description: 'I task sono ordinati per scadenza. Chi scade prima sta in cima. Scaduti sempre in testa.',
     color: '#F59E0B',
     version: '2026-04-07',
   },
@@ -43,29 +41,28 @@ export const FEATURES: Feature[] = [
     id: 'supervisione',
     icon: '🔄',
     title: 'Supervisione Giovanni',
-    description: 'In fase di Revisione, Elisa può attivare "Supervisione Giovanni". Il CLP passa a Giovanni per approvazione finale prima della programmazione.',
+    description: 'Elisa puo attivare la supervisione in Revisione. Il CLP va a Giovanni prima della programmazione.',
     color: '#3B82F6',
     version: '2026-04-07',
   },
   {
     id: 'clip-download',
     icon: '📎',
-    title: 'Download clip nel Premontaggio',
-    description: 'Nel pannello task di Premontaggio trovi i link per scaricare le clip girate. Non serve più cercarle su Drive.',
+    title: 'Download clip',
+    description: 'Nel pannello Premontaggio trovi i link per scaricare le clip. Non serve piu cercarle su Drive.',
     color: '#22C55E',
     version: '2026-04-07',
   },
   {
     id: 'pub-date-visible',
     icon: '📡',
-    title: 'Data pubblicazione visibile',
-    description: 'Ogni card mostra il countdown alla data di pubblicazione del CLP con l\'icona 📡, anche se il task non ha una scadenza propria.',
+    title: 'Countdown pubblicazione',
+    description: 'Ogni card mostra il countdown alla data di pubblicazione del CLP.',
     color: '#8B5CF6',
     version: '2026-04-07',
   },
 ];
 
-// ── Salva nel DB che l'utente ha visto una feature ──
 async function markSeen(feature: Feature, userName: string) {
   await supabase.from('feature_learning').upsert({
     feature_id: feature.id,
@@ -76,92 +73,118 @@ async function markSeen(feature: Feature, userName: string) {
   }, { onConflict: 'feature_id,user_name' });
 }
 
-// ── MODAL PRINCIPALE ──
+// ── POST-IT NOTES ──
 interface Props {
   userName: string;
   onClose: () => void;
 }
 
+const POSITIONS = [
+  { top: '80px', left: '20px' },
+  { top: '160px', right: '20px' },
+  { top: '300px', left: '40px' },
+  { top: '120px', left: '50%' },
+  { bottom: '140px', right: '40px' },
+  { bottom: '80px', left: '30px' },
+];
+
+const ROTATIONS = [-3, 2, -2, 3, -1, 2];
+
 export function WhatsNewModal({ userName, onClose }: Props) {
-  const [currentSlide, setCurrentSlide] = useState(0);
-  const [seenSlides, setSeenSlides] = useState<Set<number>>(new Set([0]));
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [entering, setEntering] = useState(true);
 
-  const feature = FEATURES[currentSlide];
-  const isLast = currentSlide === FEATURES.length - 1;
-  const isFirst = currentSlide === 0;
-
-  // Segna come vista quando arrivi sulla slide
   useEffect(() => {
-    if (!seenSlides.has(currentSlide)) {
-      setSeenSlides(prev => new Set(prev).add(currentSlide));
-    }
-    markSeen(FEATURES[currentSlide], userName);
-  }, [currentSlide, userName]);
+    setTimeout(() => setEntering(false), 100);
+  }, []);
 
-  const next = () => { if (isLast) { onClose(); } else setCurrentSlide(s => s + 1); };
-  const prev = () => { if (!isFirst) setCurrentSlide(s => s - 1); };
+  const dismiss = (feature: Feature) => {
+    markSeen(feature, userName);
+    setDismissed(prev => {
+      const next = new Set(prev);
+      next.add(feature.id);
+      if (next.size === FEATURES.length) {
+        setTimeout(onClose, 300);
+      }
+      return next;
+    });
+  };
 
-  const skip = () => {
-    // Segna TUTTE come viste
+  const dismissAll = () => {
     FEATURES.forEach(f => markSeen(f, userName));
     onClose();
   };
 
+  const remaining = FEATURES.filter(f => !dismissed.has(f.id));
+
   return (
-    <div className="fixed inset-0 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)', zIndex: 99998, backdropFilter: 'blur(6px)' }}>
-      <div className="w-full max-w-md overflow-hidden rounded-2xl shadow-2xl" style={{ background: 'hsl(var(--background))' }}>
+    <div className="fixed inset-0" style={{ zIndex: 99998, pointerEvents: 'none' }}>
+      {/* Sfondo leggero */}
+      <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.15)', pointerEvents: 'auto' }} onClick={dismissAll} />
 
-        {/* Header colorato */}
-        <div className="relative p-8 pb-12 text-center" style={{ background: `linear-gradient(135deg, ${feature.color}, ${feature.color}CC)` }}>
-          <button onClick={skip} className="absolute top-4 right-4 text-white/50 hover:text-white text-xs cursor-pointer">
-            Salta tutto
-          </button>
-          <div className="text-5xl mb-3">{feature.icon}</div>
-          <h2 className="text-white text-xl font-bold">{feature.title}</h2>
-          <p className="text-white/50 text-[10px] mt-2">Aggiunto il {feature.version}</p>
-        </div>
+      {/* Counter */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full shadow-lg text-xs font-bold"
+        style={{ background: 'hsl(var(--background))', border: '1px solid hsl(var(--border))', color: 'hsl(var(--skorpio-text-primary))', pointerEvents: 'auto', zIndex: 99999 }}>
+        {remaining.length > 0
+          ? `${remaining.length} novita da scoprire — clicca le ✕ per leggere`
+          : 'Tutto letto!'}
+      </div>
 
-        {/* Contenuto */}
-        <div className="px-6 pt-6 pb-4">
-          <p className="text-sm leading-relaxed" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
-            {feature.description}
-          </p>
-        </div>
+      {/* Post-it notes */}
+      {FEATURES.map((f, i) => {
+        if (dismissed.has(f.id)) return null;
+        const pos = POSITIONS[i % POSITIONS.length];
+        const rot = ROTATIONS[i % ROTATIONS.length];
+        return (
+          <div key={f.id}
+            className="absolute w-56 rounded-xl shadow-2xl transition-all duration-500"
+            style={{
+              ...pos,
+              transform: `rotate(${rot}deg)${entering ? ' scale(0.8) translateY(20px)' : ' scale(1) translateY(0)'}`,
+              opacity: entering ? 0 : 1,
+              transitionDelay: `${i * 100}ms`,
+              pointerEvents: 'auto',
+              zIndex: 99999,
+            }}>
+            {/* Puntina */}
+            <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full shadow-md"
+              style={{ background: f.color, border: '2px solid white' }} />
 
-        {/* Dots */}
-        <div className="flex justify-center gap-1.5 pb-4">
-          {FEATURES.map((_, i) => (
-            <div key={i} className="rounded-full transition-all cursor-pointer"
-              onClick={() => setCurrentSlide(i)}
-              style={{
-                width: i === currentSlide ? 20 : 6,
-                height: 6,
-                background: i === currentSlide ? feature.color : 'hsl(var(--border))',
-              }} />
-          ))}
-        </div>
+            <div className="rounded-xl overflow-hidden" style={{ background: f.color + '12', border: `2px solid ${f.color}40`, backdropFilter: 'blur(12px)' }}>
+              {/* Header */}
+              <div className="flex items-center gap-2 px-3 pt-3 pb-1">
+                <span className="text-lg">{f.icon}</span>
+                <span className="text-xs font-bold flex-1" style={{ color: f.color }}>{f.title}</span>
+                <button onClick={() => dismiss(f)}
+                  className="w-5 h-5 rounded-full flex items-center justify-center text-xs cursor-pointer hover:scale-110 transition-transform"
+                  style={{ background: f.color, color: 'white' }}>
+                  ✓
+                </button>
+              </div>
+              {/* Body */}
+              <div className="px-3 pb-3">
+                <p className="text-[11px] leading-relaxed" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
+                  {f.description}
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })}
 
-        {/* Bottoni */}
-        <div className="flex gap-3 px-6 pb-6">
-          {!isFirst && (
-            <button onClick={prev}
-              className="flex-1 py-2.5 rounded-xl text-sm font-medium border cursor-pointer"
-              style={{ borderColor: 'hsl(var(--border))', color: 'hsl(var(--skorpio-text-secondary))' }}>
-              Indietro
-            </button>
-          )}
-          <button onClick={next}
-            className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer"
-            style={{ background: feature.color }}>
-            {isLast ? 'Ho capito!' : `Avanti (${currentSlide + 1}/${FEATURES.length})`}
-          </button>
-        </div>
+      {/* Salta tutto */}
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2" style={{ pointerEvents: 'auto', zIndex: 99999 }}>
+        <button onClick={dismissAll}
+          className="px-5 py-2.5 rounded-full shadow-lg text-xs font-semibold cursor-pointer transition-all hover:scale-105"
+          style={{ background: 'hsl(var(--background))', border: '1px solid hsl(var(--border))', color: 'hsl(var(--skorpio-text-secondary))' }}>
+          Ho capito tutto, chiudi
+        </button>
       </div>
     </div>
   );
 }
 
-// ── Hook: mostra solo se ci sono novità non viste ──
+// ── Hook ──
 export function useWhatsNew(userName: string | null) {
   const [show, setShow] = useState(false);
 
@@ -170,7 +193,7 @@ export function useWhatsNew(userName: string | null) {
     const key = 'skorpio_whatsnew_' + userName;
     const seen = localStorage.getItem(key);
     if (seen !== CURRENT_VERSION) {
-      const timer = setTimeout(() => setShow(true), 2000);
+      const timer = setTimeout(() => setShow(true), 2500);
       return () => clearTimeout(timer);
     }
   }, [userName]);
@@ -184,7 +207,7 @@ export function useWhatsNew(userName: string | null) {
   return { show, close };
 }
 
-// ── PANNELLO ADMIN: chi ha imparato cosa ──
+// ── PANNELLO ADMIN ──
 interface AdminProps {
   team: { nome: string }[];
 }
@@ -214,16 +237,11 @@ export function FeatureLearningAdmin({ team }: AdminProps) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
-          Formazione Team
-        </h3>
+        <h3 className="text-sm font-bold" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>Formazione Team</h3>
         <button onClick={load} className="text-[10px] px-2 py-1 rounded-lg cursor-pointer"
-          style={{ background: 'hsl(var(--muted))', color: 'hsl(var(--skorpio-text-secondary))' }}>
-          Aggiorna
-        </button>
+          style={{ background: 'hsl(var(--muted))', color: 'hsl(var(--skorpio-text-secondary))' }}>Aggiorna</button>
       </div>
 
-      {/* Progress per persona */}
       {teamNames.map(name => {
         const seen = data[name]?.size || 0;
         const pct = Math.round(seen / totalFeatures * 100);
@@ -242,7 +260,6 @@ export function FeatureLearningAdmin({ team }: AdminProps) {
         );
       })}
 
-      {/* Matrice dettagliata */}
       <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid hsl(var(--border))' }}>
         <table className="w-full text-[11px]" style={{ borderCollapse: 'collapse' }}>
           <thead>
@@ -261,14 +278,11 @@ export function FeatureLearningAdmin({ team }: AdminProps) {
                 <td className="px-3 py-2 font-medium" style={{ borderTop: '1px solid hsl(var(--border))', color: 'hsl(var(--skorpio-text-primary))' }}>
                   {f.icon} {f.title}
                 </td>
-                {teamNames.map(n => {
-                  const seen = data[n]?.has(f.id);
-                  return (
-                    <td key={n} className="px-2 py-2 text-center" style={{ borderTop: '1px solid hsl(var(--border))' }}>
-                      {seen ? <span style={{ color: '#22C55E' }}>✓</span> : <span style={{ color: '#EF444480' }}>—</span>}
-                    </td>
-                  );
-                })}
+                {teamNames.map(n => (
+                  <td key={n} className="px-2 py-2 text-center" style={{ borderTop: '1px solid hsl(var(--border))' }}>
+                    {data[n]?.has(f.id) ? <span style={{ color: '#22C55E' }}>✓</span> : <span style={{ color: '#EF444480' }}>—</span>}
+                  </td>
+                ))}
               </tr>
             ))}
           </tbody>
