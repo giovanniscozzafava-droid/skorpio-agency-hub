@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { TaskDetailPanel } from './TaskDetailPanel';
 import type { Task, TeamMember } from '../types';
 
 interface DailyPriorityPopupProps {
@@ -52,7 +51,6 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
   const [completing, setCompleting] = useState<string | null>(null);
   const [isEvening, setIsEvening] = useState(false);
   const [minimized, setMinimized] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
   const loadPriorities = useCallback(async () => {
     const now = new Date();
@@ -202,7 +200,6 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
   }
 
   return (
-    <>
     <div className="fixed inset-0 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)', zIndex: 99999, backdropFilter: 'blur(4px)' }}>
       <div className="w-full max-w-md rounded-2xl shadow-2xl overflow-hidden" style={{ background: 'hsl(var(--background))' }}>
         {/* Header */}
@@ -264,7 +261,7 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
                     </button>
 
                     {/* Task info */}
-                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setSelectedTask(t)}>
+                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onTaskClick?.(t)}>
                       <div className="flex items-center gap-1.5">
                         {(t as any)._isManual && (
                           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0"
@@ -318,16 +315,6 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
         </div>
       </div>
     </div>
-    {selectedTask && (
-      <TaskDetailPanel
-        task={selectedTask}
-        team={team}
-        onClose={() => setSelectedTask(null)}
-        onUpdate={async () => { setSelectedTask(null); await loadPriorities(); }}
-        onDelete={async () => { setSelectedTask(null); await loadPriorities(); }}
-      />
-    )}
-    </>
   );
 }
 
