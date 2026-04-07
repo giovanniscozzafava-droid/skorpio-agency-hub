@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { TaskDetailPanel } from './TaskDetailPanel';
 import type { Task, TeamMember } from '../types';
 
 interface DailyPriorityPopupProps {
   utente: TeamMember;
+  team: TeamMember[];
   onClose: () => void;
   onTaskClick?: (task: Task) => void;
 }
@@ -44,11 +46,13 @@ function LiveCountdown({ scadenza, ora }: { scadenza: string; ora: string | null
   );
 }
 
-export function DailyPriorityPopup({ utente, onClose, onTaskClick }: DailyPriorityPopupProps) {
+export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: DailyPriorityPopupProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState<string | null>(null);
   const [isEvening, setIsEvening] = useState(false);
+  const [minimized, setMinimized] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
   const loadPriorities = useCallback(async () => {
     const now = new Date();
@@ -177,12 +181,36 @@ export function DailyPriorityPopup({ utente, onClose, onTaskClick }: DailyPriori
     ? 'Riepilogo giornata'
     : new Date().getHours() < 12 ? 'Buongiorno' : 'Buon pomeriggio';
 
+  if (minimized) {
+    return (
+      <div className="fixed bottom-6 left-6 cursor-pointer" style={{ zIndex: 99999 }}
+        onClick={() => setMinimized(false)}>
+        <div className="flex items-center gap-2 px-4 py-3 rounded-2xl shadow-2xl transition-all hover:scale-105"
+          style={{ background: 'linear-gradient(135deg, #6C5CE7, #A29BFE)' }}>
+          <span className="text-white text-lg">📋</span>
+          <div>
+            <p className="text-white text-xs font-bold">Daily Priority</p>
+            <p className="text-white/70 text-[10px]">{pendingCount} task in sospeso</p>
+          </div>
+          {pendingCount > 0 && (
+            <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
+              style={{ background: '#EF4444', color: 'white' }}>{pendingCount}</span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
+    <>
     <div className="fixed inset-0 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)', zIndex: 99999, backdropFilter: 'blur(4px)' }}>
       <div className="w-full max-w-md rounded-2xl shadow-2xl overflow-hidden" style={{ background: 'hsl(var(--background))' }}>
         {/* Header */}
         <div className="p-5 relative" style={{ background: isEvening ? 'linear-gradient(135deg, #1E1B4B, #312E81)' : 'linear-gradient(135deg, #6C5CE7, #A29BFE)' }}>
-          <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-all cursor-pointer" style={{ fontSize: 18 }}>✕</button>
+          <div className="absolute top-4 right-4 flex gap-1">
+            <button onClick={() => setMinimized(true)} className="w-8 h-8 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-all cursor-pointer" style={{ fontSize: 18 }} title="Riduci a icona">—</button>
+            <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-all cursor-pointer" style={{ fontSize: 18 }} title="Chiudi">✕</button>
+          </div>
           <p className="text-white/70 text-sm font-medium">{greeting}, {utente.nome.split(' ')[0]}</p>
           <h2 className="text-white text-xl font-bold mt-1">
             {isEvening ? 'Hai completato le tue priorita?' : 'Le tue priorita per oggi'}
@@ -236,7 +264,7 @@ export function DailyPriorityPopup({ utente, onClose, onTaskClick }: DailyPriori
                     </button>
 
                     {/* Task info */}
-                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onTaskClick?.(t)}>
+                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setSelectedTask(t)}>
                       <div className="flex items-center gap-1.5">
                         {(t as any)._isManual && (
                           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0"
@@ -290,6 +318,16 @@ export function DailyPriorityPopup({ utente, onClose, onTaskClick }: DailyPriori
         </div>
       </div>
     </div>
+    {selectedTask && (
+      <TaskDetailPanel
+        task={selectedTask}
+        team={team}
+        onClose={() => setSelectedTask(null)}
+        onUpdate={async () => { setSelectedTask(null); await loadPriorities(); }}
+        onDelete={async () => { setSelectedTask(null); await loadPriorities(); }}
+      />
+    )}
+    </>
   );
 }
 
