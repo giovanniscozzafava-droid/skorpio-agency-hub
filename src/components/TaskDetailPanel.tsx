@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 
 import { sounds } from '../lib/sounds';
+import { TaskFiles } from './TaskFiles';
 import { avanzaFaseDaTask, completaTaskEAvanzaFase, WORKFLOW_MAP, richiestaModifiche, approvaRevisione } from '../lib/clpWorkflow';
 import type { Task, TeamMember, FaseCLP, Contenuto } from '../types';
 
@@ -1656,6 +1657,9 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
               </div>
             </div>
           )}
+
+          {/* ─── ALLEGATI ────────────────────────────────────────────────────── */}
+          <TaskFiles taskId={task.id} userName={utente?.nome || ''} />
 
           {/* ─── NOTA ────────────────────────────────────────────────────────── */}
           <div>
