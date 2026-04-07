@@ -85,8 +85,8 @@ function MainApp() {
       {dailyPopup.show && utente && (
         <DailyPriorityPopup
           utente={utente}
+          team={team}
           onClose={dailyPopup.close}
-          onTaskClick={() => { dailyPopup.close(); setTab('kanban'); }}
         />
       )}
     </div>
