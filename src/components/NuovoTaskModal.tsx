@@ -58,6 +58,7 @@ export function NuovoTaskModal({ team, clienti, utente, onClose, onCreated, data
 
     // Crea un task per ogni persona selezionata
     let lastTask: Task | null = null;
+    const createdTaskIds: string[] = [];
     for (const persona of assegnatiA) {
       const { data: seqData } = await supabase.rpc('generate_display_id', { prefix: 'TSK', seq_name: 'task_seq' });
       const payload: any = {
@@ -78,9 +79,27 @@ export function NuovoTaskModal({ team, clienti, utente, onClose, onCreated, data
       const { data, error } = await supabase.from('task').insert(payload).select().single();
       if (!error && data) {
         lastTask = data as Task;
-        onCreated(data as Task);
+        createdTaskIds.push(data.id);
       }
     }
+
+    // Crea UN SOLO evento calendario (se c'è scadenza), con tutti i nomi
+    if (scadenza && lastTask && hasData) {
+      const taskIdTag = createdTaskIds.map(id => `[TASK:${id}]`).join('');
+      const tuttiNomi = assegnatiA.join(', ');
+      await supabase.from('calendario').insert({
+        tipo: 'appuntamento',
+        descrizione: `${form.descrizione.trim()} ${taskIdTag}`,
+        data: scadenza,
+        ora: (hasData && form.ora) ? form.ora : null,
+        cliente_id: form.cliente_id || null,
+        cliente_nome: clienteSel?.nome || '',
+        persona: tuttiNomi,
+      });
+    }
+
+    // Notifica il parent (solo ultimo task, per reload)
+    if (lastTask) onCreated(lastTask);
 
     setSaving(false);
     if (lastTask) onClose();
