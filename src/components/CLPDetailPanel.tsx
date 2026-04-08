@@ -127,6 +127,30 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
     setClips((data || []) as LogRipresa[]);
   }, [contenuto.id]);
 
+  // ─── Date ripresa dal calendario ──────────────────────────────────────────
+  const [eventiRipresa, setEventiRipresa] = useState<{ data: string; descrizione: string; cliente_nome: string }[]>([]);
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from('calendario')
+        .select('data, descrizione, cliente_nome')
+        .eq('tipo', 'appuntamento')
+        .gte('data', new Date().toISOString().slice(0, 10))
+        .order('data', { ascending: true });
+      if (data) {
+        // Deduplica per data+descrizione
+        const seen = new Set<string>();
+        const unici = data.filter(e => {
+          const key = `${e.data}|${e.descrizione}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        setEventiRipresa(unici);
+      }
+    })();
+  }, []);
+
   // Reset form when contenuto changes
   useEffect(() => {
     setForm({ ...contenuto });
@@ -751,7 +775,39 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
           <Section title="DATE" />
 
           <div className="grid grid-cols-2 gap-3">
-            <LabelInput label="📷 Data ripresa" field="data_ripresa" type="date" />
+            <div>
+              <label className="sk-label">📷 Data ripresa</label>
+              <select
+                className="sk-select w-full text-sm"
+                value={form.data_ripresa || ''}
+                onChange={e => set('data_ripresa', e.target.value || null)}
+              >
+                <option value="">— Seleziona data —</option>
+                {eventiRipresa.map((ev, i) => {
+                  const d = new Date(ev.data + 'T00:00:00');
+                  const label = d.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
+                  const desc = ev.descrizione?.replace(/\s*\[TASK:[^\]]+\]/, '') || '';
+                  return (
+                    <option key={`${ev.data}-${i}`} value={ev.data}>
+                      {label} — {desc}{ev.cliente_nome ? ` (${ev.cliente_nome})` : ''}
+                    </option>
+                  );
+                })}
+              </select>
+              {form.data_ripresa && !eventiRipresa.some(e => e.data === form.data_ripresa) && (
+                <p className="text-[10px] mt-1" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                  📅 Data manuale: {new Date(form.data_ripresa + 'T00:00:00').toLocaleDateString('it-IT')}
+                </p>
+              )}
+              <input
+                type="date"
+                className="sk-input w-full text-xs mt-1"
+                value={form.data_ripresa || ''}
+                onChange={e => set('data_ripresa', e.target.value || null)}
+                style={{ opacity: 0.6, fontSize: 10 }}
+                title="Oppure inserisci data manuale"
+              />
+            </div>
             <LabelInput label="⏰ Scadenza" field="data_scadenza" type="date" />
           </div>
 
