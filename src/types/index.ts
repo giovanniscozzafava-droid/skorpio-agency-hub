@@ -87,6 +87,7 @@ export type Contenuto = {
   note_revisione: string;
   stile: string;
   pov: string;
+  istruzioni_montaggio: string;
   link_ispirazione: string;
   link_drive: string;
   drive_clip_folder_id?: string | null;
