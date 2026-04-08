@@ -630,7 +630,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
                     key={f}
                     onClick={() => {
                       // Checkpoint: se si va a Uploadato e ci sono hook/pov, chiedi conferma
-                      if (f === 'Uploadato' && (form.hook || form.pov)) {
+                      if (f === 'Uploadato' && (form.hook || form.pov || form.istruzioni_montaggio)) {
                         setUploadCheck({ open: true, confirmed: false });
                         return;
                       }
@@ -653,8 +653,8 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
             </div>
           </div>
 
-          {/* ─── BRIEF MONTAGGIO (hook + POV per chi monta) ─── */}
-          {(['Pre montato', 'Montato', 'Uploadato'] as FaseCLP[]).includes(form.fase) && (form.hook || form.pov) && (
+          {/* ─── BRIEF MONTAGGIO (hook + POV + istruzioni per chi monta) ─── */}
+          {(['Pre montato', 'Montato', 'Uploadato'] as FaseCLP[]).includes(form.fase) && (form.hook || form.pov || form.istruzioni_montaggio) && (
             <div className="mb-4 rounded-xl border-2 overflow-hidden" style={{ borderColor: '#8B5CF6', background: '#F5F3FF' }}>
               <div className="px-3 py-2 flex items-center gap-2" style={{ background: '#8B5CF6' }}>
                 <span className="text-white text-xs font-bold">🎬 BRIEF MONTAGGIO</span>
@@ -670,6 +670,12 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
                   <div>
                     <span className="text-xs font-bold" style={{ color: '#6D28D9' }}>👁️ POV (testo in sovrimpressione)</span>
                     <p className="text-sm mt-0.5" style={{ color: '#1E1B4B' }}>{form.pov}</p>
+                  </div>
+                )}
+                {form.istruzioni_montaggio && (
+                  <div>
+                    <span className="text-xs font-bold" style={{ color: '#6D28D9' }}>🔧 ISTRUZIONI MONTAGGIO</span>
+                    <p className="text-sm mt-0.5 whitespace-pre-wrap" style={{ color: '#1E1B4B' }}>{form.istruzioni_montaggio}</p>
                   </div>
                 )}
               </div>
@@ -723,6 +729,9 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
           <LabelTextarea label="🎣 Hook" field="hook" rows={2} placeholder="Frase di apertura che cattura l'attenzione…" />
           <div className="mt-3">
             <LabelTextarea label="👁️ POV — Testo in sovrimpressione" field="pov" rows={2} placeholder="Testo che deve comparire nel reel come POV…" />
+          </div>
+          <div className="mt-3">
+            <LabelTextarea label="🔧 Istruzioni montaggio" field="istruzioni_montaggio" rows={3} placeholder="Indicazioni per chi monta: tagli, effetti, transizioni, ritmo…" />
           </div>
           <div className="mt-3">
             <LabelTextarea label="📝 Script" field="script" rows={4} placeholder="Testo completo del contenuto…" />
@@ -1252,6 +1261,12 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
                 <p className="text-sm mt-0.5" style={{ color: '#3B0764' }}>{form.pov}</p>
               </div>
             )}
+            {form.istruzioni_montaggio && (
+              <div className="rounded-lg p-2.5" style={{ background: '#ECFDF5', border: '1px solid #6EE7B7' }}>
+                <span className="text-xs font-bold" style={{ color: '#065F46' }}>🔧 ISTRUZIONI</span>
+                <p className="text-sm mt-0.5 whitespace-pre-wrap" style={{ color: '#064E3B' }}>{form.istruzioni_montaggio}</p>
+              </div>
+            )}
             <label className="flex items-start gap-2 cursor-pointer select-none">
               <input
                 type="checkbox"
@@ -1260,7 +1275,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
                 className="mt-0.5 accent-[#8B5CF6] w-4 h-4"
               />
               <span className="text-sm font-semibold" style={{ color: '#1E1B4B' }}>
-                Confermo di aver inserito hook{form.pov ? ' e POV' : ''} nel video esportato
+                Confermo di aver rispettato tutte le indicazioni nel video esportato
               </span>
             </label>
             <div className="flex gap-2 pt-1">
