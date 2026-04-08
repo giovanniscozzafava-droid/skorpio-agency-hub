@@ -1676,14 +1676,15 @@ ${(clps || []).length === 0 ? '<p style="text-align:center;color:#94A3B8;padding
       <div class="info-item"><span class="info-label">Stile:</span> ${esc(c.stile || '')}</div>
       <div class="info-item"><span class="info-label">Durata:</span> ${esc(c.durata || '')}</div>
     </div>
-    ${(c.hook || c.pov) ? `
+    ${(c.hook || c.pov || c.istruzioni_montaggio) ? `
     <div class="brief">
       <div class="brief-title">BRIEF MONTAGGIO</div>
       ${c.hook ? '<p><strong>Hook:</strong> ' + esc(c.hook) + '</p>' : ''}
       ${c.pov ? '<p><strong>POV:</strong> ' + esc(c.pov) + '</p>' : ''}
+      ${c.istruzioni_montaggio ? '<p><strong>Istruzioni:</strong> ' + esc(c.istruzioni_montaggio) + '</p>' : ''}
     </div>` : ''}
     ${c.script ? '<div style="margin:6px 0"><span class="info-label">Script:</span><div style="font-size:10px;color:#334155;white-space:pre-wrap;margin-top:2px">' + esc(c.script) + '</div></div>' : ''}
-    ${c.link_ispirazione ? '<div style="margin:4px 0"><span class="info-label">Ref:</span> <span style="font-size:10px">' + esc(c.link_ispirazione) + '</span></div>' : ''}
+    ${c.link_ispirazione ? '<div style="margin:6px 0;display:flex;align-items:center;gap:10px"><div><span class="info-label">Ref ispirazione:</span><div style="font-size:9px;color:#64748B;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.link_ispirazione) + '</div></div><div style="flex-shrink:0"><img src="https://api.qrserver.com/v1/create-qr-code/?size=70x70&data=' + encodeURIComponent(c.link_ispirazione) + '" width="70" height="70" style="border:1px solid #E2E8F0;border-radius:4px" /></div></div>' : ''}
     <table class="clip-table">
       <thead><tr><th style="width:25%">Codice Clip Sony</th><th style="width:15%">Formato</th><th style="width:15%">Stato</th><th style="width:45%">Note</th></tr></thead>
       <tbody>${'<tr><td>&nbsp;</td><td></td><td></td><td></td></tr>'.repeat(4)}</tbody>
