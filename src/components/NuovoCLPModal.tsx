@@ -208,11 +208,33 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
     pov: '',
     assegnato_riprese: '',
     assegnato_montaggio: '',
+    data_ripresa: '',
     supervisione_giovanni: false,
   });
   const [saving, setSaving] = useState(false);
   const [driveWarning, setDriveWarning] = useState(false);
   const [validationErrors, setValidationErrors] = useState<{ titolo?: string; cliente_id?: string }>({});
+  const [eventiRipresa, setEventiRipresa] = useState<{ data: string; descrizione: string; cliente_nome: string }[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from('calendario')
+        .select('data, descrizione, cliente_nome')
+        .eq('tipo', 'appuntamento')
+        .gte('data', new Date().toISOString().slice(0, 10))
+        .order('data', { ascending: true });
+      if (data) {
+        const seen = new Set<string>();
+        setEventiRipresa(data.filter(e => {
+          const k = `${e.data}|${e.descrizione}`;
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        }));
+      }
+    })();
+  }, []);
 
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 
@@ -251,6 +273,7 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
       pov: form.pov,
       assegnato_riprese: form.assegnato_riprese,
       assegnato_montaggio: form.assegnato_montaggio,
+      data_ripresa: form.data_ripresa || null,
       supervisione_giovanni: form.supervisione_giovanni,
     };
 
@@ -427,6 +450,28 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
                 {team.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
               </select>
             </div>
+          </div>
+
+          {/* Data ripresa — da calendario */}
+          <div>
+            <label className="sk-label">📅 Data ripresa (da calendario)</label>
+            <select
+              className="sk-select w-full"
+              value={form.data_ripresa}
+              onChange={e => set('data_ripresa', e.target.value)}
+            >
+              <option value="">— Seleziona appuntamento —</option>
+              {eventiRipresa.map((ev, i) => {
+                const d = new Date(ev.data + 'T00:00:00');
+                const label = d.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
+                const desc = ev.descrizione?.replace(/\s*\[TASK:[^\]]+\]/, '') || '';
+                return (
+                  <option key={`${ev.data}-${i}`} value={ev.data}>
+                    {label} — {desc}{ev.cliente_nome ? ` (${ev.cliente_nome})` : ''}
+                  </option>
+                );
+              })}
+            </select>
           </div>
 
           {/* Supervisione Giovanni — configurabile solo nella fase Revisione (TaskDetailPanel) */}
