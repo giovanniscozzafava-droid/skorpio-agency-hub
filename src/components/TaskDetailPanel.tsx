@@ -921,8 +921,8 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
             </div>
           )}
 
-          {/* ─── BRIEF MONTAGGIO (hook + POV dal CLP collegato) ────────── */}
-          {(isPremontaggio || isMontaggioTask || isUploadTask) && contenutoRevisione && (contenutoRevisione.hook || contenutoRevisione.pov) && (
+          {/* ─── BRIEF MONTAGGIO (hook + POV + istruzioni dal CLP collegato) ────────── */}
+          {(isPremontaggio || isMontaggioTask || isUploadTask) && contenutoRevisione && (contenutoRevisione.hook || contenutoRevisione.pov || contenutoRevisione.istruzioni_montaggio) && (
             <div className="rounded-xl border-2 overflow-hidden"
               style={{ borderColor: '#8B5CF6', background: '#F5F3FF' }}>
               <div className="px-3 py-2 flex items-center gap-2" style={{ background: '#8B5CF6' }}>
@@ -939,6 +939,12 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
                   <div>
                     <span className="text-xs font-bold" style={{ color: '#6D28D9' }}>👁️ POV (testo in sovrimpressione)</span>
                     <p className="text-sm mt-0.5" style={{ color: '#1E1B4B' }}>{contenutoRevisione.pov}</p>
+                  </div>
+                )}
+                {contenutoRevisione.istruzioni_montaggio && (
+                  <div>
+                    <span className="text-xs font-bold" style={{ color: '#6D28D9' }}>🔧 ISTRUZIONI MONTAGGIO</span>
+                    <p className="text-sm mt-0.5 whitespace-pre-wrap" style={{ color: '#1E1B4B' }}>{contenutoRevisione.istruzioni_montaggio}</p>
                   </div>
                 )}
               </div>
@@ -1320,12 +1326,13 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
                       className="hidden"
                     />
                     {/* Checkpoint: conferma hook/POV prima di uploadare */}
-                    {!uploadCheck && contenutoRevisione && (contenutoRevisione.hook || contenutoRevisione.pov) ? (
+                    {!uploadCheck && contenutoRevisione && (contenutoRevisione.hook || contenutoRevisione.pov || contenutoRevisione.istruzioni_montaggio) ? (
                       <div className="space-y-2">
                         <div className="rounded-lg p-2.5" style={{ background: '#F5F3FF', border: '1px solid #C4B5FD' }}>
-                          <p className="text-xs font-bold mb-1" style={{ color: '#6D28D9' }}>⚠️ Checkpoint: hai inserito tutto?</p>
+                          <p className="text-xs font-bold mb-1" style={{ color: '#6D28D9' }}>⚠️ Checkpoint: hai rispettato il brief?</p>
                           {contenutoRevisione.hook && <p className="text-xs" style={{ color: '#3B0764' }}>🎣 Hook: {contenutoRevisione.hook}</p>}
                           {contenutoRevisione.pov && <p className="text-xs mt-1" style={{ color: '#3B0764' }}>👁️ POV: {contenutoRevisione.pov}</p>}
+                          {contenutoRevisione.istruzioni_montaggio && <p className="text-xs mt-1 whitespace-pre-wrap" style={{ color: '#3B0764' }}>🔧 Istruzioni: {contenutoRevisione.istruzioni_montaggio}</p>}
                         </div>
                         <button
                           onClick={() => setUploadCheck(true)}
