@@ -2112,11 +2112,10 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
   const title = getTitle();
 
   // ── Day click ─────────────────────────────────────────────────────────────
-  const handleDayClick = (date: Date, x: number, y: number) => {
+  const handleDayClick = (date: Date, _x: number, _y: number) => {
     setSelectedDate(date);
-    if (!isMobile) {
-      setDayMenu({ date, x, y });
-    }
+    setCurrentDate(date);
+    setVista('giorno');
   };
 
   // ── Slot click (for timeline views) ────────────────────────────────────────
