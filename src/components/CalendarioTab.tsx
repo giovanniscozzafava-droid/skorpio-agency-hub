@@ -1610,6 +1610,96 @@ function EventDetail({ ev, team, clienti, onClose, onDelete, onUpdate, now }: Ev
 
   const cd = getCountdown(ev, now);
 
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+
+  const handleSchedaRiprese = async () => {
+    setGeneratingPdf(true);
+    try {
+      const { data: clps } = await supabase
+        .from('contenuti')
+        .select('*')
+        .eq('data_ripresa', ev.data)
+        .order('id_display', { ascending: true });
+
+      const dataLabel = parseLocalDate(ev.data).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      const desc = ev.descrizione?.replace(/\s*\[TASK:[^\]]+\]/, '') || 'Riprese';
+
+      const esc = (s: string) => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+      const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Scheda Riprese - ${esc(dataLabel)}</title>
+<style>
+  @page { size: A4; margin: 15mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, Arial, sans-serif; font-size: 11px; color: #1a1a1a; }
+  .header { text-align: center; border-bottom: 3px solid #8B5CF6; padding-bottom: 12px; margin-bottom: 16px; }
+  .header h1 { font-size: 20px; color: #1E1B4B; margin-bottom: 4px; }
+  .header .sub { font-size: 13px; color: #6D28D9; }
+  .header .date { font-size: 11px; color: #64748B; margin-top: 2px; }
+  .clp-block { border: 1.5px solid #CBD5E1; border-radius: 8px; margin-bottom: 14px; page-break-inside: avoid; }
+  .clp-header { background: #F8FAFC; padding: 8px 12px; border-bottom: 1px solid #E2E8F0; border-radius: 8px 8px 0 0; display: flex; justify-content: space-between; align-items: center; }
+  .clp-id { font-weight: 800; color: #8B5CF6; font-size: 13px; }
+  .clp-title { font-weight: 700; font-size: 13px; color: #0F172A; }
+  .clp-client { font-size: 11px; color: #64748B; }
+  .clp-body { padding: 10px 12px; }
+  .info-row { display: flex; gap: 16px; margin-bottom: 6px; flex-wrap: wrap; }
+  .info-item { font-size: 10px; }
+  .info-label { font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; }
+  .brief { background: #F5F3FF; border: 1px solid #C4B5FD; border-radius: 6px; padding: 8px 10px; margin: 8px 0; }
+  .brief-title { font-weight: 800; color: #6D28D9; font-size: 10px; text-transform: uppercase; margin-bottom: 4px; }
+  .brief p { font-size: 11px; color: #1E1B4B; margin-bottom: 3px; }
+  .clip-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .clip-table th, .clip-table td { border: 1px solid #CBD5E1; padding: 6px 8px; text-align: left; font-size: 10px; }
+  .clip-table th { background: #F1F5F9; font-weight: 700; color: #475569; text-transform: uppercase; font-size: 9px; }
+  .clip-table td { min-height: 28px; height: 28px; }
+  .notes-area { border: 1px solid #CBD5E1; border-radius: 6px; padding: 6px 8px; margin-top: 8px; min-height: 50px; }
+  .notes-label { font-size: 9px; font-weight: 700; color: #94A3B8; text-transform: uppercase; margin-bottom: 2px; }
+  .footer { text-align: center; margin-top: 20px; font-size: 9px; color: #94A3B8; border-top: 1px solid #E2E8F0; padding-top: 8px; }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style></head><body>
+<div class="header">
+  <h1>SCHEDA RIPRESE</h1>
+  <div class="sub">${esc(desc)}${ev.cliente_nome ? ' &mdash; ' + esc(ev.cliente_nome) : ''}</div>
+  <div class="date">${esc(dataLabel)}</div>
+</div>
+${(clps || []).length === 0 ? '<p style="text-align:center;color:#94A3B8;padding:40px">Nessun CLP collegato a questa data di ripresa.</p>' :
+  (clps || []).map((c: any) => `
+<div class="clp-block">
+  <div class="clp-header">
+    <div><span class="clp-id">${esc(c.id_display)}</span> <span class="clp-title">${esc(c.titolo || '')}</span></div>
+    <span class="clp-client">${esc(c.cliente_nome || '')}</span>
+  </div>
+  <div class="clp-body">
+    <div class="info-row">
+      <div class="info-item"><span class="info-label">Tipo:</span> ${esc(c.tipo || '')}</div>
+      <div class="info-item"><span class="info-label">Canale:</span> ${esc(c.canale || '')}</div>
+      <div class="info-item"><span class="info-label">Stile:</span> ${esc(c.stile || '')}</div>
+      <div class="info-item"><span class="info-label">Durata:</span> ${esc(c.durata || '')}</div>
+    </div>
+    ${(c.hook || c.pov) ? `
+    <div class="brief">
+      <div class="brief-title">BRIEF MONTAGGIO</div>
+      ${c.hook ? '<p><strong>Hook:</strong> ' + esc(c.hook) + '</p>' : ''}
+      ${c.pov ? '<p><strong>POV:</strong> ' + esc(c.pov) + '</p>' : ''}
+    </div>` : ''}
+    ${c.script ? '<div style="margin:6px 0"><span class="info-label">Script:</span><div style="font-size:10px;color:#334155;white-space:pre-wrap;margin-top:2px">' + esc(c.script) + '</div></div>' : ''}
+    ${c.link_ispirazione ? '<div style="margin:4px 0"><span class="info-label">Ref:</span> <span style="font-size:10px">' + esc(c.link_ispirazione) + '</span></div>' : ''}
+    <table class="clip-table">
+      <thead><tr><th style="width:25%">Codice Clip Sony</th><th style="width:15%">Formato</th><th style="width:15%">Stato</th><th style="width:45%">Note</th></tr></thead>
+      <tbody>${'<tr><td>&nbsp;</td><td></td><td></td><td></td></tr>'.repeat(4)}</tbody>
+    </table>
+    <div class="notes-area"><div class="notes-label">Appunti</div></div>
+  </div>
+</div>`).join('')}
+<div class="footer">SKORPIO &mdash; Fuyue Digital Agency &mdash; Generato il ${new Date().toLocaleDateString('it-IT')} alle ${new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</div>
+</body></html>`;
+
+      const w = window.open('', '_blank');
+      if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 500); }
+    } catch { addToast('Errore generazione scheda', 'error'); }
+    setGeneratingPdf(false);
+  };
+
   return (
     <div className="fixed inset-y-0 right-0 w-96 max-w-full bg-white border-l shadow-2xl z-50 flex flex-col"
       style={{ top: 0, animation: 'slideInRight 0.2s ease-out' }}>
@@ -1711,6 +1801,16 @@ function EventDetail({ ev, team, clienti, onClose, onDelete, onUpdate, now }: Ev
       </div>
 
       <div className="p-4 border-t space-y-2">
+        {ev.tipo === 'appuntamento' && (
+          <button
+            onClick={handleSchedaRiprese}
+            disabled={generatingPdf}
+            className="w-full text-sm font-semibold rounded-lg py-2 transition-colors flex items-center justify-center gap-2"
+            style={{ background: '#F5F3FF', color: '#6D28D9', border: '1px solid #C4B5FD' }}
+          >
+            {generatingPdf ? '⏳ Caricamento…' : '📄 Scarica scheda riprese'}
+          </button>
+        )}
         {isRecurring && deleteMode === 'ask' ? (
           <div className="space-y-1.5">
             <div className="text-xs font-medium text-muted-foreground mb-1">Elimina evento ricorrente:</div>
