@@ -1937,9 +1937,9 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
     const contenutiData = (contRes.data as any[]) || [];
 
     // Synthesize publication events from contenuti with data_pubblicazione
-    // Only add if not already present in calendario as tipo='pubblicazione'
+    // Only add if not already present in calendario as tipo='pubblicazione' or tipo='contenuto'
     const existingPubContenutoIds = new Set(
-      eventiDB.filter(e => e.tipo === 'pubblicazione' && e.contenuto_id).map(e => e.contenuto_id)
+      eventiDB.filter(e => (e.tipo === 'pubblicazione' || e.tipo === 'contenuto') && e.contenuto_id).map(e => e.contenuto_id)
     );
     const syntheticPubs: CalendarioEvent[] = contenutiData
       .filter(c => c.data_pubblicazione && !existingPubContenutoIds.has(c.id) && c.data_pubblicazione >= rangeStart && c.data_pubblicazione <= rangeEnd)
