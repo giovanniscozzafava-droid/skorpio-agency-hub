@@ -205,6 +205,7 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
     stile: '',
     link_ispirazione: '',
     hook: '',
+    pov: '',
     assegnato_riprese: '',
     assegnato_montaggio: '',
     supervisione_giovanni: false,
@@ -247,6 +248,7 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
       stile: form.stile,
       link_ispirazione: form.link_ispirazione,
       hook: form.hook,
+      pov: form.pov,
       assegnato_riprese: form.assegnato_riprese,
       assegnato_montaggio: form.assegnato_montaggio,
       supervisione_giovanni: form.supervisione_giovanni,
@@ -393,6 +395,17 @@ export function NuovoCLPModal({ team, clienti, onClose, onCreated }: NuovoCLPMod
               value={form.hook}
               onChange={e => set('hook', e.target.value)}
               placeholder="Frase iniziale che cattura l'attenzione…"
+            />
+          </div>
+
+          <div>
+            <label className="sk-label">👁️ POV — Testo in sovrimpressione (opzionale)</label>
+            <textarea
+              className="sk-textarea w-full"
+              rows={2}
+              value={form.pov}
+              onChange={e => set('pov', e.target.value)}
+              placeholder="Testo che deve comparire nel reel come POV…"
             />
           </div>
 
