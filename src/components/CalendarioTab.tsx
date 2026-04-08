@@ -2280,23 +2280,15 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
 
   // ── Create task from calendar (PRESERVED) ─────────────────────────────────
   const handleTaskCreated = async (task: Task) => {
-    if (task.scadenza) {
-      const payload: any = {
-        tipo: 'appuntamento' as const,
-        descrizione: task.descrizione,
-        data: task.scadenza,
-        ora: task.ora || null,
-        cliente_id: task.cliente_id || null,
-        cliente_nome: task.cliente_nome || '',
-        persona: task.assegnato_a,
-      };
-      // Add quick create end time if available
-      if (quickCreateData && !task.ora) {
-        payload.ora = `${quickCreateData.startHour.toString().padStart(2, '0')}:00`;
-        payload.ora_fine = `${quickCreateData.endHour.toString().padStart(2, '0')}:00`;
-      }
-      const { data } = await supabase.from('calendario').insert(payload).select().single();
-      if (data) setEventi(prev => [...prev, data as CalendarioEvent]);
+    // L'evento calendario viene già creato da NuovoTaskModal (un solo evento per tutti gli assegnati)
+    // Qui ricarichiamo solo gli eventi per aggiornare la vista
+    const { data } = await supabase.from('calendario').select('*').eq('data', task.scadenza || toDateStr(selectedDate));
+    if (data) {
+      setEventi(prev => {
+        const existingIds = new Set(prev.map(e => e.id));
+        const newEvents = data.filter((e: CalendarioEvent) => !existingIds.has(e.id));
+        return [...prev, ...newEvents] as CalendarioEvent[];
+      });
     }
     addToast(`✅ Task ${task.id_display} creato`, 'success');
     setShowTaskModal(false);
