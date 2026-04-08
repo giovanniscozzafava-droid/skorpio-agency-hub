@@ -397,7 +397,7 @@ function DesktopAgendaView({ eventi, marketing, oggi, onEventClick, now }: {
 }
 
 // ─── Desktop Day View (timeline with resize) ────────────────────────────────
-function DesktopDayView({ date, eventi, marketing, oggi, onEventClick, onSlotClick, onEventDrop, dragEvId, setDragEvId, now, onQuickCreate, onResize }: {
+function DesktopDayView({ date, eventi, marketing, oggi, onEventClick, onSlotClick, onEventDrop, dragEvId, setDragEvId, now, onQuickCreate, onResize, onNavigate }: {
   date: Date;
   eventi: CalendarioEvent[];
   marketing: MarketingEvent[];
@@ -410,6 +410,7 @@ function DesktopDayView({ date, eventi, marketing, oggi, onEventClick, onSlotCli
   now: Date;
   onQuickCreate: (date: Date, startHour: number, endHour: number) => void;
   onResize: (evId: string, newEndTime: string) => void;
+  onNavigate: (dir: -1 | 1) => void;
 }) {
   const dateStr = toDateStr(date);
   const isToday = isSameDay(date, oggi);
@@ -465,12 +466,18 @@ function DesktopDayView({ date, eventi, marketing, oggi, onEventClick, onSlotCli
   return (
     <div className="flex-1 overflow-y-auto" onMouseUp={() => { setDragCreateStart(null); setDragCreateEnd(null); if (resizingEv) { setResizingEv(null); setResizeHour(null); } }}>
       <div className={`text-center py-3 border-b sticky top-0 z-10 ${isToday ? 'bg-primary/5' : 'bg-white'}`}>
-        <div className="text-xs text-muted-foreground">{GIORNI_FULL[getDayIndex(date)]}</div>
-        <div className={`text-3xl font-bold mt-0.5 w-12 h-12 mx-auto flex items-center justify-center rounded-full
-          ${isToday ? 'bg-primary text-primary-foreground' : ''}`}>
-          {date.getDate()}
+        <div className="flex items-center justify-center gap-3">
+          <button onClick={() => onNavigate(-1)} className="w-8 h-8 rounded-full hover:bg-accent flex items-center justify-center text-sm text-muted-foreground transition-colors">◀</button>
+          <div>
+            <div className="text-xs text-muted-foreground">{GIORNI_FULL[getDayIndex(date)]}</div>
+            <div className={`text-3xl font-bold mt-0.5 w-12 h-12 mx-auto flex items-center justify-center rounded-full
+              ${isToday ? 'bg-primary text-primary-foreground' : ''}`}>
+              {date.getDate()}
+            </div>
+            <div className="text-xs text-muted-foreground">{MESI[date.getMonth()]} {date.getFullYear()}</div>
+          </div>
+          <button onClick={() => onNavigate(1)} className="w-8 h-8 rounded-full hover:bg-accent flex items-center justify-center text-sm text-muted-foreground transition-colors">▶</button>
         </div>
-        <div className="text-xs text-muted-foreground">{MESI[date.getMonth()]} {date.getFullYear()}</div>
       </div>
 
       {(noTimeEvents.length > 0 || dayMkt.length > 0) && (
@@ -788,7 +795,7 @@ function DesktopWeekTimelineView({ weekStart, eventi, marketing, oggi, onEventCl
 }
 
 // ─── Desktop Month View (enhanced) ──────────────────────────────────────────
-function DesktopMonthView({ year, month, eventi, marketing, oggi, onDayClick, onEventClick, onEventDrop, dragEvId, setDragEvId, now }: {
+function DesktopMonthView({ year, month, eventi, marketing, oggi, onDayClick, onEventClick, onEventDrop, dragEvId, setDragEvId, now, onDayZoom }: {
   year: number; month: number;
   eventi: CalendarioEvent[];
   marketing: MarketingEvent[];
@@ -799,6 +806,7 @@ function DesktopMonthView({ year, month, eventi, marketing, oggi, onDayClick, on
   dragEvId: string | null;
   setDragEvId: (id: string | null) => void;
   now: Date;
+  onDayZoom: (date: Date) => void;
 }) {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [morePopover, setMorePopover] = useState<{ dateStr: string; x: number; y: number } | null>(null);
@@ -865,8 +873,11 @@ function DesktopMonthView({ year, month, eventi, marketing, oggi, onDayClick, on
                 if (dragEvId) onEventDrop(dragEvId, ds);
               }}
             >
-              <div className={`text-xs font-semibold mb-1 w-6 h-6 flex items-center justify-center rounded-full
-                ${isToday ? 'bg-primary text-primary-foreground' : 'text-foreground'}`}>
+              <div className={`text-xs font-semibold mb-1 w-6 h-6 flex items-center justify-center rounded-full cursor-pointer hover:ring-2 hover:ring-primary/40 transition-all
+                ${isToday ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-primary/10'}`}
+                onClick={e => { e.stopPropagation(); onDayZoom(d); }}
+                title="Apri vista giorno"
+              >
                 {d.getDate()}
               </div>
 
@@ -2486,6 +2497,7 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
                   onDayClick={handleDayClick} onEventClick={setSelectedEvent}
                   onEventDrop={handleEventDrop} dragEvId={dragEvId} setDragEvId={setDragEvId}
                   now={now}
+                  onDayZoom={(d: Date) => { setCurrentDate(d); setVista('giorno'); }}
                 />
               )}
               {vista === 'settimana' && (
@@ -2504,6 +2516,7 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
                   onEventClick={setSelectedEvent} onSlotClick={handleSlotClick}
                   onEventDrop={handleEventDrop} dragEvId={dragEvId} setDragEvId={setDragEvId}
                   now={now} onQuickCreate={handleQuickCreate} onResize={handleResize}
+                  onNavigate={navigate}
                 />
               )}
               {vista === 'agenda' && (
