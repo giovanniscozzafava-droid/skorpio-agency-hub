@@ -102,6 +102,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
   const [pubCalOpen, setPubCalOpen] = useState(false);
   const [savingPub, setSavingPub] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{ tipo: 'riprogramma' | 'annulla'; open: boolean }>({ tipo: 'riprogramma', open: false });
+  const [uploadCheck, setUploadCheck] = useState<{ open: boolean; confirmed: boolean }>({ open: false, confirmed: false });
 
   // ─── Permessi programmazione ─────────────────────────────────────────────
   const canEditProgrammazione = utente?.nome === 'Elisa' || utente?.nome === 'Giovanni' || utente?.ruolo === 'Admin';
@@ -604,6 +605,11 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
                   <button
                     key={f}
                     onClick={() => {
+                      // Checkpoint: se si va a Uploadato e ci sono hook/pov, chiedi conferma
+                      if (f === 'Uploadato' && (form.hook || form.pov)) {
+                        setUploadCheck({ open: true, confirmed: false });
+                        return;
+                      }
                       set('fase', f);
                       onFaseChange({ ...form, fase: f }, f);
                     }}
@@ -622,6 +628,29 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
               })}
             </div>
           </div>
+
+          {/* ─── BRIEF MONTAGGIO (hook + POV per chi monta) ─── */}
+          {(['Pre montato', 'Montato', 'Uploadato'] as FaseCLP[]).includes(form.fase) && (form.hook || form.pov) && (
+            <div className="mb-4 rounded-xl border-2 overflow-hidden" style={{ borderColor: '#8B5CF6', background: '#F5F3FF' }}>
+              <div className="px-3 py-2 flex items-center gap-2" style={{ background: '#8B5CF6' }}>
+                <span className="text-white text-xs font-bold">🎬 BRIEF MONTAGGIO</span>
+              </div>
+              <div className="p-3 space-y-2">
+                {form.hook && (
+                  <div>
+                    <span className="text-xs font-bold" style={{ color: '#6D28D9' }}>🎣 HOOK (apertura)</span>
+                    <p className="text-sm mt-0.5" style={{ color: '#1E1B4B' }}>{form.hook}</p>
+                  </div>
+                )}
+                {form.pov && (
+                  <div>
+                    <span className="text-xs font-bold" style={{ color: '#6D28D9' }}>👁️ POV (testo in sovrimpressione)</span>
+                    <p className="text-sm mt-0.5" style={{ color: '#1E1B4B' }}>{form.pov}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Titolo */}
           <LabelInput label="Titolo" field="titolo" placeholder="Titolo del contenuto…" />
@@ -668,6 +697,9 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
           <Section title="CREATIVITÀ" />
 
           <LabelTextarea label="🎣 Hook" field="hook" rows={2} placeholder="Frase di apertura che cattura l'attenzione…" />
+          <div className="mt-3">
+            <LabelTextarea label="👁️ POV — Testo in sovrimpressione" field="pov" rows={2} placeholder="Testo che deve comparire nel reel come POV…" />
+          </div>
           <div className="mt-3">
             <LabelTextarea label="📝 Script" field="script" rows={4} placeholder="Testo completo del contenuto…" />
           </div>
@@ -1140,6 +1172,65 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
           </p>
         </div>
       </div>
+
+      {/* ─── CHECKPOINT UPLOAD: conferma hook/POV inseriti ─── */}
+      {uploadCheck.open && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)' }} onClick={() => setUploadCheck({ open: false, confirmed: false })}>
+          <div className="rounded-2xl shadow-2xl border p-5 w-[380px] space-y-4" style={{ background: 'white', borderColor: '#E2E8F0' }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">⚠️</span>
+              <h3 className="font-bold text-base" style={{ color: '#1E1B4B' }}>Checkpoint Upload</h3>
+            </div>
+            <p className="text-sm" style={{ color: '#475569' }}>
+              Questo CLP ha indicazioni creative da inserire nel montaggio. Prima di segnarlo come <strong>Uploadato</strong>, conferma di averle rispettate:
+            </p>
+            {form.hook && (
+              <div className="rounded-lg p-2.5" style={{ background: '#FFF7ED', border: '1px solid #FDBA74' }}>
+                <span className="text-xs font-bold" style={{ color: '#9A3412' }}>🎣 HOOK</span>
+                <p className="text-sm mt-0.5" style={{ color: '#7C2D12' }}>{form.hook}</p>
+              </div>
+            )}
+            {form.pov && (
+              <div className="rounded-lg p-2.5" style={{ background: '#F5F3FF', border: '1px solid #C4B5FD' }}>
+                <span className="text-xs font-bold" style={{ color: '#6D28D9' }}>👁️ POV</span>
+                <p className="text-sm mt-0.5" style={{ color: '#3B0764' }}>{form.pov}</p>
+              </div>
+            )}
+            <label className="flex items-start gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={uploadCheck.confirmed}
+                onChange={e => setUploadCheck(prev => ({ ...prev, confirmed: e.target.checked }))}
+                className="mt-0.5 accent-[#8B5CF6] w-4 h-4"
+              />
+              <span className="text-sm font-semibold" style={{ color: '#1E1B4B' }}>
+                Confermo di aver inserito hook{form.pov ? ' e POV' : ''} nel video esportato
+              </span>
+            </label>
+            <div className="flex gap-2 pt-1">
+              <button
+                disabled={!uploadCheck.confirmed}
+                onClick={() => {
+                  setUploadCheck({ open: false, confirmed: false });
+                  set('fase', 'Uploadato');
+                  onFaseChange({ ...form, fase: 'Uploadato' }, 'Uploadato');
+                }}
+                className="flex-1 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-40 transition-all"
+                style={{ background: '#8B5CF6' }}
+              >
+                ✅ Procedi con Upload
+              </button>
+              <button
+                onClick={() => setUploadCheck({ open: false, confirmed: false })}
+                className="px-4 py-2 rounded-lg text-sm font-semibold"
+                style={{ background: '#F1F5F9', color: '#64748B' }}
+              >
+                Annulla
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
