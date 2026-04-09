@@ -71,16 +71,18 @@ function MainApp() {
   const urgenti = myTasks.filter(t => t.priorita === '🔴 Alta' && t.stato !== 'Completato').length;
   const scaduti = myTasks.filter(t => {
     if (t.stato === 'Completato') return false;
-    // Se il CLP è già Pubblicato o Scartato, non è scaduto
-    if (t.id_contenuto && clpPubDates[t.id_contenuto]) {
-      const fase = clpPubDates[t.id_contenuto].fase;
-      if (fase === 'Pubblicato' || fase === 'Scartata') return false;
+    const now = Date.now();
+    // Task ha scadenza propria → controlla quella
+    if (t.scadenza) {
+      const d = parseLocalDate(t.scadenza);
+      d.setHours(23, 59, 59);
+      return d.getTime() < now;
     }
-    // Check task's own scadenza
-    if (t.scadenza && parseLocalDate(t.scadenza) < oggi) return true;
-    // Check CLP publication date as fallback for workflow tasks
+    // Task CLP senza scadenza → usa data pubblicazione del CLP
     if (t.id_contenuto && clpPubDates[t.id_contenuto]?.data) {
-      return parseLocalDate(clpPubDates[t.id_contenuto].data!) < oggi;
+      const d = parseLocalDate(clpPubDates[t.id_contenuto].data!);
+      d.setHours(23, 59, 59);
+      return d.getTime() < now;
     }
     return false;
   }).length;
