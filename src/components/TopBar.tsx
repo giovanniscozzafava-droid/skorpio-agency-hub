@@ -94,17 +94,6 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, 
   const color = tipo === 'clp' ? '#8B5CF6' : tipo === 'task' ? '#F59E0B' : '#EF4444';
   const isScaduti = tipo === 'scaduti';
 
-  const handleExpand = (t: Task, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (expandedId === t.id) {
-      setExpandedId(null);
-    } else {
-      setExpandedId(t.id);
-      setNewDate(domani);
-      setNewPersona(t.assegnato_a || '');
-    }
-  };
-
   return (
     <div ref={ref} className="fixed rounded-xl shadow-2xl border overflow-hidden"
       style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', width: (isScaduti || tipo === 'urgenti') ? 360 : 320, maxHeight: 420, top: 110, left: 16, zIndex: 9999 }}>
@@ -118,17 +107,11 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, 
         ) : (
           filtered.slice(0, 40).map(t => (
             <div key={t.id} className="border-b last:border-0" style={{ borderColor: 'hsl(var(--border) / 0.5)' }}>
-              <div
-                className="px-3 py-2 hover:bg-muted/50 transition-colors cursor-pointer"
-                onClick={() => onClickTask(t.id)}
-              >
+              {/* Task info */}
+              <div className="px-3 pt-2 pb-1">
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-mono font-bold flex-shrink-0" style={{ color }}>{t.id_display}</span>
                   <span className="text-xs text-foreground truncate flex-1">{t.descrizione}</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0" style={{
-                    background: t.stato === 'Da fare' ? 'hsl(38 92% 50% / 0.1)' : t.stato === 'In lavorazione' ? 'hsl(214 80% 55% / 0.1)' : 'hsl(var(--muted))',
-                    color: t.stato === 'Da fare' ? 'hsl(38 80% 40%)' : t.stato === 'In lavorazione' ? 'hsl(214 70% 44%)' : 'hsl(var(--muted-foreground))',
-                  }}>{t.stato}</span>
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
                   {t.cliente_nome && <span className="text-[10px] text-muted-foreground">{t.cliente_nome}</span>}
@@ -147,29 +130,49 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, 
                       📡 {parseLocalDate(clpPubDates[t.id_contenuto].data!).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}
                     </span>
                   )}
-                  {(isScaduti || tipo === 'urgenti') && (
-                    <div className="flex gap-1 ml-1 flex-shrink-0">
-                      <button
-                        onClick={e => handleExpand(t, e)}
-                        className="text-[10px] px-1.5 py-0.5 rounded font-semibold transition-colors"
-                        style={{ background: expandedId === t.id ? 'hsl(214 80% 55% / 0.15)' : 'hsl(38 92% 50% / 0.12)', color: expandedId === t.id ? 'hsl(214 70% 44%)' : 'hsl(38 80% 40%)' }}
-                        title="Riassegna"
-                      >
-                        {expandedId === t.id ? '✕' : '🔄'}
-                      </button>
-                      <button
-                        onClick={e => { e.stopPropagation(); onArchive(t.id); }}
-                        className="text-[10px] px-1.5 py-0.5 rounded font-semibold transition-colors"
-                        style={{ background: 'hsl(0 70% 50% / 0.08)', color: 'hsl(0 60% 45%)' }}
-                        title="Archivia"
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  )}
                 </div>
               </div>
-              {/* Inline reassign for scaduti/urgenti */}
+
+              {/* Action bar */}
+              {(isScaduti || tipo === 'urgenti') ? (
+                <div className="px-3 pb-2 flex gap-1.5 mt-1">
+                  <button
+                    onClick={() => onClickTask(t.id)}
+                    className="text-[10px] px-2 py-1 rounded font-semibold transition-colors"
+                    style={{ background: 'hsl(214 80% 55% / 0.1)', color: 'hsl(214 70% 44%)' }}
+                  >
+                    📍 Vai
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (expandedId === t.id) { setExpandedId(null); }
+                      else { setExpandedId(t.id); setNewDate(domani); setNewPersona(t.assegnato_a || ''); }
+                    }}
+                    className="text-[10px] px-2 py-1 rounded font-semibold transition-colors"
+                    style={{ background: expandedId === t.id ? 'hsl(214 80% 55% / 0.2)' : 'hsl(38 92% 50% / 0.12)', color: expandedId === t.id ? 'hsl(214 70% 44%)' : 'hsl(38 80% 40%)' }}
+                  >
+                    {expandedId === t.id ? '✕ Chiudi' : '🔄 Rischedula'}
+                  </button>
+                  <button
+                    onClick={() => onArchive(t.id)}
+                    className="text-[10px] px-2 py-1 rounded font-semibold transition-colors"
+                    style={{ background: 'hsl(0 70% 50% / 0.08)', color: 'hsl(0 60% 45%)' }}
+                  >
+                    🗑️ Archivia
+                  </button>
+                </div>
+              ) : (
+                <div className="px-3 pb-2">
+                  <button
+                    onClick={() => onClickTask(t.id)}
+                    className="text-[10px] text-primary hover:underline"
+                  >
+                    📍 Apri nel Kanban
+                  </button>
+                </div>
+              )}
+
+              {/* Inline reschedule form */}
               {(isScaduti || tipo === 'urgenti') && expandedId === t.id && (
                 <div className="px-3 pb-2.5 pt-1 space-y-1.5" style={{ background: 'hsl(38 92% 50% / 0.04)' }} onClick={e => e.stopPropagation()}>
                   <div className="flex gap-2">
