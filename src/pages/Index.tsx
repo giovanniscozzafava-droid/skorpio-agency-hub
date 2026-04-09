@@ -25,7 +25,7 @@ function MainApp() {
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [clienti, setClienti] = useState<Cliente[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [clpPubDates, setClpPubDates] = useState<Record<string, { data: string | null; ora: string | null }>>({});
+  const [clpPubDates, setClpPubDates] = useState<Record<string, { data: string | null; ora: string | null; fase?: string }>>({});
   const [personaView, setPersonaView] = useState<string | null>(null);
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
   useEffect(() => {
@@ -42,8 +42,8 @@ function MainApp() {
     supabase.from('team').select('*').order('created_at').then(({ data }) => setTeam((data as TeamMember[]) || []));
     supabase.from('clienti').select('*').order('nome').then(({ data }) => setClienti((data as Cliente[]) || []));
     supabase.from('task').select('*').neq('stato', 'Archiviato').neq('stato', 'Completato').then(({ data }) => setTasks((data as Task[]) || []));
-    supabase.from('contenuti').select('id, data_pubblicazione, ora_pubblicazione').not('data_pubblicazione', 'is', null).then(({ data }) => {
-      setClpPubDates(Object.fromEntries((data || []).map((c: any) => [c.id, { data: c.data_pubblicazione, ora: c.ora_pubblicazione }])));
+    supabase.from('contenuti').select('id, fase, data_pubblicazione, ora_pubblicazione').not('data_pubblicazione', 'is', null).then(({ data }) => {
+      setClpPubDates(Object.fromEntries((data || []).map((c: any) => [c.id, { data: c.data_pubblicazione, ora: c.ora_pubblicazione, fase: c.fase }])));
     });
   }, [utente]);
 
@@ -71,6 +71,8 @@ function MainApp() {
   const urgenti = myTasks.filter(t => t.priorita === '🔴 Alta' && t.stato !== 'Completato').length;
   const scaduti = myTasks.filter(t => {
     if (t.stato === 'Completato') return false;
+    // Se il CLP è già Pubblicato, non è scaduto
+    if (t.id_contenuto && clpPubDates[t.id_contenuto]?.fase === 'Pubblicato') return false;
     // Check task's own scadenza
     if (t.scadenza && parseLocalDate(t.scadenza) < oggi) return true;
     // Check CLP publication date as fallback for workflow tasks
