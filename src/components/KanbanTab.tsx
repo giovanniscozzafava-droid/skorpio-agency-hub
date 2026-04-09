@@ -222,10 +222,14 @@ export function KanbanTab({ team, clienti, personaView, focusTaskId }: { team: T
 
   // ── Focus task from TopBar dropdown ─────────────────────────────────────
   useEffect(() => {
-    if (!focusTaskId || !tasks.length) return;
-    const t = tasks.find(t => t.id === focusTaskId);
-    if (t) setSelectedTask(t);
-  }, [focusTaskId, tasks]);
+    if (!focusTaskId || loading) return;
+    const t = tasks.find(tk => tk.id === focusTaskId);
+    if (t) {
+      setSelectedTask(t);
+      // Reset focusTaskId so clicking the same task again works
+      window.dispatchEvent(new CustomEvent('skorpio-focus-handled'));
+    }
+  }, [focusTaskId, tasks, loading]);
 
   // ── FILTRI ───────────────────────────────────────────────────────────────
   const matchSearch = (t: Task) => !searchQuery.trim() || (t.descrizione + t.cliente_nome + t.id_display + t.id_contenuto + t.assegnato_a + t.tipo).toLowerCase().includes(searchQuery.toLowerCase());
