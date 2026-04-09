@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import type { TeamMember } from '../types';
+import type { TeamMember, Task } from '../types';
 import { Avatar } from './Avatar';
 import { ImpostazioniPanel } from './ImpostazioniPanel';
 import fuyueLogo from '@/assets/fuyue-logo-white.svg';
@@ -14,17 +14,93 @@ import { Menu } from 'lucide-react';
 interface TopBarProps {
   team: TeamMember[];
   taskCounts: { daFare: number; clpDaFare: number; taskDaFare: number; urgenti: number; scaduti: number };
+  tasks: Task[];
   onViewPersona: (nome: string | null) => void;
   personaView: string | null;
   onTeamChange: (team: TeamMember[]) => void;
 }
 
-export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamChange }: TopBarProps) {
+function parseLocalDate(s: string) {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+type DropdownType = 'clp' | 'task' | 'urgenti' | 'scaduti' | null;
+
+function CounterDropdown({ tasks, tipo, onClose }: { tasks: Task[]; tipo: DropdownType; onClose: () => void }) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const fn = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
+    document.addEventListener('mousedown', fn);
+    return () => document.removeEventListener('mousedown', fn);
+  }, [onClose]);
+
+  const oggi = new Date(); oggi.setHours(0, 0, 0, 0);
+
+  const filtered = tipo === 'clp'
+    ? tasks.filter(t => t.id_contenuto?.trim() && t.stato !== 'Completato')
+    : tipo === 'task'
+    ? tasks.filter(t => !t.id_contenuto?.trim() && t.stato !== 'Completato')
+    : tipo === 'urgenti'
+    ? tasks.filter(t => t.priorita === '🔴 Alta' && t.stato !== 'Completato')
+    : tipo === 'scaduti'
+    ? tasks.filter(t => t.scadenza && t.stato !== 'Completato' && parseLocalDate(t.scadenza) < oggi)
+    : [];
+
+  const label = tipo === 'clp' ? '🎬 CLP attivi' : tipo === 'task' ? '📋 Task attivi' : tipo === 'urgenti' ? '🔴 Urgenti' : '⚠️ Scaduti';
+  const color = tipo === 'clp' ? '#8B5CF6' : tipo === 'task' ? '#F59E0B' : '#EF4444';
+
+  return (
+    <div ref={ref} className="absolute top-full left-0 mt-2 w-80 max-h-[400px] rounded-xl shadow-2xl border overflow-hidden z-[200]"
+      style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}>
+      <div className="px-3 py-2 border-b flex items-center justify-between" style={{ borderColor: 'hsl(var(--border))' }}>
+        <span className="text-xs font-bold" style={{ color }}>{label} ({filtered.length})</span>
+        <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
+      </div>
+      <div className="overflow-y-auto max-h-[350px]">
+        {filtered.length === 0 ? (
+          <p className="text-xs text-muted-foreground text-center py-6">Nessun elemento</p>
+        ) : (
+          filtered.slice(0, 30).map(t => (
+            <div key={t.id} className="px-3 py-2 border-b last:border-0 hover:bg-muted/50 transition-colors"
+              style={{ borderColor: 'hsl(var(--border) / 0.5)' }}>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono font-bold flex-shrink-0" style={{ color }}>{t.id_display}</span>
+                <span className="text-xs text-foreground truncate flex-1">{t.descrizione}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0" style={{
+                  background: t.stato === 'Da fare' ? 'hsl(38 92% 50% / 0.1)' : t.stato === 'In lavorazione' ? 'hsl(214 80% 55% / 0.1)' : 'hsl(var(--muted))',
+                  color: t.stato === 'Da fare' ? 'hsl(38 80% 40%)' : t.stato === 'In lavorazione' ? 'hsl(214 70% 44%)' : 'hsl(var(--muted-foreground))',
+                }}>{t.stato}</span>
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                {t.cliente_nome && <span className="text-[10px] text-muted-foreground">{t.cliente_nome}</span>}
+                {t.assegnato_a && <span className="text-[10px] text-muted-foreground">→ {t.assegnato_a}</span>}
+                {t.scadenza && (
+                  <span className="text-[10px] ml-auto" style={{
+                    color: parseLocalDate(t.scadenza) < oggi ? '#EF4444' : 'hsl(var(--muted-foreground))'
+                  }}>
+                    📅 {parseLocalDate(t.scadenza).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+        {filtered.length > 30 && (
+          <p className="text-[10px] text-center text-muted-foreground py-2">…e altri {filtered.length - 30}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function TopBar({ team, taskCounts, tasks, onViewPersona, personaView, onTeamChange }: TopBarProps) {
   const { utente, tab, setTab, logout } = useApp();
   const [orologio, setOrologio] = useState(new Date());
   const [showImpostazioni, setShowImpostazioni] = useState(false);
   const [showNotifiche, setShowNotifiche] = useState(false);
   const [showDrawer, setShowDrawer] = useState(false);
+  const [counterDrop, setCounterDrop] = useState<DropdownType>(null);
   const { nonLette } = useNotifiche(utente?.nome ?? null);
 
   useEffect(() => {
@@ -68,42 +144,57 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
         </div>
 
         {/* Contatori — desktop: full text, mobile: compact numbers */}
-        <div className="flex items-center gap-2 flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-1 min-w-0 relative">
           {/* Desktop counters */}
-          <span className="stat-pill text-xs hidden md:inline-flex" style={{ background: 'rgba(139,92,246,0.2)', color: '#C4B5FD' }}>
+          <span className="stat-pill text-xs hidden md:inline-flex cursor-pointer hover:opacity-80 transition-opacity"
+            style={{ background: counterDrop === 'clp' ? 'rgba(139,92,246,0.4)' : 'rgba(139,92,246,0.2)', color: '#C4B5FD' }}
+            onClick={() => setCounterDrop(prev => prev === 'clp' ? null : 'clp')}>
             🎬 {taskCounts.clpDaFare} CLP
           </span>
-          <span className="stat-pill text-xs hidden md:inline-flex" style={{ background: 'rgba(245,158,11,0.2)', color: '#FCD34D' }}>
+          <span className="stat-pill text-xs hidden md:inline-flex cursor-pointer hover:opacity-80 transition-opacity"
+            style={{ background: counterDrop === 'task' ? 'rgba(245,158,11,0.4)' : 'rgba(245,158,11,0.2)', color: '#FCD34D' }}
+            onClick={() => setCounterDrop(prev => prev === 'task' ? null : 'task')}>
             📋 {taskCounts.taskDaFare} Task
           </span>
           {taskCounts.urgenti > 0 && (
-            <span className="stat-pill text-xs hidden md:inline-flex" style={{ background: 'rgba(239,68,68,0.2)', color: '#FCA5A5' }}>
+            <span className="stat-pill text-xs hidden md:inline-flex cursor-pointer hover:opacity-80 transition-opacity"
+              style={{ background: counterDrop === 'urgenti' ? 'rgba(239,68,68,0.35)' : 'rgba(239,68,68,0.2)', color: '#FCA5A5' }}
+              onClick={() => setCounterDrop(prev => prev === 'urgenti' ? null : 'urgenti')}>
               🔴 {taskCounts.urgenti} urgenti
             </span>
           )}
           {taskCounts.scaduti > 0 && (
-            <span className="stat-pill text-xs hidden md:inline-flex" style={{ background: 'rgba(239,68,68,0.3)', color: '#F87171' }}>
+            <span className="stat-pill text-xs hidden md:inline-flex cursor-pointer hover:opacity-80 transition-opacity"
+              style={{ background: counterDrop === 'scaduti' ? 'rgba(239,68,68,0.45)' : 'rgba(239,68,68,0.3)', color: '#F87171' }}
+              onClick={() => setCounterDrop(prev => prev === 'scaduti' ? null : 'scaduti')}>
               ⚠️ {taskCounts.scaduti} scaduti
             </span>
           )}
 
           {/* Mobile compact counters — just numbers */}
-          <span className="stat-pill text-xs md:hidden" style={{ background: 'rgba(139,92,246,0.2)', color: '#C4B5FD' }}>
+          <span className="stat-pill text-xs md:hidden cursor-pointer" style={{ background: 'rgba(139,92,246,0.2)', color: '#C4B5FD' }}
+            onClick={() => setCounterDrop(prev => prev === 'clp' ? null : 'clp')}>
             🎬{taskCounts.clpDaFare}
           </span>
-          <span className="stat-pill text-xs md:hidden" style={{ background: 'rgba(245,158,11,0.2)', color: '#FCD34D' }}>
+          <span className="stat-pill text-xs md:hidden cursor-pointer" style={{ background: 'rgba(245,158,11,0.2)', color: '#FCD34D' }}
+            onClick={() => setCounterDrop(prev => prev === 'task' ? null : 'task')}>
             📋{taskCounts.taskDaFare}
           </span>
           {taskCounts.urgenti > 0 && (
-            <span className="stat-pill text-xs md:hidden" style={{ background: 'rgba(239,68,68,0.2)', color: '#FCA5A5' }}>
+            <span className="stat-pill text-xs md:hidden cursor-pointer" style={{ background: 'rgba(239,68,68,0.2)', color: '#FCA5A5' }}
+              onClick={() => setCounterDrop(prev => prev === 'urgenti' ? null : 'urgenti')}>
               {taskCounts.urgenti}
             </span>
           )}
           {taskCounts.scaduti > 0 && (
-            <span className="stat-pill text-xs md:hidden" style={{ background: 'rgba(239,68,68,0.3)', color: '#F87171' }}>
+            <span className="stat-pill text-xs md:hidden cursor-pointer" style={{ background: 'rgba(239,68,68,0.3)', color: '#F87171' }}
+              onClick={() => setCounterDrop(prev => prev === 'scaduti' ? null : 'scaduti')}>
               {taskCounts.scaduti}
             </span>
           )}
+
+          {/* Dropdown lista */}
+          {counterDrop && <CounterDropdown tasks={tasks} tipo={counterDrop} onClose={() => setCounterDrop(null)} />}
 
           {/* Google Drive storage indicator */}
           <div className="hidden md:block">
