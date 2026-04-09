@@ -51,7 +51,11 @@ function MainApp() {
 
   const oggi = new Date(); oggi.setHours(0, 0, 0, 0);
   const myTasks = utente.ruolo === 'Admin' ? tasks : tasks.filter(t => t.assegnato_a === utente.nome);
+  const clpTasks = myTasks.filter(t => t.id_contenuto?.trim());
+  const genTasks = myTasks.filter(t => !t.id_contenuto?.trim());
   const daFare = myTasks.filter(t => t.stato === 'Da fare').length;
+  const clpDaFare = clpTasks.filter(t => t.stato !== 'Completato').length;
+  const taskDaFare = genTasks.filter(t => t.stato !== 'Completato').length;
   const urgenti = myTasks.filter(t => t.priorita === '🔴 Alta' && t.stato !== 'Completato').length;
   const scaduti = myTasks.filter(t => {
     if (!t.scadenza || t.stato === 'Completato') return false;
@@ -62,7 +66,7 @@ function MainApp() {
     <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'hsl(var(--skorpio-bg))' }} data-build="publish-refresh-2026-03-27-1728">
       <TopBar
         team={team}
-        taskCounts={{ daFare, urgenti, scaduti }}
+        taskCounts={{ daFare, clpDaFare, taskDaFare, urgenti, scaduti }}
         onViewPersona={setPersonaView}
         personaView={personaView}
         onTeamChange={setTeam}
