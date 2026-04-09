@@ -54,9 +54,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Se l'utente è già caricato per questo stesso auth_user_id, non fare nulla
     if (utente && (utente as any).auth_user_id === session.user.id) return;
 
-    const autoLink = async () => {
+    const autoLink = async (attempt = 0) => {
       // 1. Cerca per auth_user_id già collegato
-      const { data: byUid } = await supabase
+      const { data: byUid, error: uidErr } = await supabase
         .from('team')
         .select('*')
         .eq('auth_user_id', session.user.id)
@@ -89,10 +89,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // 3. Nessun match → SplashProfile (scelta manuale)
+      // 3. Retry una volta dopo 1.5s (RLS / race condition)
+      if (attempt < 2) {
+        console.warn(`[AppContext] autoLink attempt ${attempt} failed, retrying...`);
+        setTimeout(() => autoLink(attempt + 1), 1500);
+        return;
+      }
+
+      // 4. Nessun match → SplashProfile (scelta manuale)
+      console.warn('[AppContext] autoLink failed after retries, showing SplashProfile');
     };
 
-    autoLink();
+    autoLink(0);
   }, [session?.user?.id]);
 
   // ── Listener globale postMessage da popup OAuth Google ───────────────────
