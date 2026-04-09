@@ -67,6 +67,7 @@ function MainApp() {
       <TopBar
         team={team}
         taskCounts={{ daFare, clpDaFare, taskDaFare, urgenti, scaduti }}
+        tasks={myTasks}
         onViewPersona={setPersonaView}
         personaView={personaView}
         onTeamChange={setTeam}
