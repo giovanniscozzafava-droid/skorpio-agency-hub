@@ -71,17 +71,18 @@ function MainApp() {
   const urgenti = myTasks.filter(t => t.priorita === '🔴 Alta' && t.stato !== 'Completato').length;
   const scaduti = myTasks.filter(t => {
     if (t.stato === 'Completato') return false;
+    // CLP già Pubblicato o Scartato → non scaduto
+    if (t.id_contenuto && clpPubDates[t.id_contenuto]) {
+      const fase = clpPubDates[t.id_contenuto].fase;
+      if (fase === 'Pubblicato' || fase === 'Scartata') return false;
+    }
     const now = Date.now();
-    // Task ha scadenza propria → controlla quella
     if (t.scadenza) {
-      const d = parseLocalDate(t.scadenza);
-      d.setHours(23, 59, 59);
+      const d = parseLocalDate(t.scadenza); d.setHours(23, 59, 59);
       return d.getTime() < now;
     }
-    // Task CLP senza scadenza → usa data pubblicazione del CLP
     if (t.id_contenuto && clpPubDates[t.id_contenuto]?.data) {
-      const d = parseLocalDate(clpPubDates[t.id_contenuto].data!);
-      d.setHours(23, 59, 59);
+      const d = parseLocalDate(clpPubDates[t.id_contenuto].data!); d.setHours(23, 59, 59);
       return d.getTime() < now;
     }
     return false;
