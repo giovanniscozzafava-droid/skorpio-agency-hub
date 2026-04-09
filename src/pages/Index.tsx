@@ -26,6 +26,7 @@ function MainApp() {
   const [clienti, setClienti] = useState<Cliente[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [personaView, setPersonaView] = useState<string | null>(null);
+  const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
   const dailyPopup = useDailyPopup(utente);
   const [popupTask, setPopupTask] = useState<Task | null>(null);
   const whatsNew = useWhatsNew(utente?.nome ?? null);
@@ -73,14 +74,20 @@ function MainApp() {
         onViewPersona={setPersonaView}
         personaView={personaView}
         onTeamChange={setTeam}
-        onGoToTask={() => {}}
+        onGoToTask={(taskId) => { setFocusTaskId(taskId); }}
         onTaskReassigned={(taskId, newDate, newPersona) => {
-          setTasks(prev => prev.map(t => t.id === taskId ? { ...t, scadenza: newDate, ...(newPersona ? { assegnato_a: newPersona } : {}) } : t));
+          if (!newDate) {
+            // Archiviato — rimuovi dallo state
+            setTasks(prev => prev.filter(t => t.id !== taskId));
+          } else {
+            // Riassegnato — aggiorna scadenza/persona
+            setTasks(prev => prev.map(t => t.id === taskId ? { ...t, scadenza: newDate, ...(newPersona ? { assegnato_a: newPersona } : {}) } : t));
+          }
         }}
       />
       <div className="flex-1 overflow-hidden min-h-0 pt-[100px]">
         {tab === 'kanban' && (
-          <KanbanTab team={team} clienti={clienti} personaView={personaView} />
+          <KanbanTab team={team} clienti={clienti} personaView={personaView} focusTaskId={focusTaskId} />
         )}
         {tab === 'calendario' && <CalendarioTab team={team} clienti={clienti} />}
         {tab === 'creative' && <CreativeEngineTab clienti={clienti} team={team} />}
