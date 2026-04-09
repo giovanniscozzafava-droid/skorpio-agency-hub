@@ -74,6 +74,9 @@ function MainApp() {
         personaView={personaView}
         onTeamChange={setTeam}
         onGoToTask={() => {}}
+        onTaskReassigned={(taskId, newDate, newPersona) => {
+          setTasks(prev => prev.map(t => t.id === taskId ? { ...t, scadenza: newDate, ...(newPersona ? { assegnato_a: newPersona } : {}) } : t));
+        }}
       />
       <div className="flex-1 overflow-hidden min-h-0 pt-[100px]">
         {tab === 'kanban' && (
