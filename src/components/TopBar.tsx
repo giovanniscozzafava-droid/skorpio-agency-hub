@@ -20,6 +20,7 @@ interface TopBarProps {
   personaView: string | null;
   onTeamChange: (team: TeamMember[]) => void;
   onGoToTask?: (taskId: string) => void;
+  onTaskReassigned?: (taskId: string, newDate: string, newPersona?: string) => void;
 }
 
 function parseLocalDate(s: string) {
@@ -162,7 +163,7 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign }
   );
 }
 
-export function TopBar({ team, taskCounts, tasks, onViewPersona, personaView, onTeamChange, onGoToTask }: TopBarProps) {
+export function TopBar({ team, taskCounts, tasks, onViewPersona, personaView, onTeamChange, onGoToTask, onTaskReassigned }: TopBarProps) {
   const { utente, tab, setTab, logout } = useApp();
   const [orologio, setOrologio] = useState(new Date());
   const [showImpostazioni, setShowImpostazioni] = useState(false);
@@ -276,8 +277,7 @@ export function TopBar({ team, taskCounts, tasks, onViewPersona, personaView, on
               const update: any = { scadenza: newDate };
               if (newPersona) update.assegnato_a = newPersona;
               await supabase.from('task').update(update).eq('id', taskId);
-              // Refresh — il parent ricarica ogni 30s, ma forziamo
-              window.dispatchEvent(new Event('skorpio-refresh-tasks'));
+              if (onTaskReassigned) onTaskReassigned(taskId, newDate, newPersona);
             }}
           />}
 
