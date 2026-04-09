@@ -87,11 +87,15 @@ export function SplashProfile() {
       ) : team.length === 0 ? (
         <div className="text-center max-w-sm">
           <p className="text-white/60 text-sm mb-4">
-            Tutti i profili team sono già collegati, oppure l'Admin non ha ancora creato il tuo profilo.
+            Tutti i profili team sono già collegati. Se il tuo account non viene riconosciuto, riprova.
           </p>
-          <p className="text-white/40 text-xs">
-            Contatta l'Admin per farti assegnare un profilo.
-          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-6 py-2.5 rounded-lg text-sm font-semibold transition-all"
+            style={{ background: '#3B82F6', color: 'white' }}
+          >
+            🔄 Riprova login
+          </button>
         </div>
       ) : (
         <div className="flex flex-wrap gap-5 justify-center animate-slide-up">
