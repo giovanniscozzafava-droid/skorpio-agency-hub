@@ -161,7 +161,7 @@ function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onCl
 
 // ── MAIN COMPONENT ────────────────────────────────────────────────────────────
 
-export function KanbanTab({ team, clienti, personaView }: { team: TeamMember[]; clienti: Cliente[]; personaView: string | null }) {
+export function KanbanTab({ team, clienti, personaView, focusTaskId }: { team: TeamMember[]; clienti: Cliente[]; personaView: string | null; focusTaskId?: string | null }) {
   const { utente, addToast } = useApp();
   const isMobile = useIsMobile();
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -219,6 +219,13 @@ export function KanbanTab({ team, clienti, personaView }: { team: TeamMember[]; 
       .subscribe();
     return () => { supabase.removeChannel(ch); if (reloadTimer.current) clearTimeout(reloadTimer.current); };
   }, [loadTasks, debouncedReload]);
+
+  // ── Focus task from TopBar dropdown ─────────────────────────────────────
+  useEffect(() => {
+    if (!focusTaskId || !tasks.length) return;
+    const t = tasks.find(t => t.id === focusTaskId);
+    if (t) setSelectedTask(t);
+  }, [focusTaskId, tasks]);
 
   // ── FILTRI ───────────────────────────────────────────────────────────────
   const matchSearch = (t: Task) => !searchQuery.trim() || (t.descrizione + t.cliente_nome + t.id_display + t.id_contenuto + t.assegnato_a + t.tipo).toLowerCase().includes(searchQuery.toLowerCase());
