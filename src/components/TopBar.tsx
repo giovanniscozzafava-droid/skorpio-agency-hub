@@ -68,7 +68,10 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, 
     : tipo === 'scaduti'
     ? tasks.filter(t => {
         if (t.stato === 'Completato') return false;
-        if (t.id_contenuto && clpPubDates?.[t.id_contenuto]?.fase === 'Pubblicato') return false;
+        if (t.id_contenuto && clpPubDates?.[t.id_contenuto]) {
+          const fase = clpPubDates[t.id_contenuto].fase;
+          if (fase === 'Pubblicato' || fase === 'Scartata') return false;
+        }
         if (t.scadenza && parseLocalDate(t.scadenza) < oggi) return true;
         if (t.id_contenuto && clpPubDates?.[t.id_contenuto]?.data && parseLocalDate(clpPubDates[t.id_contenuto].data!) < oggi) return true;
         return false;
@@ -92,7 +95,7 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, 
 
   return (
     <div ref={ref} className="absolute top-full left-0 mt-2 rounded-xl shadow-2xl border overflow-hidden z-[200]"
-      style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', width: isScaduti ? 360 : 320, maxHeight: 420 }}>
+      style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', width: (isScaduti || tipo === 'urgenti') ? 360 : 320, maxHeight: 420 }}>
       <div className="px-3 py-2 border-b flex items-center justify-between" style={{ borderColor: 'hsl(var(--border))' }}>
         <span className="text-xs font-bold" style={{ color }}>{label} ({filtered.length})</span>
         <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
@@ -154,8 +157,8 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, 
                   )}
                 </div>
               </div>
-              {/* Inline reassign for scaduti */}
-              {isScaduti && expandedId === t.id && (
+              {/* Inline reassign for scaduti/urgenti */}
+              {(isScaduti || tipo === 'urgenti') && expandedId === t.id && (
                 <div className="px-3 pb-2.5 pt-1 space-y-1.5" style={{ background: 'hsl(38 92% 50% / 0.04)' }} onClick={e => e.stopPropagation()}>
                   <div className="flex gap-2">
                     <div className="flex-1">
