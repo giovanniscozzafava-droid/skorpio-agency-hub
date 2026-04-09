@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useApp } from '../context/AppContext';
 import { supabase } from '../integrations/supabase/client';
 import type { TeamMember, Task } from '../types';
@@ -46,14 +47,22 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, 
   clpPubDates?: Record<string, { data: string | null; ora: string | null; fase?: string }>;
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
+  console.log('[CounterDropdown] rendering, tipo:', tipo, 'tasks:', tasks.length);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [newDate, setNewDate] = useState('');
   const [newPersona, setNewPersona] = useState('');
 
   React.useEffect(() => {
-    const fn = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
-    document.addEventListener('mousedown', fn);
-    return () => document.removeEventListener('mousedown', fn);
+    // Delay to prevent the same click that opened the dropdown from closing it
+    let fn: ((e: MouseEvent) => void) | null = null;
+    const timer = setTimeout(() => {
+      fn = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
+      document.addEventListener('mousedown', fn);
+    }, 150);
+    return () => {
+      clearTimeout(timer);
+      if (fn) document.removeEventListener('mousedown', fn);
+    };
   }, [onClose]);
 
   const oggi = new Date(); oggi.setHours(0, 0, 0, 0);
@@ -68,12 +77,15 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, 
     : tipo === 'scaduti'
     ? tasks.filter(t => {
         if (t.stato === 'Completato') return false;
-        if (t.id_contenuto && clpPubDates?.[t.id_contenuto]) {
-          const fase = clpPubDates[t.id_contenuto].fase;
-          if (fase === 'Pubblicato' || fase === 'Scartata') return false;
+        const now = Date.now();
+        if (t.scadenza) {
+          const d = parseLocalDate(t.scadenza); d.setHours(23, 59, 59);
+          return d.getTime() < now;
         }
-        if (t.scadenza && parseLocalDate(t.scadenza) < oggi) return true;
-        if (t.id_contenuto && clpPubDates?.[t.id_contenuto]?.data && parseLocalDate(clpPubDates[t.id_contenuto].data!) < oggi) return true;
+        if (t.id_contenuto && clpPubDates?.[t.id_contenuto]?.data) {
+          const d = parseLocalDate(clpPubDates[t.id_contenuto].data!); d.setHours(23, 59, 59);
+          return d.getTime() < now;
+        }
         return false;
       })
     : [];
@@ -94,8 +106,8 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, 
   };
 
   return (
-    <div ref={ref} className="absolute top-full left-0 mt-2 rounded-xl shadow-2xl border overflow-hidden z-[200]"
-      style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', width: (isScaduti || tipo === 'urgenti') ? 360 : 320, maxHeight: 420 }}>
+    <div ref={ref} className="fixed rounded-xl shadow-2xl border overflow-hidden"
+      style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', width: (isScaduti || tipo === 'urgenti') ? 360 : 320, maxHeight: 420, top: 110, left: 16, zIndex: 9999 }}>
       <div className="px-3 py-2 border-b flex items-center justify-between" style={{ borderColor: 'hsl(var(--border))' }}>
         <span className="text-xs font-bold" style={{ color }}>{label} ({filtered.length})</span>
         <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
@@ -242,58 +254,58 @@ export function TopBar({ team, taskCounts, tasks, clpPubDates, onViewPersona, pe
           <img src={fuyueLogo} alt="Fuyue" className="hidden lg:block h-4 w-auto opacity-50 hover:opacity-80 transition-opacity" />
         </div>
 
-        {/* Contatori — desktop: full text, mobile: compact numbers */}
+        {/* Contatori — cliccabili, aprono dropdown */}
         <div className="flex items-center gap-2 flex-1 min-w-0 relative">
           {/* Desktop counters */}
-          <span className="stat-pill text-xs hidden md:inline-flex cursor-pointer hover:opacity-80 transition-opacity"
-            style={{ background: counterDrop === 'clp' ? 'rgba(139,92,246,0.4)' : 'rgba(139,92,246,0.2)', color: '#C4B5FD' }}
-            onClick={() => setCounterDrop(prev => prev === 'clp' ? null : 'clp')}>
+          <button className="stat-pill text-xs hidden md:inline-flex hover:scale-105 active:scale-95 transition-all"
+            style={{ background: counterDrop === 'clp' ? 'rgba(139,92,246,0.5)' : 'rgba(139,92,246,0.2)', color: '#C4B5FD', cursor: 'pointer', border: counterDrop === 'clp' ? '1px solid #C4B5FD' : '1px solid transparent' }}
+            onClick={() => { console.log('[TopBar] click CLP'); setCounterDrop(prev => prev === 'clp' ? null : 'clp'); }}>
             🎬 {taskCounts.clpDaFare} CLP
-          </span>
-          <span className="stat-pill text-xs hidden md:inline-flex cursor-pointer hover:opacity-80 transition-opacity"
-            style={{ background: counterDrop === 'task' ? 'rgba(245,158,11,0.4)' : 'rgba(245,158,11,0.2)', color: '#FCD34D' }}
-            onClick={() => setCounterDrop(prev => prev === 'task' ? null : 'task')}>
+          </button>
+          <button className="stat-pill text-xs hidden md:inline-flex hover:scale-105 active:scale-95 transition-all"
+            style={{ background: counterDrop === 'task' ? 'rgba(245,158,11,0.5)' : 'rgba(245,158,11,0.2)', color: '#FCD34D', cursor: 'pointer', border: counterDrop === 'task' ? '1px solid #FCD34D' : '1px solid transparent' }}
+            onClick={() => { console.log('[TopBar] click Task'); setCounterDrop(prev => prev === 'task' ? null : 'task'); }}>
             📋 {taskCounts.taskDaFare} Task
-          </span>
+          </button>
           {taskCounts.urgenti > 0 && (
-            <span className="stat-pill text-xs hidden md:inline-flex cursor-pointer hover:opacity-80 transition-opacity"
-              style={{ background: counterDrop === 'urgenti' ? 'rgba(239,68,68,0.35)' : 'rgba(239,68,68,0.2)', color: '#FCA5A5' }}
-              onClick={() => setCounterDrop(prev => prev === 'urgenti' ? null : 'urgenti')}>
+            <button className="stat-pill text-xs hidden md:inline-flex hover:scale-105 active:scale-95 transition-all"
+              style={{ background: counterDrop === 'urgenti' ? 'rgba(239,68,68,0.4)' : 'rgba(239,68,68,0.2)', color: '#FCA5A5', cursor: 'pointer', border: counterDrop === 'urgenti' ? '1px solid #FCA5A5' : '1px solid transparent' }}
+              onClick={() => { console.log('[TopBar] click Urgenti'); setCounterDrop(prev => prev === 'urgenti' ? null : 'urgenti'); }}>
               🔴 {taskCounts.urgenti} urgenti
-            </span>
+            </button>
           )}
           {taskCounts.scaduti > 0 && (
-            <span className="stat-pill text-xs hidden md:inline-flex cursor-pointer hover:opacity-80 transition-opacity"
-              style={{ background: counterDrop === 'scaduti' ? 'rgba(239,68,68,0.45)' : 'rgba(239,68,68,0.3)', color: '#F87171' }}
-              onClick={() => setCounterDrop(prev => prev === 'scaduti' ? null : 'scaduti')}>
+            <button className="stat-pill text-xs hidden md:inline-flex hover:scale-105 active:scale-95 transition-all"
+              style={{ background: counterDrop === 'scaduti' ? 'rgba(239,68,68,0.5)' : 'rgba(239,68,68,0.3)', color: '#F87171', cursor: 'pointer', border: counterDrop === 'scaduti' ? '1px solid #F87171' : '1px solid transparent' }}
+              onClick={() => { console.log('[TopBar] click Scaduti'); setCounterDrop(prev => prev === 'scaduti' ? null : 'scaduti'); }}>
               ⚠️ {taskCounts.scaduti} scaduti
-            </span>
+            </button>
           )}
 
-          {/* Mobile compact counters — just numbers */}
-          <span className="stat-pill text-xs md:hidden cursor-pointer" style={{ background: 'rgba(139,92,246,0.2)', color: '#C4B5FD' }}
+          {/* Mobile compact counters */}
+          <button className="stat-pill text-xs md:hidden" style={{ background: 'rgba(139,92,246,0.2)', color: '#C4B5FD', cursor: 'pointer' }}
             onClick={() => setCounterDrop(prev => prev === 'clp' ? null : 'clp')}>
             🎬{taskCounts.clpDaFare}
-          </span>
-          <span className="stat-pill text-xs md:hidden cursor-pointer" style={{ background: 'rgba(245,158,11,0.2)', color: '#FCD34D' }}
+          </button>
+          <button className="stat-pill text-xs md:hidden" style={{ background: 'rgba(245,158,11,0.2)', color: '#FCD34D', cursor: 'pointer' }}
             onClick={() => setCounterDrop(prev => prev === 'task' ? null : 'task')}>
             📋{taskCounts.taskDaFare}
-          </span>
+          </button>
           {taskCounts.urgenti > 0 && (
-            <span className="stat-pill text-xs md:hidden cursor-pointer" style={{ background: 'rgba(239,68,68,0.2)', color: '#FCA5A5' }}
+            <button className="stat-pill text-xs md:hidden" style={{ background: 'rgba(239,68,68,0.2)', color: '#FCA5A5', cursor: 'pointer' }}
               onClick={() => setCounterDrop(prev => prev === 'urgenti' ? null : 'urgenti')}>
               {taskCounts.urgenti}
-            </span>
+            </button>
           )}
           {taskCounts.scaduti > 0 && (
-            <span className="stat-pill text-xs md:hidden cursor-pointer" style={{ background: 'rgba(239,68,68,0.3)', color: '#F87171' }}
+            <button className="stat-pill text-xs md:hidden" style={{ background: 'rgba(239,68,68,0.3)', color: '#F87171', cursor: 'pointer' }}
               onClick={() => setCounterDrop(prev => prev === 'scaduti' ? null : 'scaduti')}>
               {taskCounts.scaduti}
-            </span>
+            </button>
           )}
 
-          {/* Dropdown lista */}
-          {counterDrop && <CounterDropdown
+          {/* Dropdown lista — rendered via portal to avoid z-index issues */}
+          {counterDrop && createPortal(<CounterDropdown
             tasks={tasks}
             team={team}
             tipo={counterDrop}
@@ -311,7 +323,6 @@ export function TopBar({ team, taskCounts, tasks, clpPubDates, onViewPersona, pe
             }}
             onArchive={async (taskId) => {
               await supabase.from('task').update({ stato: 'Archiviato' }).eq('id', taskId);
-              // Rimuovi anche evento calendario collegato
               const { data: calEvts } = await supabase.from('calendario')
                 .select('id, descrizione')
                 .like('descrizione', `%[TASK:${taskId}]%`);
@@ -323,7 +334,7 @@ export function TopBar({ team, taskCounts, tasks, clpPubDates, onViewPersona, pe
               if (onTaskReassigned) onTaskReassigned(taskId, '', undefined);
             }}
             clpPubDates={clpPubDates}
-          />}
+          />, document.body)}
 
           {/* Google Drive storage indicator */}
           <div className="hidden md:block">
