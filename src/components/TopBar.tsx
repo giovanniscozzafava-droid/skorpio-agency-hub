@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { supabase } from '../integrations/supabase/client';
 import type { TeamMember, Task } from '../types';
 import { Avatar } from './Avatar';
 import { ImpostazioniPanel } from './ImpostazioniPanel';
@@ -18,6 +19,7 @@ interface TopBarProps {
   onViewPersona: (nome: string | null) => void;
   personaView: string | null;
   onTeamChange: (team: TeamMember[]) => void;
+  onGoToTask?: (taskId: string) => void;
 }
 
 function parseLocalDate(s: string) {
@@ -25,10 +27,25 @@ function parseLocalDate(s: string) {
   return new Date(y, m - 1, d);
 }
 
+function toDateStr(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 type DropdownType = 'clp' | 'task' | 'urgenti' | 'scaduti' | null;
 
-function CounterDropdown({ tasks, tipo, onClose }: { tasks: Task[]; tipo: DropdownType; onClose: () => void }) {
+function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign }: {
+  tasks: Task[];
+  team: TeamMember[];
+  tipo: DropdownType;
+  onClose: () => void;
+  onClickTask: (taskId: string) => void;
+  onReassign: (taskId: string, newDate: string, newPersona?: string) => void;
+}) {
   const ref = React.useRef<HTMLDivElement>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [newDate, setNewDate] = useState('');
+  const [newPersona, setNewPersona] = useState('');
+
   React.useEffect(() => {
     const fn = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
     document.addEventListener('mousedown', fn);
@@ -36,6 +53,7 @@ function CounterDropdown({ tasks, tipo, onClose }: { tasks: Task[]; tipo: Dropdo
   }, [onClose]);
 
   const oggi = new Date(); oggi.setHours(0, 0, 0, 0);
+  const domani = toDateStr(new Date(oggi.getTime() + 86400000));
 
   const filtered = tipo === 'clp'
     ? tasks.filter(t => t.id_contenuto?.trim() && t.stato !== 'Completato')
@@ -49,52 +67,102 @@ function CounterDropdown({ tasks, tipo, onClose }: { tasks: Task[]; tipo: Dropdo
 
   const label = tipo === 'clp' ? '🎬 CLP attivi' : tipo === 'task' ? '📋 Task attivi' : tipo === 'urgenti' ? '🔴 Urgenti' : '⚠️ Scaduti';
   const color = tipo === 'clp' ? '#8B5CF6' : tipo === 'task' ? '#F59E0B' : '#EF4444';
+  const isScaduti = tipo === 'scaduti';
+
+  const handleExpand = (t: Task, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (expandedId === t.id) {
+      setExpandedId(null);
+    } else {
+      setExpandedId(t.id);
+      setNewDate(domani);
+      setNewPersona(t.assegnato_a || '');
+    }
+  };
 
   return (
-    <div ref={ref} className="absolute top-full left-0 mt-2 w-80 max-h-[400px] rounded-xl shadow-2xl border overflow-hidden z-[200]"
-      style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}>
+    <div ref={ref} className="absolute top-full left-0 mt-2 rounded-xl shadow-2xl border overflow-hidden z-[200]"
+      style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', width: isScaduti ? 360 : 320, maxHeight: 420 }}>
       <div className="px-3 py-2 border-b flex items-center justify-between" style={{ borderColor: 'hsl(var(--border))' }}>
         <span className="text-xs font-bold" style={{ color }}>{label} ({filtered.length})</span>
         <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
       </div>
-      <div className="overflow-y-auto max-h-[350px]">
+      <div className="overflow-y-auto" style={{ maxHeight: 370 }}>
         {filtered.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-6">Nessun elemento</p>
         ) : (
-          filtered.slice(0, 30).map(t => (
-            <div key={t.id} className="px-3 py-2 border-b last:border-0 hover:bg-muted/50 transition-colors"
-              style={{ borderColor: 'hsl(var(--border) / 0.5)' }}>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-mono font-bold flex-shrink-0" style={{ color }}>{t.id_display}</span>
-                <span className="text-xs text-foreground truncate flex-1">{t.descrizione}</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0" style={{
-                  background: t.stato === 'Da fare' ? 'hsl(38 92% 50% / 0.1)' : t.stato === 'In lavorazione' ? 'hsl(214 80% 55% / 0.1)' : 'hsl(var(--muted))',
-                  color: t.stato === 'Da fare' ? 'hsl(38 80% 40%)' : t.stato === 'In lavorazione' ? 'hsl(214 70% 44%)' : 'hsl(var(--muted-foreground))',
-                }}>{t.stato}</span>
+          filtered.slice(0, 40).map(t => (
+            <div key={t.id} className="border-b last:border-0" style={{ borderColor: 'hsl(var(--border) / 0.5)' }}>
+              <div
+                className="px-3 py-2 hover:bg-muted/50 transition-colors cursor-pointer"
+                onClick={() => onClickTask(t.id)}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold flex-shrink-0" style={{ color }}>{t.id_display}</span>
+                  <span className="text-xs text-foreground truncate flex-1">{t.descrizione}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0" style={{
+                    background: t.stato === 'Da fare' ? 'hsl(38 92% 50% / 0.1)' : t.stato === 'In lavorazione' ? 'hsl(214 80% 55% / 0.1)' : 'hsl(var(--muted))',
+                    color: t.stato === 'Da fare' ? 'hsl(38 80% 40%)' : t.stato === 'In lavorazione' ? 'hsl(214 70% 44%)' : 'hsl(var(--muted-foreground))',
+                  }}>{t.stato}</span>
+                </div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  {t.cliente_nome && <span className="text-[10px] text-muted-foreground">{t.cliente_nome}</span>}
+                  {t.assegnato_a && <span className="text-[10px] text-muted-foreground">→ {t.assegnato_a}</span>}
+                  {t.scadenza && (
+                    <span className="text-[10px] ml-auto" style={{
+                      color: parseLocalDate(t.scadenza) < oggi ? '#EF4444' : 'hsl(var(--muted-foreground))'
+                    }}>
+                      📅 {parseLocalDate(t.scadenza).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}
+                    </span>
+                  )}
+                  {isScaduti && (
+                    <button
+                      onClick={e => handleExpand(t, e)}
+                      className="text-[10px] px-1.5 py-0.5 rounded font-semibold transition-colors ml-1 flex-shrink-0"
+                      style={{ background: expandedId === t.id ? 'hsl(214 80% 55% / 0.15)' : 'hsl(38 92% 50% / 0.12)', color: expandedId === t.id ? 'hsl(214 70% 44%)' : 'hsl(38 80% 40%)' }}
+                    >
+                      {expandedId === t.id ? '✕' : '🔄'}
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-2 mt-0.5">
-                {t.cliente_nome && <span className="text-[10px] text-muted-foreground">{t.cliente_nome}</span>}
-                {t.assegnato_a && <span className="text-[10px] text-muted-foreground">→ {t.assegnato_a}</span>}
-                {t.scadenza && (
-                  <span className="text-[10px] ml-auto" style={{
-                    color: parseLocalDate(t.scadenza) < oggi ? '#EF4444' : 'hsl(var(--muted-foreground))'
-                  }}>
-                    📅 {parseLocalDate(t.scadenza).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}
-                  </span>
-                )}
-              </div>
+              {/* Inline reassign for scaduti */}
+              {isScaduti && expandedId === t.id && (
+                <div className="px-3 pb-2.5 pt-1 space-y-1.5" style={{ background: 'hsl(38 92% 50% / 0.04)' }} onClick={e => e.stopPropagation()}>
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <label className="text-[9px] font-bold text-muted-foreground uppercase">Nuova scadenza</label>
+                      <input type="date" className="sk-input w-full text-xs" value={newDate} onChange={e => setNewDate(e.target.value)} />
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-[9px] font-bold text-muted-foreground uppercase">Assegnato a</label>
+                      <select className="sk-select w-full text-xs" value={newPersona} onChange={e => setNewPersona(e.target.value)}>
+                        {team.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { onReassign(t.id, newDate, newPersona !== t.assegnato_a ? newPersona : undefined); setExpandedId(null); }}
+                    disabled={!newDate}
+                    className="w-full py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-40 transition-all"
+                    style={{ background: '#3B82F6' }}
+                  >
+                    ✅ Riassegna{newPersona !== t.assegnato_a ? ` a ${newPersona}` : ''} → {newDate ? parseLocalDate(newDate).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' }) : ''}
+                  </button>
+                </div>
+              )}
             </div>
           ))
         )}
-        {filtered.length > 30 && (
-          <p className="text-[10px] text-center text-muted-foreground py-2">…e altri {filtered.length - 30}</p>
+        {filtered.length > 40 && (
+          <p className="text-[10px] text-center text-muted-foreground py-2">…e altri {filtered.length - 40}</p>
         )}
       </div>
     </div>
   );
 }
 
-export function TopBar({ team, taskCounts, tasks, onViewPersona, personaView, onTeamChange }: TopBarProps) {
+export function TopBar({ team, taskCounts, tasks, onViewPersona, personaView, onTeamChange, onGoToTask }: TopBarProps) {
   const { utente, tab, setTab, logout } = useApp();
   const [orologio, setOrologio] = useState(new Date());
   const [showImpostazioni, setShowImpostazioni] = useState(false);
@@ -194,7 +262,24 @@ export function TopBar({ team, taskCounts, tasks, onViewPersona, personaView, on
           )}
 
           {/* Dropdown lista */}
-          {counterDrop && <CounterDropdown tasks={tasks} tipo={counterDrop} onClose={() => setCounterDrop(null)} />}
+          {counterDrop && <CounterDropdown
+            tasks={tasks}
+            team={team}
+            tipo={counterDrop}
+            onClose={() => setCounterDrop(null)}
+            onClickTask={(taskId) => {
+              setCounterDrop(null);
+              setTab('kanban');
+              if (onGoToTask) onGoToTask(taskId);
+            }}
+            onReassign={async (taskId, newDate, newPersona) => {
+              const update: any = { scadenza: newDate };
+              if (newPersona) update.assegnato_a = newPersona;
+              await supabase.from('task').update(update).eq('id', taskId);
+              // Refresh — il parent ricarica ogni 30s, ma forziamo
+              window.dispatchEvent(new Event('skorpio-refresh-tasks'));
+            }}
+          />}
 
           {/* Google Drive storage indicator */}
           <div className="hidden md:block">
