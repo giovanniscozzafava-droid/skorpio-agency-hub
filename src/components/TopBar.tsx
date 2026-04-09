@@ -79,15 +79,13 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, 
     : tipo === 'scaduti'
     ? tasks.filter(t => {
         if (t.stato === 'Completato') return false;
+        if (t.id_contenuto && clpPubDates?.[t.id_contenuto]) {
+          const fase = clpPubDates[t.id_contenuto].fase;
+          if (fase === 'Pubblicato' || fase === 'Scartata') return false;
+        }
         const now = Date.now();
-        if (t.scadenza) {
-          const d = parseLocalDate(t.scadenza); d.setHours(23, 59, 59);
-          return d.getTime() < now;
-        }
-        if (t.id_contenuto && clpPubDates?.[t.id_contenuto]?.data) {
-          const d = parseLocalDate(clpPubDates[t.id_contenuto].data!); d.setHours(23, 59, 59);
-          return d.getTime() < now;
-        }
+        if (t.scadenza) { const d = parseLocalDate(t.scadenza); d.setHours(23,59,59); return d.getTime() < now; }
+        if (t.id_contenuto && clpPubDates?.[t.id_contenuto]?.data) { const d = parseLocalDate(clpPubDates[t.id_contenuto].data!); d.setHours(23,59,59); return d.getTime() < now; }
         return false;
       })
     : [];
