@@ -34,13 +34,14 @@ function toDateStr(d: Date) {
 
 type DropdownType = 'clp' | 'task' | 'urgenti' | 'scaduti' | null;
 
-function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign }: {
+function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, onArchive }: {
   tasks: Task[];
   team: TeamMember[];
   tipo: DropdownType;
   onClose: () => void;
   onClickTask: (taskId: string) => void;
   onReassign: (taskId: string, newDate: string, newPersona?: string) => void;
+  onArchive: (taskId: string) => void;
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -117,13 +118,24 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign }
                     </span>
                   )}
                   {isScaduti && (
-                    <button
-                      onClick={e => handleExpand(t, e)}
-                      className="text-[10px] px-1.5 py-0.5 rounded font-semibold transition-colors ml-1 flex-shrink-0"
-                      style={{ background: expandedId === t.id ? 'hsl(214 80% 55% / 0.15)' : 'hsl(38 92% 50% / 0.12)', color: expandedId === t.id ? 'hsl(214 70% 44%)' : 'hsl(38 80% 40%)' }}
-                    >
-                      {expandedId === t.id ? '✕' : '🔄'}
-                    </button>
+                    <div className="flex gap-1 ml-1 flex-shrink-0">
+                      <button
+                        onClick={e => handleExpand(t, e)}
+                        className="text-[10px] px-1.5 py-0.5 rounded font-semibold transition-colors"
+                        style={{ background: expandedId === t.id ? 'hsl(214 80% 55% / 0.15)' : 'hsl(38 92% 50% / 0.12)', color: expandedId === t.id ? 'hsl(214 70% 44%)' : 'hsl(38 80% 40%)' }}
+                        title="Riassegna"
+                      >
+                        {expandedId === t.id ? '✕' : '🔄'}
+                      </button>
+                      <button
+                        onClick={e => { e.stopPropagation(); onArchive(t.id); }}
+                        className="text-[10px] px-1.5 py-0.5 rounded font-semibold transition-colors"
+                        style={{ background: 'hsl(0 70% 50% / 0.08)', color: 'hsl(0 60% 45%)' }}
+                        title="Archivia"
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -278,6 +290,10 @@ export function TopBar({ team, taskCounts, tasks, onViewPersona, personaView, on
               if (newPersona) update.assegnato_a = newPersona;
               await supabase.from('task').update(update).eq('id', taskId);
               if (onTaskReassigned) onTaskReassigned(taskId, newDate, newPersona);
+            }}
+            onArchive={async (taskId) => {
+              await supabase.from('task').update({ stato: 'Archiviato' }).eq('id', taskId);
+              if (onTaskReassigned) onTaskReassigned(taskId, '', undefined);
             }}
           />}
 
