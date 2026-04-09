@@ -51,6 +51,8 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [newDate, setNewDate] = useState('');
   const [newPersona, setNewPersona] = useState('');
+  const [bulkDate, setBulkDate] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   React.useEffect(() => {
     // Delay to prevent the same click that opened the dropdown from closing it
@@ -96,11 +98,52 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, 
 
   return (
     <div ref={ref} className="fixed rounded-xl shadow-2xl border overflow-hidden"
-      style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', width: (isScaduti || tipo === 'urgenti') ? 360 : 320, maxHeight: 420, top: 110, left: 16, zIndex: 9999 }}>
+      style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', width: (isScaduti || tipo === 'urgenti') ? 380 : 320, maxHeight: 520, top: 110, left: 16, zIndex: 9999 }}>
       <div className="px-3 py-2 border-b flex items-center justify-between" style={{ borderColor: 'hsl(var(--border))' }}>
         <span className="text-xs font-bold" style={{ color }}>{label} ({filtered.length})</span>
         <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
       </div>
+
+      {/* Bulk actions for scaduti */}
+      {isScaduti && filtered.length > 0 && (
+        <div className="px-3 py-2.5 border-b space-y-2" style={{ background: 'hsl(0 80% 55% / 0.04)', borderColor: 'hsl(var(--border))' }}>
+          <div className="flex gap-2 items-end">
+            <div className="flex-1">
+              <label className="text-[9px] font-bold uppercase" style={{ color: '#EF4444' }}>🔄 Rischedula tutti a:</label>
+              <input type="date" className="sk-input w-full text-xs mt-0.5" value={bulkDate} onChange={e => setBulkDate(e.target.value)} />
+            </div>
+            <button
+              disabled={!bulkDate || bulkBusy}
+              onClick={async () => {
+                setBulkBusy(true);
+                for (const t of filtered) {
+                  await onReassign(t.id, bulkDate);
+                }
+                setBulkBusy(false);
+                setBulkDate('');
+              }}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-40 transition-all whitespace-nowrap"
+              style={{ background: '#3B82F6' }}
+            >
+              {bulkBusy ? '⏳…' : `✅ Tutti (${filtered.length})`}
+            </button>
+          </div>
+          <button
+            disabled={bulkBusy}
+            onClick={async () => {
+              setBulkBusy(true);
+              for (const t of filtered) {
+                await onArchive(t.id);
+              }
+              setBulkBusy(false);
+            }}
+            className="w-full py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-40"
+            style={{ background: 'hsl(0 70% 50% / 0.08)', color: 'hsl(0 60% 45%)', border: '1px solid hsl(0 60% 50% / 0.15)' }}
+          >
+            {bulkBusy ? '⏳…' : `🗑️ Archivia tutti (${filtered.length})`}
+          </button>
+        </div>
+      )}
       <div className="overflow-y-auto" style={{ maxHeight: 370 }}>
         {filtered.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-6">Nessun elemento</p>
