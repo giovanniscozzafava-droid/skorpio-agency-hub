@@ -16,6 +16,7 @@ interface TopBarProps {
   team: TeamMember[];
   taskCounts: { daFare: number; clpDaFare: number; taskDaFare: number; urgenti: number; scaduti: number };
   tasks: Task[];
+  clpPubDates?: Record<string, { data: string | null; ora: string | null }>;
   onViewPersona: (nome: string | null) => void;
   personaView: string | null;
   onTeamChange: (team: TeamMember[]) => void;
@@ -34,7 +35,7 @@ function toDateStr(d: Date) {
 
 type DropdownType = 'clp' | 'task' | 'urgenti' | 'scaduti' | null;
 
-function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, onArchive }: {
+function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, onArchive, clpPubDates }: {
   tasks: Task[];
   team: TeamMember[];
   tipo: DropdownType;
@@ -42,6 +43,7 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, 
   onClickTask: (taskId: string) => void;
   onReassign: (taskId: string, newDate: string, newPersona?: string) => void;
   onArchive: (taskId: string) => void;
+  clpPubDates?: Record<string, { data: string | null; ora: string | null }>;
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -64,7 +66,12 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, 
     : tipo === 'urgenti'
     ? tasks.filter(t => t.priorita === '🔴 Alta' && t.stato !== 'Completato')
     : tipo === 'scaduti'
-    ? tasks.filter(t => t.scadenza && t.stato !== 'Completato' && parseLocalDate(t.scadenza) < oggi)
+    ? tasks.filter(t => {
+        if (t.stato === 'Completato') return false;
+        if (t.scadenza && parseLocalDate(t.scadenza) < oggi) return true;
+        if (t.id_contenuto && clpPubDates?.[t.id_contenuto]?.data && parseLocalDate(clpPubDates[t.id_contenuto].data!) < oggi) return true;
+        return false;
+      })
     : [];
 
   const label = tipo === 'clp' ? '🎬 CLP attivi' : tipo === 'task' ? '📋 Task attivi' : tipo === 'urgenti' ? '🔴 Urgenti' : '⚠️ Scaduti';
@@ -117,7 +124,14 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, 
                       📅 {parseLocalDate(t.scadenza).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}
                     </span>
                   )}
-                  {isScaduti && (
+                  {!t.scadenza && t.id_contenuto && clpPubDates?.[t.id_contenuto]?.data && (
+                    <span className="text-[10px] ml-auto" style={{
+                      color: parseLocalDate(clpPubDates[t.id_contenuto].data!) < oggi ? '#EF4444' : '#7C3AED'
+                    }}>
+                      📡 {parseLocalDate(clpPubDates[t.id_contenuto].data!).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}
+                    </span>
+                  )}
+                  {(isScaduti || tipo === 'urgenti') && (
                     <div className="flex gap-1 ml-1 flex-shrink-0">
                       <button
                         onClick={e => handleExpand(t, e)}
@@ -175,7 +189,7 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, 
   );
 }
 
-export function TopBar({ team, taskCounts, tasks, onViewPersona, personaView, onTeamChange, onGoToTask, onTaskReassigned }: TopBarProps) {
+export function TopBar({ team, taskCounts, tasks, clpPubDates, onViewPersona, personaView, onTeamChange, onGoToTask, onTaskReassigned }: TopBarProps) {
   const { utente, tab, setTab, logout } = useApp();
   const [orologio, setOrologio] = useState(new Date());
   const [showImpostazioni, setShowImpostazioni] = useState(false);
@@ -304,6 +318,7 @@ export function TopBar({ team, taskCounts, tasks, onViewPersona, personaView, on
               }
               if (onTaskReassigned) onTaskReassigned(taskId, '', undefined);
             }}
+            clpPubDates={clpPubDates}
           />}
 
           {/* Google Drive storage indicator */}
