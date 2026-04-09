@@ -293,6 +293,15 @@ export function TopBar({ team, taskCounts, tasks, onViewPersona, personaView, on
             }}
             onArchive={async (taskId) => {
               await supabase.from('task').update({ stato: 'Archiviato' }).eq('id', taskId);
+              // Rimuovi anche evento calendario collegato
+              const { data: calEvts } = await supabase.from('calendario')
+                .select('id, descrizione')
+                .like('descrizione', `%[TASK:${taskId}]%`);
+              if (calEvts?.length) {
+                for (const ev of calEvts) {
+                  await supabase.from('calendario').delete().eq('id', ev.id);
+                }
+              }
               if (onTaskReassigned) onTaskReassigned(taskId, '', undefined);
             }}
           />}
