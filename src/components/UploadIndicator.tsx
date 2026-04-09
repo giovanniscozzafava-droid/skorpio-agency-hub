@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useUpload, UploadItem } from '../context/UploadContext';
+import { ErrorHelper } from './ErrorHelper';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -142,16 +143,11 @@ function UploadRow({ item, onPause, onResume, onCancel, onRetry }: {
           <p className="text-[10px] text-[hsl(var(--clr-red))] mt-1 ml-6 truncate" title={item.errorMsg}>
             {item.errorMsg}
           </p>
-          {(item.errorMsg.includes('expired') || item.errorMsg.includes('revoked') || item.errorMsg.includes('Refresh fallito') || item.errorMsg.includes('invalid_grant')) && (
-            <div className="ml-6 mt-1.5 rounded-lg px-2.5 py-2" style={{ background: 'hsl(38 92% 50% / 0.10)', border: '1px solid hsl(38 80% 55% / 0.30)' }}>
-              <p className="text-[11px] font-semibold" style={{ color: 'hsl(32 95% 35%)' }}>
-                ⚠️ Token Google Drive scaduto
-              </p>
-              <p className="text-[10px] mt-0.5" style={{ color: 'hsl(32 60% 30%)' }}>
-                Vai in <strong>Impostazioni → Integrazioni</strong>, scollega Google Drive e ricollegalo.
-              </p>
-            </div>
-          )}
+          <ErrorHelper
+            errorMsg={item.errorMsg}
+            context={`Upload ${item.fileName} → ${item.clipDisplayId || item.clipCode}${item.clienteNome ? ` (${item.clienteNome})` : ''}`}
+            compact
+          />
         </>
       )}
 
