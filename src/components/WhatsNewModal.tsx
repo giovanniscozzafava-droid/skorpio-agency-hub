@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 
-const CURRENT_VERSION = '2026-04-07';
+const CURRENT_VERSION = '2026-04-08';
 
 export interface Feature {
   id: string;
@@ -60,6 +60,54 @@ export const FEATURES: Feature[] = [
     description: 'Ogni card mostra il countdown alla data di pubblicazione del CLP.',
     color: '#8B5CF6',
     version: '2026-04-07',
+  },
+  {
+    id: 'brief-montaggio',
+    icon: '🎬',
+    title: 'Brief montaggio',
+    description: 'Quando apri un task di Premontaggio, Montaggio o Upload, trovi in alto il box viola con Hook, POV e Istruzioni montaggio dal CLP.',
+    color: '#8B5CF6',
+    version: '2026-04-08',
+  },
+  {
+    id: 'istruzioni-montaggio',
+    icon: '🔧',
+    title: 'Istruzioni montaggio',
+    description: 'Nuovo campo nel CLP (sezione Creativita): scrivi indicazioni per chi monta — tagli, effetti, ritmo. Appaiono nel brief e nella scheda riprese.',
+    color: '#059669',
+    version: '2026-04-08',
+  },
+  {
+    id: 'checkpoint-upload',
+    icon: '⚠️',
+    title: 'Checkpoint upload',
+    description: 'Prima di segnare un CLP come Uploadato, devi confermare di aver inserito hook, POV e istruzioni nel video. Checkbox obbligatoria.',
+    color: '#D97706',
+    version: '2026-04-08',
+  },
+  {
+    id: 'data-ripresa-calendario',
+    icon: '📅',
+    title: 'Data ripresa da calendario',
+    description: 'Quando crei o modifichi un CLP, scegli la data ripresa dal dropdown che mostra gli appuntamenti del calendario. Niente piu date manuali.',
+    color: '#3B82F6',
+    version: '2026-04-08',
+  },
+  {
+    id: 'scheda-riprese-pdf',
+    icon: '📄',
+    title: 'Scheda riprese PDF',
+    description: 'Nel calendario, clicca un evento e premi "Scarica scheda riprese". Genera un PDF stampabile con tutti i CLP del giorno, brief montaggio, QR code del link ispirazione e griglie per i codici clip Sony.',
+    color: '#EC4899',
+    version: '2026-04-08',
+  },
+  {
+    id: 'calendario-giorno-click',
+    icon: '🗓️',
+    title: 'Clicca il giorno → esplodi',
+    description: 'Nella vista mese, clicca su un giorno per aprire la vista giorno. Nella vista giorno, usa le frecce per navigare avanti e indietro.',
+    color: '#0EA5E9',
+    version: '2026-04-08',
   },
 ];
 
