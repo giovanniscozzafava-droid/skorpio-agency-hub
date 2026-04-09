@@ -183,6 +183,9 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   const [uploadProgress, setUploadProgress] = useState<{ percent: number; fileName: string } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadCheck, setUploadCheck] = useState(false);
+  const [showReschedule, setShowReschedule] = useState(false);
+  const [reschedDate, setReschedDate] = useState('');
+  const [reschedSaving, setReschedSaving] = useState(false);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const montaggioUploadRef = useRef<HTMLInputElement>(null);
   
@@ -887,6 +890,43 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
           {/* ── Countdown grande nel dettaglio ──────────────────────────────── */}
           {task.scadenza && task.stato !== 'Completato' && (
             <CountdownDettaglio scadenza={task.scadenza} ora={task.ora} />
+          )}
+
+          {/* ── Rischedula task scaduto ──────────────────────────────────── */}
+          {isScaduto && task.stato !== 'Completato' && (
+            <div className="rounded-xl border overflow-hidden" style={{ borderColor: '#F87171', background: '#FEF2F2' }}>
+              {!showReschedule ? (
+                <button
+                  onClick={() => { setShowReschedule(true); const d = new Date(); d.setDate(d.getDate() + 1); setReschedDate(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`); }}
+                  className="w-full px-3 py-2.5 text-xs font-semibold flex items-center justify-center gap-2 hover:bg-red-100 transition-colors"
+                  style={{ color: '#DC2626' }}
+                >
+                  🔄 Rischedula questo task
+                </button>
+              ) : (
+                <div className="px-3 py-2.5 space-y-2">
+                  <p className="text-[10px] font-bold uppercase" style={{ color: '#DC2626' }}>🔄 Nuova scadenza</p>
+                  <div className="flex gap-2">
+                    <input type="date" className="sk-input flex-1 text-xs" value={reschedDate} onChange={e => setReschedDate(e.target.value)} />
+                    <button
+                      disabled={!reschedDate || reschedSaving}
+                      onClick={async () => {
+                        setReschedSaving(true);
+                        await supabase.from('task').update({ scadenza: reschedDate }).eq('id', task.id);
+                        setReschedSaving(false);
+                        setShowReschedule(false);
+                        onUpdate({ ...task, scadenza: reschedDate } as Task);
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-40"
+                      style={{ background: '#3B82F6' }}
+                    >
+                      {reschedSaving ? '⏳' : '✅'}
+                    </button>
+                    <button onClick={() => setShowReschedule(false)} className="text-xs text-muted-foreground px-2">✕</button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
           {/* Info rows */}
