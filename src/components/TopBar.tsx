@@ -16,7 +16,7 @@ interface TopBarProps {
   team: TeamMember[];
   taskCounts: { daFare: number; clpDaFare: number; taskDaFare: number; urgenti: number; scaduti: number };
   tasks: Task[];
-  clpPubDates?: Record<string, { data: string | null; ora: string | null }>;
+  clpPubDates?: Record<string, { data: string | null; ora: string | null; fase?: string }>;
   onViewPersona: (nome: string | null) => void;
   personaView: string | null;
   onTeamChange: (team: TeamMember[]) => void;
@@ -43,7 +43,7 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, 
   onClickTask: (taskId: string) => void;
   onReassign: (taskId: string, newDate: string, newPersona?: string) => void;
   onArchive: (taskId: string) => void;
-  clpPubDates?: Record<string, { data: string | null; ora: string | null }>;
+  clpPubDates?: Record<string, { data: string | null; ora: string | null; fase?: string }>;
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -68,6 +68,7 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, 
     : tipo === 'scaduti'
     ? tasks.filter(t => {
         if (t.stato === 'Completato') return false;
+        if (t.id_contenuto && clpPubDates?.[t.id_contenuto]?.fase === 'Pubblicato') return false;
         if (t.scadenza && parseLocalDate(t.scadenza) < oggi) return true;
         if (t.id_contenuto && clpPubDates?.[t.id_contenuto]?.data && parseLocalDate(clpPubDates[t.id_contenuto].data!) < oggi) return true;
         return false;
