@@ -40,7 +40,9 @@ function MainApp() {
   useEffect(() => {
     loadSharedData();
     const interval = setInterval(loadSharedData, 30000);
-    return () => clearInterval(interval);
+    const refreshHandler = () => loadSharedData();
+    window.addEventListener('skorpio-refresh-tasks', refreshHandler);
+    return () => { clearInterval(interval); window.removeEventListener('skorpio-refresh-tasks', refreshHandler); };
   }, [loadSharedData, tab]);
 
   // 1. Non autenticato → Landing Page
@@ -71,6 +73,7 @@ function MainApp() {
         onViewPersona={setPersonaView}
         personaView={personaView}
         onTeamChange={setTeam}
+        onGoToTask={() => {}}
       />
       <div className="flex-1 overflow-hidden min-h-0 pt-[100px]">
         {tab === 'kanban' && (
