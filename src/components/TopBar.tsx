@@ -13,7 +13,7 @@ import { Menu } from 'lucide-react';
 
 interface TopBarProps {
   team: TeamMember[];
-  taskCounts: { daFare: number; urgenti: number; scaduti: number };
+  taskCounts: { daFare: number; clpDaFare: number; taskDaFare: number; urgenti: number; scaduti: number };
   onViewPersona: (nome: string | null) => void;
   personaView: string | null;
   onTeamChange: (team: TeamMember[]) => void;
@@ -70,8 +70,11 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
         {/* Contatori — desktop: full text, mobile: compact numbers */}
         <div className="flex items-center gap-2 flex-1 min-w-0">
           {/* Desktop counters */}
+          <span className="stat-pill text-xs hidden md:inline-flex" style={{ background: 'rgba(139,92,246,0.2)', color: '#C4B5FD' }}>
+            🎬 {taskCounts.clpDaFare} CLP
+          </span>
           <span className="stat-pill text-xs hidden md:inline-flex" style={{ background: 'rgba(245,158,11,0.2)', color: '#FCD34D' }}>
-            📋 {taskCounts.daFare} da fare
+            📋 {taskCounts.taskDaFare} Task
           </span>
           {taskCounts.urgenti > 0 && (
             <span className="stat-pill text-xs hidden md:inline-flex" style={{ background: 'rgba(239,68,68,0.2)', color: '#FCA5A5' }}>
@@ -85,8 +88,11 @@ export function TopBar({ team, taskCounts, onViewPersona, personaView, onTeamCha
           )}
 
           {/* Mobile compact counters — just numbers */}
+          <span className="stat-pill text-xs md:hidden" style={{ background: 'rgba(139,92,246,0.2)', color: '#C4B5FD' }}>
+            🎬{taskCounts.clpDaFare}
+          </span>
           <span className="stat-pill text-xs md:hidden" style={{ background: 'rgba(245,158,11,0.2)', color: '#FCD34D' }}>
-            {taskCounts.daFare}
+            📋{taskCounts.taskDaFare}
           </span>
           {taskCounts.urgenti > 0 && (
             <span className="stat-pill text-xs md:hidden" style={{ background: 'rgba(239,68,68,0.2)', color: '#FCA5A5' }}>
