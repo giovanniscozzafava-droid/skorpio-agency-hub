@@ -202,6 +202,8 @@ export function KanbanTab({ team, clienti, personaView, focusTaskId }: { team: T
       setClpRevisionCount(Object.fromEntries((cd || []).map(c => [c.id, c.revision_count || 0])));
     } catch (e) { console.error('[Kanban] loadTasks:', e); }
     setLoading(false);
+    // Sync contatori TopBar
+    window.dispatchEvent(new Event('skorpio-refresh-tasks'));
   }, []);
 
   // Debounced reload per realtime (evita 10 reload in 1 secondo)
