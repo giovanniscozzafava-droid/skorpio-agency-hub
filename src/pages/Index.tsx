@@ -27,6 +27,11 @@ function MainApp() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [personaView, setPersonaView] = useState<string | null>(null);
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
+  useEffect(() => {
+    const handler = () => setFocusTaskId(null);
+    window.addEventListener('skorpio-focus-handled', handler);
+    return () => window.removeEventListener('skorpio-focus-handled', handler);
+  }, []);
   const dailyPopup = useDailyPopup(utente);
   const [popupTask, setPopupTask] = useState<Task | null>(null);
   const whatsNew = useWhatsNew(utente?.nome ?? null);
