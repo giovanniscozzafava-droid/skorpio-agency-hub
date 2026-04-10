@@ -73,11 +73,11 @@ function LiveClock({ scadenza, ora, onReschedule }: { scadenza: string; ora: str
   return (
     <div className="mt-2" onClick={e => e.stopPropagation()}>
       <div
-        className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-semibold${level === 'urgent' ? ' animate-pulse' : ''}${isScaduto && onReschedule ? ' cursor-pointer hover:opacity-80' : ''}`}
+        className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-semibold${level === 'urgent' ? ' animate-pulse' : ''}${onReschedule ? ' cursor-pointer hover:opacity-80' : ''}`}
         style={{ background: s.bg, border: `1px solid ${s.b}`, color: s.c }}
         onClick={e => {
           e.stopPropagation();
-          if (isScaduto && onReschedule) {
+          if (onReschedule) {
             const domani = new Date(); domani.setDate(domani.getDate() + 1);
             setNewDate(`${domani.getFullYear()}-${String(domani.getMonth()+1).padStart(2,'0')}-${String(domani.getDate()).padStart(2,'0')}`);
             setNewOra(ora?.slice(0, 5) || '10:00');
@@ -88,7 +88,7 @@ function LiveClock({ scadenza, ora, onReschedule }: { scadenza: string; ora: str
         <span className="uppercase tracking-wide" style={{ fontSize: '0.65rem' }}>{isScaduto ? 'SCADUTO' : level === 'urgent' ? 'URGENTE' : level === 'warn' ? 'IN SCADENZA' : 'SCADE TRA'}</span>
         <div className="flex items-center gap-1.5">
           <span className="font-mono tabular-nums" style={{ fontSize: '0.72rem' }}>{text}</span>
-          {isScaduto && onReschedule && <span style={{ fontSize: '0.65rem' }}>🔄</span>}
+          {onReschedule && <span style={{ fontSize: '0.65rem' }}>🔄</span>}
         </div>
       </div>
       {showPicker && onReschedule && (
