@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import type { TeamMember } from '../types';
 import { supabase } from '../integrations/supabase/client';
@@ -30,20 +30,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [tab, setTab] = useState('kanban');
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-  // Sync Supabase session
+  // Sync Supabase session with auto-refresh retry
+  const refreshRetries = useRef(0);
+  const maxRetries = 3;
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (!session) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        setSession(session);
+        refreshRetries.current = 0; // Reset on success
+      } else if (event === 'SIGNED_OUT') {
+        // Explicit logout — clear everything
+        setSession(null);
         setUtente(null);
+      } else {
+        // Session lost (expired, refresh failed) — retry before kicking out
+        if (refreshRetries.current < maxRetries) {
+          refreshRetries.current++;
+          const delay = refreshRetries.current * 2000; // 2s, 4s, 6s
+          console.warn(`[Auth] Sessione persa, retry ${refreshRetries.current}/${maxRetries} tra ${delay/1000}s…`);
+          setTimeout(async () => {
+            const { data, error } = await supabase.auth.refreshSession();
+            if (data?.session) {
+              console.log('[Auth] Sessione ripristinata!');
+              setSession(data.session);
+              refreshRetries.current = 0;
+            } else {
+              console.error('[Auth] Refresh fallito:', error?.message);
+              // Will trigger onAuthStateChange again → next retry
+            }
+          }, delay);
+        } else {
+          console.error('[Auth] Max retries raggiunto — logout');
+          setSession(null);
+          setUtente(null);
+        }
       }
     });
 
-    return () => subscription.unsubscribe();
+    // Proactive refresh every 50 minutes (token expires at 60 min)
+    const refreshInterval = setInterval(async () => {
+      const { data } = await supabase.auth.refreshSession();
+      if (data?.session) {
+        console.log('[Auth] Token refreshed proattivamente');
+      }
+    }, 50 * 60 * 1000);
+
+    return () => { subscription.unsubscribe(); clearInterval(refreshInterval); };
   }, []);
 
   // Quando arriva una session, carica il profilo team corrispondente
