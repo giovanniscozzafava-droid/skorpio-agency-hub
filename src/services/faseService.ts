@@ -116,7 +116,7 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
   const asyncSideEffects = async () => {
     try {
       // ── Drive folder (se fase = Montato e non ha già link_drive) ───────
-      if (nuovaFase === 'Montato' && !contenuto?.link_drive) {
+      if (nuovaFase === 'Montato' && contenuto?.id && !contenuto?.link_drive) {
         try {
           const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
           const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
