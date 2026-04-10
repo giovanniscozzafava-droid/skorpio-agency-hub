@@ -62,6 +62,7 @@ function LiveClock({ scadenza, ora, onReschedule }: { scadenza: string; ora: str
   const [showPicker, setShowPicker] = useState(false);
   const [newDate, setNewDate] = useState('');
   const [newOra, setNewOra] = useState('');
+  const [saving, setSaving] = useState(false);
   useEffect(() => { const id = setInterval(() => setDiff(getTargetDate(scadenza, ora).getTime() - Date.now()), 60000); return () => clearInterval(id); }, [scadenza, ora]);
   const abs = Math.abs(diff);
   const d = Math.floor(abs / 86400000), h = Math.floor((abs % 86400000) / 3600000), m = Math.floor((abs % 3600000) / 60000);
@@ -70,13 +71,13 @@ function LiveClock({ scadenza, ora, onReschedule }: { scadenza: string; ora: str
   const level = isScaduto ? 'scaduto' : d > 7 ? 'ok' : d >= 1 ? 'warn' : 'urgent';
   const s = { ok: { bg: 'hsl(214 80% 55%/0.1)', c: 'hsl(214 70% 44%)', b: 'hsl(214 80% 55%/0.25)' }, warn: { bg: 'hsl(38 92% 50%/0.12)', c: 'hsl(32 95% 35%)', b: 'hsl(38 92% 50%/0.35)' }, urgent: { bg: 'hsl(0 80% 55%/0.12)', c: 'hsl(0 70% 42%)', b: 'hsl(0 80% 55%/0.4)' }, scaduto: { bg: 'hsl(0 80% 55%/0.14)', c: 'hsl(0 70% 38%)', b: 'hsl(0 80% 55%/0.5)' } }[level];
   return (
-    <div className="mt-2">
+    <div className="mt-2" onClick={e => e.stopPropagation()}>
       <div
         className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-semibold${level === 'urgent' ? ' animate-pulse' : ''}${isScaduto && onReschedule ? ' cursor-pointer hover:opacity-80' : ''}`}
         style={{ background: s.bg, border: `1px solid ${s.b}`, color: s.c }}
         onClick={e => {
+          e.stopPropagation();
           if (isScaduto && onReschedule) {
-            e.stopPropagation();
             const domani = new Date(); domani.setDate(domani.getDate() + 1);
             setNewDate(`${domani.getFullYear()}-${String(domani.getMonth()+1).padStart(2,'0')}-${String(domani.getDate()).padStart(2,'0')}`);
             setNewOra(ora?.slice(0, 5) || '10:00');
@@ -91,16 +92,29 @@ function LiveClock({ scadenza, ora, onReschedule }: { scadenza: string; ora: str
         </div>
       </div>
       {showPicker && onReschedule && (
-        <div className="mt-1.5 flex gap-1" onClick={e => e.stopPropagation()}>
-          <input type="date" className="flex-1 text-[11px] px-1.5 py-1 rounded border" style={{ borderColor: '#FCA5A5' }} value={newDate} onChange={e => setNewDate(e.target.value)} />
-          <input type="time" className="w-20 text-[11px] px-1.5 py-1 rounded border" style={{ borderColor: '#FCA5A5' }} value={newOra} onChange={e => setNewOra(e.target.value)} />
-          <button
-            disabled={!newDate}
-            onClick={() => { onReschedule(newDate, newOra || undefined); setShowPicker(false); }}
-            className="px-2 py-1 rounded text-[10px] font-bold text-white disabled:opacity-40"
-            style={{ background: '#3B82F6' }}
-          >✅</button>
-          <button onClick={() => setShowPicker(false)} className="text-[10px] px-1 text-muted-foreground">✕</button>
+        <div className="mt-1 rounded-lg p-2 space-y-1.5" style={{ background: '#FEF2F2', border: '1px solid #FCA5A5' }} onClick={e => e.stopPropagation()}>
+          <div className="grid grid-cols-2 gap-1">
+            <input type="date" className="text-[10px] px-1.5 py-1 rounded border w-full" style={{ borderColor: '#FCA5A5', background: 'white' }} value={newDate} onChange={e => setNewDate(e.target.value)} />
+            <input type="time" className="text-[10px] px-1.5 py-1 rounded border w-full" style={{ borderColor: '#FCA5A5', background: 'white' }} value={newOra} onChange={e => setNewOra(e.target.value)} />
+          </div>
+          <div className="flex gap-1">
+            <button
+              disabled={!newDate || saving}
+              onClick={async (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setSaving(true);
+                await onReschedule(newDate, newOra || undefined);
+                setSaving(false);
+                setShowPicker(false);
+              }}
+              className="flex-1 py-1 rounded text-[10px] font-bold text-white disabled:opacity-40"
+              style={{ background: '#3B82F6' }}
+            >
+              {saving ? '⏳…' : '✅ Rischedula'}
+            </button>
+            <button onClick={e => { e.stopPropagation(); setShowPicker(false); }} className="text-[10px] px-2 py-1 rounded" style={{ background: '#F1F5F9', color: '#64748B' }}>✕</button>
+          </div>
         </div>
       )}
     </div>
