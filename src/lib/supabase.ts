@@ -3,46 +3,26 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-// Check if URL has an EXPIRED access_token and strip it before Supabase reads it.
-// Fresh tokens (from OAuth callback) are left for Supabase to handle normally.
-let hasExpiredUrlToken = false;
+// Only strip access_token from URL if it's a stale reload (localStorage already has a session).
+// If no localStorage session exists, it's a fresh OAuth callback — let Supabase read it.
 if (typeof window !== 'undefined' && window.location.hash.includes('access_token=')) {
-  try {
-    const hash = window.location.hash.substring(1);
-    const params = new URLSearchParams(hash);
-    const accessToken = params.get('access_token') || '';
-    const now = Math.floor(Date.now() / 1000);
+  const storageKey = `sb-${new URL(supabaseUrl).hostname.split('.')[0]}-auth-token`;
+  const hasStoredSession = !!localStorage.getItem(storageKey);
 
-    // Check expires_at param
-    const expiresAt = params.get('expires_at');
-    if (expiresAt && Number(expiresAt) < now) {
-      hasExpiredUrlToken = true;
-    }
-
-    // Decode JWT (base64url → base64) and check exp
-    if (!hasExpiredUrlToken && accessToken.includes('.')) {
-      try {
-        const b64url = accessToken.split('.')[1];
-        const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/') + '=='.slice(0, (4 - b64url.length % 4) % 4);
-        const payload = JSON.parse(atob(b64));
-        if (payload.exp && payload.exp < now) hasExpiredUrlToken = true;
-      } catch {}
-    }
-
-    if (hasExpiredUrlToken) {
-      console.warn('[Auth] Token scaduto nell\'URL — rimosso, mostro login');
-      window.location.hash = '';
-      window.history.replaceState(null, '', window.location.pathname);
-    } else {
-      // Fresh token — clean URL after Supabase reads it (2s delay)
-      setTimeout(() => {
-        if (window.location.hash.includes('access_token=')) {
-          window.history.replaceState(null, '', window.location.pathname);
-        }
-      }, 2000);
-    }
-  } catch (e) {
-    console.error('[Auth] Errore check token URL:', e);
+  if (hasStoredSession) {
+    // Already have a session in storage — the URL hash is stale (bookmark/reload)
+    console.warn('[Auth] Hash con token + sessione in storage → hash stale, rimuovo');
+    window.location.hash = '';
+    window.history.replaceState(null, '', window.location.pathname);
+  } else {
+    // No stored session — this is a fresh OAuth callback, let Supabase handle it
+    console.log('[Auth] Hash con token + nessuna sessione in storage → OAuth callback fresco');
+    // Clean hash after Supabase reads it
+    setTimeout(() => {
+      if (window.location.hash.includes('access_token=')) {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    }, 2000);
   }
 }
 
