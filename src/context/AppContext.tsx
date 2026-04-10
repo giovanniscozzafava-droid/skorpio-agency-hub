@@ -35,8 +35,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const maxRetries = 3;
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+    // Strip expired access_token from URL to prevent stale session loops
+    if (window.location.hash.includes('access_token=')) {
+      const params = new URLSearchParams(window.location.hash.substring(1));
+      const expiresAt = params.get('expires_at');
+      if (expiresAt && Number(expiresAt) < Math.floor(Date.now() / 1000)) {
+        console.warn('[Auth] Token nell\'URL scaduto — rimuovo hash');
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    }
+
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (session) {
+        // Check if session is already expired
+        if (session.expires_at && session.expires_at < Math.floor(Date.now() / 1000)) {
+          console.warn('[Auth] Sessione scaduta, pulisco URL e riprovo');
+          window.history.replaceState(null, '', window.location.pathname);
+          supabase.auth.signOut();
+          return;
+        }
+        setSession(session);
+      } else if (window.location.hash.includes('access_token')) {
+        // Token in URL but getSession failed — strip hash
+        console.warn('[Auth] getSession fallito con token in URL — rimuovo hash');
+        window.history.replaceState(null, '', window.location.pathname);
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
