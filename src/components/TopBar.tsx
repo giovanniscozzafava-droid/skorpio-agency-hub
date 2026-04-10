@@ -36,7 +36,7 @@ function toDateStr(d: Date) {
 
 type DropdownType = 'clp' | 'task' | 'urgenti' | 'scaduti' | null;
 
-function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, onArchive, clpPubDates }: {
+function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, onArchive, clpPubDates, pos }: {
   tasks: Task[];
   team: TeamMember[];
   tipo: DropdownType;
@@ -45,6 +45,7 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, 
   onReassign: (taskId: string, newDate: string, newPersona?: string) => void;
   onArchive: (taskId: string) => void;
   clpPubDates?: Record<string, { data: string | null; ora: string | null; fase?: string }>;
+  pos?: { top: number; left: number };
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
   console.log('[CounterDropdown] rendering, tipo:', tipo, 'tasks:', tasks.length);
@@ -96,7 +97,7 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, 
 
   return (
     <div ref={ref} className="fixed rounded-xl shadow-2xl border overflow-hidden"
-      style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', width: (isScaduti || tipo === 'urgenti') ? 380 : 320, maxHeight: 520, top: 110, left: 16, zIndex: 9999 }}>
+      style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', width: (isScaduti || tipo === 'urgenti') ? 380 : 320, maxHeight: 520, top: pos?.top ?? 110, left: pos?.left ?? 16, zIndex: 9999 }}>
       <div className="px-3 py-2 border-b flex items-center justify-between" style={{ borderColor: 'hsl(var(--border))' }}>
         <span className="text-xs font-bold" style={{ color }}>{label} ({filtered.length})</span>
         <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
@@ -256,7 +257,15 @@ export function TopBar({ team, taskCounts, tasks, clpPubDates, onViewPersona, pe
   const [showNotifiche, setShowNotifiche] = useState(false);
   const [showDrawer, setShowDrawer] = useState(false);
   const [counterDrop, setCounterDrop] = useState<DropdownType>(null);
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
   const { nonLette } = useNotifiche(utente?.nome ?? null);
+
+  const openDrop = (tipo: DropdownType, e: React.MouseEvent) => {
+    if (counterDrop === tipo) { setCounterDrop(null); return; }
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setDropPos({ top: rect.bottom + 8, left: Math.max(8, rect.left) });
+    setCounterDrop(tipo);
+  };
 
   useEffect(() => {
     const t = setInterval(() => setOrologio(new Date()), 1000);
@@ -303,47 +312,47 @@ export function TopBar({ team, taskCounts, tasks, clpPubDates, onViewPersona, pe
           {/* Desktop counters */}
           <button className="stat-pill text-xs hidden md:inline-flex hover:scale-105 active:scale-95 transition-all"
             style={{ background: counterDrop === 'clp' ? 'rgba(139,92,246,0.5)' : 'rgba(139,92,246,0.2)', color: '#C4B5FD', cursor: 'pointer', border: counterDrop === 'clp' ? '1px solid #C4B5FD' : '1px solid transparent' }}
-            onClick={() => { console.log('[TopBar] click CLP'); setCounterDrop(prev => prev === 'clp' ? null : 'clp'); }}>
+            onClick={e => openDrop('clp', e)}>
             🎬 {taskCounts.clpDaFare} CLP
           </button>
           <button className="stat-pill text-xs hidden md:inline-flex hover:scale-105 active:scale-95 transition-all"
             style={{ background: counterDrop === 'task' ? 'rgba(245,158,11,0.5)' : 'rgba(245,158,11,0.2)', color: '#FCD34D', cursor: 'pointer', border: counterDrop === 'task' ? '1px solid #FCD34D' : '1px solid transparent' }}
-            onClick={() => { console.log('[TopBar] click Task'); setCounterDrop(prev => prev === 'task' ? null : 'task'); }}>
+            onClick={e => openDrop('task', e)}>
             📋 {taskCounts.taskDaFare} Task
           </button>
           {taskCounts.urgenti > 0 && (
             <button className="stat-pill text-xs hidden md:inline-flex hover:scale-105 active:scale-95 transition-all"
               style={{ background: counterDrop === 'urgenti' ? 'rgba(239,68,68,0.4)' : 'rgba(239,68,68,0.2)', color: '#FCA5A5', cursor: 'pointer', border: counterDrop === 'urgenti' ? '1px solid #FCA5A5' : '1px solid transparent' }}
-              onClick={() => { console.log('[TopBar] click Urgenti'); setCounterDrop(prev => prev === 'urgenti' ? null : 'urgenti'); }}>
+              onClick={e => openDrop('urgenti', e)}>
               🔴 {taskCounts.urgenti} urgenti
             </button>
           )}
           {taskCounts.scaduti > 0 && (
             <button className="stat-pill text-xs hidden md:inline-flex hover:scale-105 active:scale-95 transition-all"
               style={{ background: counterDrop === 'scaduti' ? 'rgba(239,68,68,0.5)' : 'rgba(239,68,68,0.3)', color: '#F87171', cursor: 'pointer', border: counterDrop === 'scaduti' ? '1px solid #F87171' : '1px solid transparent' }}
-              onClick={() => { console.log('[TopBar] click Scaduti'); setCounterDrop(prev => prev === 'scaduti' ? null : 'scaduti'); }}>
+              onClick={e => openDrop('scaduti', e)}>
               ⚠️ {taskCounts.scaduti} scaduti
             </button>
           )}
 
           {/* Mobile compact counters */}
           <button className="stat-pill text-xs md:hidden" style={{ background: 'rgba(139,92,246,0.2)', color: '#C4B5FD', cursor: 'pointer' }}
-            onClick={() => setCounterDrop(prev => prev === 'clp' ? null : 'clp')}>
+            onClick={e => openDrop('clp', e)}>
             🎬{taskCounts.clpDaFare}
           </button>
           <button className="stat-pill text-xs md:hidden" style={{ background: 'rgba(245,158,11,0.2)', color: '#FCD34D', cursor: 'pointer' }}
-            onClick={() => setCounterDrop(prev => prev === 'task' ? null : 'task')}>
+            onClick={e => openDrop('task', e)}>
             📋{taskCounts.taskDaFare}
           </button>
           {taskCounts.urgenti > 0 && (
             <button className="stat-pill text-xs md:hidden" style={{ background: 'rgba(239,68,68,0.2)', color: '#FCA5A5', cursor: 'pointer' }}
-              onClick={() => setCounterDrop(prev => prev === 'urgenti' ? null : 'urgenti')}>
+              onClick={e => openDrop('urgenti', e)}>
               {taskCounts.urgenti}
             </button>
           )}
           {taskCounts.scaduti > 0 && (
             <button className="stat-pill text-xs md:hidden" style={{ background: 'rgba(239,68,68,0.3)', color: '#F87171', cursor: 'pointer' }}
-              onClick={() => setCounterDrop(prev => prev === 'scaduti' ? null : 'scaduti')}>
+              onClick={e => openDrop('scaduti', e)}>
               {taskCounts.scaduti}
             </button>
           )}
@@ -378,6 +387,7 @@ export function TopBar({ team, taskCounts, tasks, clpPubDates, onViewPersona, pe
               if (onTaskReassigned) onTaskReassigned(taskId, '', undefined);
             }}
             clpPubDates={clpPubDates}
+            pos={dropPos}
           />, document.body)}
 
           {/* Google Drive storage indicator */}
