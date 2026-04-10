@@ -185,6 +185,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   const [uploadCheck, setUploadCheck] = useState(false);
   const [showReschedule, setShowReschedule] = useState(false);
   const [reschedDate, setReschedDate] = useState('');
+  const [reschedOra, setReschedOra] = useState('');
   const [reschedSaving, setReschedSaving] = useState(false);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const montaggioUploadRef = useRef<HTMLInputElement>(null);
@@ -897,7 +898,12 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
             <div className="rounded-xl border overflow-hidden" style={{ borderColor: '#F87171', background: '#FEF2F2' }}>
               {!showReschedule ? (
                 <button
-                  onClick={() => { setShowReschedule(true); const d = new Date(); d.setDate(d.getDate() + 1); setReschedDate(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`); }}
+                  onClick={() => {
+                    setShowReschedule(true);
+                    const d = new Date(); d.setDate(d.getDate() + 1);
+                    setReschedDate(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+                    setReschedOra(task.ora?.slice(0, 5) || '10:00');
+                  }}
                   className="w-full px-3 py-2.5 text-xs font-semibold flex items-center justify-center gap-2 hover:bg-red-100 transition-colors"
                   style={{ color: '#DC2626' }}
                 >
@@ -908,19 +914,44 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
                   <p className="text-[10px] font-bold uppercase" style={{ color: '#DC2626' }}>🔄 Nuova scadenza</p>
                   <div className="flex gap-2">
                     <input type="date" className="sk-input flex-1 text-xs" value={reschedDate} onChange={e => setReschedDate(e.target.value)} />
+                    <input type="time" className="sk-input w-24 text-xs" value={reschedOra} onChange={e => setReschedOra(e.target.value)} />
+                  </div>
+                  <div className="flex gap-2">
                     <button
                       disabled={!reschedDate || reschedSaving}
                       onClick={async () => {
                         setReschedSaving(true);
-                        await supabase.from('task').update({ scadenza: reschedDate }).eq('id', task.id);
+                        const taskUpdate: any = { scadenza: reschedDate };
+                        if (reschedOra) taskUpdate.ora = reschedOra;
+                        await supabase.from('task').update(taskUpdate).eq('id', task.id);
+
+                        // Sync calendario: evento con [TASK:id]
+                        const { data: calByTag } = await supabase.from('calendario')
+                          .select('id').like('descrizione', `%[TASK:${task.id}]%`);
+                        if (calByTag?.length) {
+                          const calUp: any = { data: reschedDate };
+                          if (reschedOra) calUp.ora = reschedOra;
+                          for (const ev of calByTag) await supabase.from('calendario').update(calUp).eq('id', ev.id);
+                        }
+                        // Se CLP task, aggiorna data_pubblicazione + evento calendario contenuto
+                        if (task.id_contenuto) {
+                          await supabase.from('contenuti').update({
+                            data_pubblicazione: reschedDate,
+                            ...(reschedOra ? { ora_pubblicazione: reschedOra } : {}),
+                          }).eq('id', task.id_contenuto);
+                          const calUp2: any = { data: reschedDate };
+                          if (reschedOra) calUp2.ora = reschedOra;
+                          await supabase.from('calendario').update(calUp2).eq('contenuto_id', task.id_contenuto);
+                        }
+
                         setReschedSaving(false);
                         setShowReschedule(false);
-                        onUpdate({ ...task, scadenza: reschedDate } as Task);
+                        onUpdate({ ...task, scadenza: reschedDate, ora: reschedOra || task.ora } as Task);
                       }}
-                      className="px-3 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-40"
+                      className="flex-1 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-40"
                       style={{ background: '#3B82F6' }}
                     >
-                      {reschedSaving ? '⏳' : '✅'}
+                      {reschedSaving ? '⏳ Salvataggio…' : `✅ Rischedula al ${reschedDate ? new Date(reschedDate + 'T00:00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'short' }) : ''}${reschedOra ? ' ' + reschedOra : ''}`}
                     </button>
                     <button onClick={() => setShowReschedule(false)} className="text-xs text-muted-foreground px-2">✕</button>
                   </div>
