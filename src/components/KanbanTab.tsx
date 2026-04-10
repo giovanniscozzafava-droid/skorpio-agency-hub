@@ -138,6 +138,9 @@ function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onCl
   const [eDate, setEDate] = useState(pubDate?.data || '');
   const [eOra, setEOra] = useState(pubDate?.ora?.slice(0, 5) || '');
   const [showMenu, setShowMenu] = useState(false);
+  const [showResched, setShowResched] = useState(false);
+  const [reschedDate, setReschedDate] = useState('');
+  const [reschedOra, setReschedOra] = useState('');
 
   const scadInfo = (() => {
     if (!task.scadenza) return null;
@@ -193,8 +196,26 @@ function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onCl
           )}
         </div>
       ) : !hideCountdown && task.scadenza ? <LiveClock scadenza={task.scadenza} ora={task.ora} onReschedule={onReschedule ? (d, o) => onReschedule(task.id, d, o) : undefined} /> : !hideCountdown && scadInfo ? (
-        <div className="inline-flex items-center text-xs px-1.5 py-0.5 rounded mt-1.5 font-medium" style={{ background: scadInfo.bg, color: scadInfo.color }}>{scadInfo.label}</div>
+        <div className="inline-flex items-center text-xs px-1.5 py-0.5 rounded mt-1.5 font-medium cursor-pointer hover:opacity-80" style={{ background: scadInfo.bg, color: scadInfo.color }}
+          onClick={e => { e.stopPropagation(); setShowResched(v => !v); const domani = new Date(); domani.setDate(domani.getDate()+1); setReschedDate(`${domani.getFullYear()}-${String(domani.getMonth()+1).padStart(2,'0')}-${String(domani.getDate()).padStart(2,'0')}`); setReschedOra(task.ora?.slice(0,5) || '10:00'); }}>
+          {scadInfo.label} 🔄
+        </div>
       ) : null}
+
+      {/* Inline reschedule for scadInfo badges */}
+      {!hideCountdown && showResched && onReschedule && (
+        <div className="mt-1 rounded-lg p-2 space-y-1.5" style={{ background: '#FEF2F2', border: '1px solid #FCA5A5' }} onClick={e => e.stopPropagation()}>
+          <div className="grid grid-cols-2 gap-1">
+            <input type="date" className="text-[10px] px-1.5 py-1 rounded border w-full" style={{ borderColor: '#FCA5A5', background: 'white' }} value={reschedDate} onChange={e => setReschedDate(e.target.value)} />
+            <input type="time" className="text-[10px] px-1.5 py-1 rounded border w-full" style={{ borderColor: '#FCA5A5', background: 'white' }} value={reschedOra} onChange={e => setReschedOra(e.target.value)} />
+          </div>
+          <div className="flex gap-1">
+            <button disabled={!reschedDate} onClick={async (e) => { e.stopPropagation(); await onReschedule(task.id, reschedDate, reschedOra || undefined); setShowResched(false); }}
+              className="flex-1 py-1 rounded text-[10px] font-bold text-white disabled:opacity-40" style={{ background: '#3B82F6' }}>✅ Rischedula</button>
+            <button onClick={e => { e.stopPropagation(); setShowResched(false); }} className="text-[10px] px-2 py-1 rounded" style={{ background: '#F1F5F9', color: '#64748B' }}>✕</button>
+          </div>
+        </div>
+      )}
 
       {isProgrammato && canEditProgrammazione && (
         <div className="relative mt-1.5">
