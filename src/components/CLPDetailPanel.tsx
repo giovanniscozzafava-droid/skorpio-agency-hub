@@ -177,9 +177,6 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
       return;
     }
     await supabase.from('contenuti').update({ [k]: v }).eq('id', contenuto.id);
-    // Aggiorna il parent silenziosamente
-    const { data } = await supabase.from('contenuti').select('*').eq('id', contenuto.id).single();
-    if (data) onUpdate(data as Contenuto);
     // Se il titolo cambia in fase Programmato, propaga a calendario e task
     if (k === 'titolo' && form.fase === 'Programmato') {
       const newDesc = `📱 Pubblica ${contenuto.id_display} – ${v}`;
