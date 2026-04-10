@@ -992,14 +992,24 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
             </div>
           )}
 
-          {/* ─── BRIEF MONTAGGIO (hook + POV + istruzioni dal CLP collegato) ────────── */}
-          {(isPremontaggio || isMontaggioTask || isUploadTask) && contenutoRevisione && (contenutoRevisione.hook || contenutoRevisione.pov || contenutoRevisione.istruzioni_montaggio) && (
+          {/* ─── BRIEF MONTAGGIO (hook + POV + istruzioni + link ispirazione dal CLP collegato) ────────── */}
+          {(isPremontaggio || isMontaggioTask || isUploadTask) && contenutoRevisione && (contenutoRevisione.hook || contenutoRevisione.pov || contenutoRevisione.istruzioni_montaggio || contenutoRevisione.link_ispirazione) && (
             <div className="rounded-xl border-2 overflow-hidden"
               style={{ borderColor: '#8B5CF6', background: '#F5F3FF' }}>
               <div className="px-3 py-2 flex items-center gap-2" style={{ background: '#8B5CF6' }}>
                 <span className="text-white text-xs font-bold">🎬 BRIEF MONTAGGIO</span>
+                {contenutoRevisione.stile && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium" style={{ background: 'rgba(255,255,255,0.2)', color: 'white' }}>{contenutoRevisione.stile}</span>}
               </div>
               <div className="p-3 space-y-2">
+                {contenutoRevisione.link_ispirazione && (
+                  <div>
+                    <span className="text-xs font-bold" style={{ color: '#6D28D9' }}>🔗 LINK ISPIRAZIONE</span>
+                    <a href={contenutoRevisione.link_ispirazione} target="_blank" rel="noopener noreferrer"
+                      className="block text-sm mt-0.5 hover:underline truncate" style={{ color: '#3B82F6' }}>
+                      {contenutoRevisione.link_ispirazione}
+                    </a>
+                  </div>
+                )}
                 {contenutoRevisione.hook && (
                   <div>
                     <span className="text-xs font-bold" style={{ color: '#6D28D9' }}>🎣 HOOK (apertura)</span>
