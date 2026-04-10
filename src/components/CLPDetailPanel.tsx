@@ -86,6 +86,64 @@ function Section({ title }: { title: string }) {
   );
 }
 
+// ── Field components (OUTSIDE CLPDetailPanel to avoid remount on re-render) ──
+function CLPLabelInput({ label, field, type = 'text', placeholder = '', value, onChange }: {
+  label: string; field: string; type?: string; placeholder?: string;
+  value: string; onChange: (field: string, val: string) => void;
+}) {
+  return (
+    <div>
+      <label className="sk-label">{label}</label>
+      <input
+        type={type}
+        className="sk-input w-full text-sm"
+        value={value}
+        onChange={e => onChange(field, e.target.value)}
+        onKeyDown={e => e.stopPropagation()}
+        placeholder={placeholder}
+      />
+    </div>
+  );
+}
+
+function CLPLabelTextarea({ label, field, rows = 2, placeholder = '', value, onChange }: {
+  label: string; field: string; rows?: number; placeholder?: string;
+  value: string; onChange: (field: string, val: string) => void;
+}) {
+  return (
+    <div>
+      <label className="sk-label">{label}</label>
+      <textarea
+        className="sk-textarea w-full text-sm"
+        rows={rows}
+        value={value}
+        onChange={e => onChange(field, e.target.value)}
+        onKeyDown={e => e.stopPropagation()}
+        placeholder={placeholder}
+      />
+    </div>
+  );
+}
+
+function CLPLabelSelect({ label, field, options, value, onChange }: {
+  label: string; field: string; options: string[];
+  value: string; onChange: (field: string, val: string) => void;
+}) {
+  return (
+    <div>
+      <label className="sk-label">{label}</label>
+      <select
+        className="sk-select w-full text-sm"
+        value={value}
+        onChange={e => onChange(field, e.target.value)}
+      >
+        <option value="">— Seleziona —</option>
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  );
+}
+
 export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, onDelete, onFaseChange }: CLPDetailPanelProps) {
   const { addToast, utente } = useApp();
   const [form, setForm] = useState<Contenuto>({ ...contenuto });
@@ -529,53 +587,9 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
   const faseCfg = FASE_CONFIG[form.fase];
   const clienteSelezionato = clienti.find(c => c.id === form.cliente_id);
 
-  const LabelInput = ({ label, field, type = 'text', placeholder = '' }: {
-    label: string; field: keyof Contenuto; type?: string; placeholder?: string;
-  }) => (
-    <div>
-      <label className="sk-label">{label}</label>
-      <input
-        type={type}
-        className="sk-input w-full text-sm"
-        value={(form[field] as string) || ''}
-        onChange={e => set(field, e.target.value)}
-        onKeyDown={e => e.stopPropagation()}
-        placeholder={placeholder}
-      />
-    </div>
-  );
-
-  const LabelTextarea = ({ label, field, rows = 2, placeholder = '' }: {
-    label: string; field: keyof Contenuto; rows?: number; placeholder?: string;
-  }) => (
-    <div>
-      <label className="sk-label">{label}</label>
-      <textarea
-        className="sk-textarea w-full text-sm"
-        rows={rows}
-        value={(form[field] as string) || ''}
-        onChange={e => set(field, e.target.value)}
-        onKeyDown={e => e.stopPropagation()}
-        placeholder={placeholder}
-      />
-    </div>
-  );
-
-  const LabelSelect = ({ label, field, options }: {
-    label: string; field: keyof Contenuto; options: string[];
-  }) => (
-    <div>
-      <label className="sk-label">{label}</label>
-      <select
-        className="sk-select w-full text-sm"
-        value={(form[field] as string) || ''}
-        onChange={e => set(field, e.target.value)}
-      >
-        <option value="">— Seleziona —</option>
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
-    </div>
-  );
+  const handleFieldChange = useCallback((field: string, value: string) => {
+    set(field as keyof Contenuto, value);
+  }, []);
 
   return (
     <>
@@ -682,7 +696,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
           )}
 
           {/* Titolo */}
-          <LabelInput label="Titolo" field="titolo" placeholder="Titolo del contenuto…" />
+          <CLPLabelInput label="Titolo" field="titolo" placeholder="Titolo del contenuto…" value={(form.titolo as string) || ''} onChange={handleFieldChange} />
 
           <div className="grid grid-cols-2 gap-3 mt-3">
             {/* Cliente */}
@@ -703,11 +717,11 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
             </div>
 
             {/* Durata */}
-            <LabelInput label="Durata" field="durata" placeholder="es: 30s" />
+            <CLPLabelInput label="Durata" field="durata" placeholder="es: 30s" value={(form.durata as string) || ''} onChange={handleFieldChange} />
           </div>
 
           <div className="grid grid-cols-2 gap-3 mt-3">
-            <LabelSelect label="Tipo" field="tipo" options={['Reel', 'Post', 'Carosello', 'Story', 'Video', 'Short', 'Altro']} />
+            <CLPLabelSelect label="Tipo" field="tipo" options={['Reel', 'Post', 'Carosello', 'Story', 'Video', 'Short', 'Altro']} value={(form.tipo as string) || ''} onChange={handleFieldChange} />
             <LabelSelect label="Canale" field="canale" options={['Instagram', 'Facebook', 'Instagram/Facebook', 'TikTok', 'LinkedIn', 'YouTube', 'Altro']} />
           </div>
           <div className="grid grid-cols-2 gap-3 mt-3">
@@ -725,30 +739,30 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
           {/* ─── CREATIVITÀ ─── */}
           <Section title="CREATIVITÀ" />
 
-          <LabelTextarea label="🎣 Hook" field="hook" rows={2} placeholder="Frase di apertura che cattura l'attenzione…" />
+          <CLPLabelTextarea label="🎣 Hook" field="hook" rows={2} placeholder="Frase di apertura che cattura l'attenzione…" value={(form.hook as string) || ''} onChange={handleFieldChange} />
           <div className="mt-3">
-            <LabelTextarea label="👁️ POV — Testo in sovrimpressione" field="pov" rows={2} placeholder="Testo che deve comparire nel reel come POV…" />
+            <CLPLabelTextarea label="👁️ POV — Testo in sovrimpressione" field="pov" rows={2} placeholder="Testo che deve comparire nel reel come POV…" value={(form.pov as string) || ''} onChange={handleFieldChange} />
           </div>
           <div className="mt-3">
-            <LabelTextarea label="🔧 Istruzioni montaggio" field="istruzioni_montaggio" rows={3} placeholder="Indicazioni per chi monta: tagli, effetti, transizioni, ritmo…" />
+            <CLPLabelTextarea label="🔧 Istruzioni montaggio" field="istruzioni_montaggio" rows={3} placeholder="Indicazioni per chi monta: tagli, effetti, transizioni, ritmo…" value={(form.istruzioni_montaggio as string) || ''} onChange={handleFieldChange} />
           </div>
           <div className="mt-3">
-            <LabelTextarea label="📝 Script" field="script" rows={4} placeholder="Testo completo del contenuto…" />
+            <CLPLabelTextarea label="📝 Script" field="script" rows={4} placeholder="Testo completo del contenuto…" value={(form.script as string) || ''} onChange={handleFieldChange} />
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3">
-            <LabelInput label="📣 CTA" field="cta" placeholder="es: Clicca il link in bio" />
-            <LabelInput label="🎵 Musica" field="musica" placeholder="es: Brano - Artista" />
+            <CLPLabelInput label="📣 CTA" field="cta" placeholder="es: Clicca il link in bio" value={(form.cta as string) || ''} onChange={handleFieldChange} />
+            <CLPLabelInput label="🎵 Musica" field="musica" placeholder="es: Brano - Artista" value={(form.musica as string) || ''} onChange={handleFieldChange} />
           </div>
           <div className="mt-3">
-            <LabelInput label="#️⃣ Hashtag" field="hashtag" placeholder="#beauty #estetica #skincare…" />
+            <CLPLabelInput label="#️⃣ Hashtag" field="hashtag" placeholder="#beauty #estetica #skincare…" value={(form.hashtag as string) || ''} onChange={handleFieldChange} />
           </div>
 
           {/* ─── PRODUZIONE ─── */}
           <Section title="PRODUZIONE" />
 
           <div className="grid grid-cols-2 gap-3">
-            <LabelInput label="📍 Location" field="location" placeholder="es: Studio, Sede cliente…" />
-            <LabelInput label="🎭 Props" field="props" placeholder="es: prodotti, attrezzatura…" />
+            <CLPLabelInput label="📍 Location" field="location" placeholder="es: Studio, Sede cliente…" value={(form.location as string) || ''} onChange={handleFieldChange} />
+            <CLPLabelInput label="🎭 Props" field="props" placeholder="es: prodotti, attrezzatura…" value={(form.props as string) || ''} onChange={handleFieldChange} />
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3">
             <div>
@@ -816,7 +830,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
                 title="Oppure inserisci data manuale"
               />
             </div>
-            <LabelInput label="⏰ Scadenza" field="data_scadenza" type="date" />
+            <CLPLabelInput label="⏰ Scadenza" field="data_scadenza" type="date" value={(form.data_scadenza as string) || ''} onChange={handleFieldChange} />
           </div>
 
           {/* ─── PUBBLICAZIONE ─── */}
@@ -1130,9 +1144,9 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
           {/* ─── NOTE & LINK ─── */}
           <Section title="NOTE E LINK" />
 
-          <LabelTextarea label="Note" field="note" rows={2} placeholder="Note interne…" />
+          <CLPLabelTextarea label="Note" field="note" rows={2} placeholder="Note interne…" value={(form.note as string) || ''} onChange={handleFieldChange} />
           <div className="mt-3">
-            <LabelTextarea label="Note revisione" field="note_revisione" rows={2} placeholder="Feedback dal cliente o per il team…" />
+            <CLPLabelTextarea label="Note revisione" field="note_revisione" rows={2} placeholder="Feedback dal cliente o per il team…" value={(form.note_revisione as string) || ''} onChange={handleFieldChange} />
           </div>
           {/* ─── GOOGLE DRIVE ─── */}
           <div className="mt-3 rounded-lg p-3 border" style={{ background: 'hsl(214 100% 98%)', borderColor: 'hsl(214 80% 85%)' }}>
