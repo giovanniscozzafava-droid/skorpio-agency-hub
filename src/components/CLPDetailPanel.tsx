@@ -722,12 +722,12 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
 
           <div className="grid grid-cols-2 gap-3 mt-3">
             <CLPLabelSelect label="Tipo" field="tipo" options={['Reel', 'Post', 'Carosello', 'Story', 'Video', 'Short', 'Altro']} value={(form.tipo as string) || ''} onChange={handleFieldChange} />
-            <LabelSelect label="Canale" field="canale" options={['Instagram', 'Facebook', 'Instagram/Facebook', 'TikTok', 'LinkedIn', 'YouTube', 'Altro']} />
+            <CLPLabelSelect label="Canale" field="canale" options={['Instagram', 'Facebook', 'Instagram/Facebook', 'TikTok', 'LinkedIn', 'YouTube', 'Altro']} value={(form.canale as string) || ''} onChange={handleFieldChange} />
           </div>
           <div className="grid grid-cols-2 gap-3 mt-3">
-            <LabelSelect label="🎬 Stile" field="stile" options={['Commedia', 'Storytelling', 'Trend', 'Ispirazione', 'Divulgativo', 'Tutorial', 'Behind the scenes', 'Talking head', 'Testimonial', 'Before/After', 'Unboxing', 'ASMR', 'Vlog', 'Altro']} />
+            <CLPLabelSelect label="🎬 Stile" field="stile" options={['Commedia', 'Storytelling', 'Trend', 'Ispirazione', 'Divulgativo', 'Tutorial', 'Behind the scenes', 'Talking head', 'Testimonial', 'Before/After', 'Unboxing', 'ASMR', 'Vlog', 'Altro']} value={(form.stile as string) || ''} onChange={handleFieldChange} />
             <div>
-              <LabelInput label="🔗 Link ispirazione" field="link_ispirazione" placeholder="https://instagram.com/reel/..." />
+              <CLPLabelInput label="🔗 Link ispirazione" field="link_ispirazione" placeholder="https://instagram.com/reel/..." value={(form.link_ispirazione as string) || ''} onChange={handleFieldChange} />
               {form.link_ispirazione && form.link_ispirazione.startsWith('http') && (
                 <a href={form.link_ispirazione} target="_blank" rel="noopener noreferrer" className="text-xs mt-1 inline-flex items-center gap-1 hover:underline" style={{ color: '#3B82F6' }}>
                   ↗ Apri link
