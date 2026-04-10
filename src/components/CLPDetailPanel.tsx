@@ -539,6 +539,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
         className="sk-input w-full text-sm"
         value={(form[field] as string) || ''}
         onChange={e => set(field, e.target.value)}
+        onKeyDown={e => e.stopPropagation()}
         placeholder={placeholder}
       />
     </div>
@@ -554,6 +555,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
         rows={rows}
         value={(form[field] as string) || ''}
         onChange={e => set(field, e.target.value)}
+        onKeyDown={e => e.stopPropagation()}
         placeholder={placeholder}
       />
     </div>
