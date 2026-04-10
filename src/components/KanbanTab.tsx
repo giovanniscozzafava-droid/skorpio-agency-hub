@@ -57,10 +57,11 @@ function getTargetDate(scadenza: string, ora: string | null): Date {
   return new Date(`${scadenza}T${ora ? ora.slice(0, 5) : '23:59'}:00`);
 }
 
-function LiveClock({ scadenza, ora, onReschedule }: { scadenza: string; ora: string | null; onReschedule?: (newDate: string) => void }) {
+function LiveClock({ scadenza, ora, onReschedule }: { scadenza: string; ora: string | null; onReschedule?: (newDate: string, newOra?: string) => void }) {
   const [diff, setDiff] = useState(() => getTargetDate(scadenza, ora).getTime() - Date.now());
   const [showPicker, setShowPicker] = useState(false);
   const [newDate, setNewDate] = useState('');
+  const [newOra, setNewOra] = useState('');
   useEffect(() => { const id = setInterval(() => setDiff(getTargetDate(scadenza, ora).getTime() - Date.now()), 60000); return () => clearInterval(id); }, [scadenza, ora]);
   const abs = Math.abs(diff);
   const d = Math.floor(abs / 86400000), h = Math.floor((abs % 86400000) / 3600000), m = Math.floor((abs % 3600000) / 60000);
@@ -78,6 +79,7 @@ function LiveClock({ scadenza, ora, onReschedule }: { scadenza: string; ora: str
             e.stopPropagation();
             const domani = new Date(); domani.setDate(domani.getDate() + 1);
             setNewDate(`${domani.getFullYear()}-${String(domani.getMonth()+1).padStart(2,'0')}-${String(domani.getDate()).padStart(2,'0')}`);
+            setNewOra(ora?.slice(0, 5) || '10:00');
             setShowPicker(v => !v);
           }
         }}
@@ -91,9 +93,10 @@ function LiveClock({ scadenza, ora, onReschedule }: { scadenza: string; ora: str
       {showPicker && onReschedule && (
         <div className="mt-1.5 flex gap-1" onClick={e => e.stopPropagation()}>
           <input type="date" className="flex-1 text-[11px] px-1.5 py-1 rounded border" style={{ borderColor: '#FCA5A5' }} value={newDate} onChange={e => setNewDate(e.target.value)} />
+          <input type="time" className="w-20 text-[11px] px-1.5 py-1 rounded border" style={{ borderColor: '#FCA5A5' }} value={newOra} onChange={e => setNewOra(e.target.value)} />
           <button
             disabled={!newDate}
-            onClick={() => { onReschedule(newDate); setShowPicker(false); }}
+            onClick={() => { onReschedule(newDate, newOra || undefined); setShowPicker(false); }}
             className="px-2 py-1 rounded text-[10px] font-bold text-white disabled:opacity-40"
             style={{ background: '#3B82F6' }}
           >✅</button>
@@ -112,7 +115,7 @@ function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onCl
   showFaseBadge?: boolean; pubDate?: { data: string | null; ora: string | null } | null; revisionCount?: number;
   isProgrammato?: boolean; canEditProgrammazione?: boolean; onRiprogramma?: () => void; onEditPubDate?: (d: string, o: string | null) => void;
   clientLogoUrl?: string | null; onPriorityChange?: (taskId: string, newPrio: string) => void;
-  onReschedule?: (taskId: string, newDate: string) => void;
+  onReschedule?: (taskId: string, newDate: string, newOra?: string) => void;
 }) {
   const member = team.find(m => m.nome === task.assegnato_a);
   const isAuto = task.assegnato_da?.includes('Sistema') || task.assegnato_da?.includes('⚡');
@@ -170,11 +173,11 @@ function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onCl
           ) : (
             <>
               {isProgrammato && pubDate.data && <p className="text-[11px] font-bold mt-0.5" style={{ color: '#6D28D9' }}>{new Date(pubDate.data + 'T00:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: '2-digit', month: '2-digit' })}{pubDate.ora && <span className="ml-1 font-mono">{pubDate.ora.slice(0, 5)}</span>}</p>}
-              <LiveClock scadenza={pubDate.data} ora={pubDate.ora} onReschedule={onReschedule ? (d) => onReschedule(task.id, d) : undefined} />
+              <LiveClock scadenza={pubDate.data} ora={pubDate.ora} onReschedule={onReschedule ? (d, o) => onReschedule(task.id, d, o) : undefined} />
             </>
           )}
         </div>
-      ) : task.scadenza ? <LiveClock scadenza={task.scadenza} ora={task.ora} onReschedule={onReschedule ? (d) => onReschedule(task.id, d) : undefined} /> : scadInfo ? (
+      ) : task.scadenza ? <LiveClock scadenza={task.scadenza} ora={task.ora} onReschedule={onReschedule ? (d, o) => onReschedule(task.id, d, o) : undefined} /> : scadInfo ? (
         <div className="inline-flex items-center text-xs px-1.5 py-0.5 rounded mt-1.5 font-medium" style={{ background: scadInfo.bg, color: scadInfo.color }}>{scadInfo.label}</div>
       ) : null}
 
@@ -322,8 +325,34 @@ export function KanbanTab({ team, clienti, personaView, focusTaskId }: { team: T
     await loadTasks();
   };
 
-  const handleReschedule = async (taskId: string, newDate: string) => {
-    await supabase.from('task').update({ scadenza: newDate }).eq('id', taskId);
+  const handleReschedule = async (taskId: string, newDate: string, newOra?: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    const update: any = { scadenza: newDate };
+    if (newOra) update.ora = newOra;
+    await supabase.from('task').update(update).eq('id', taskId);
+
+    // Sync calendario: cerca evento collegato e aggiornalo
+    if (task) {
+      // 1. Cerca per [TASK:id] nella descrizione
+      const { data: calByTag } = await supabase.from('calendario')
+        .select('id')
+        .like('descrizione', `%[TASK:${taskId}]%`);
+      if (calByTag?.length) {
+        const calUpdate: any = { data: newDate };
+        if (newOra) calUpdate.ora = newOra;
+        for (const ev of calByTag) {
+          await supabase.from('calendario').update(calUpdate).eq('id', ev.id);
+        }
+      }
+      // 2. Se è un CLP task, aggiorna anche data_pubblicazione del contenuto
+      if (task.id_contenuto) {
+        await supabase.from('contenuti').update({ data_pubblicazione: newDate, ...(newOra ? { ora_pubblicazione: newOra } : {}) }).eq('id', task.id_contenuto);
+        // Aggiorna evento calendario collegato al contenuto
+        const calUpdate2: any = { data: newDate };
+        if (newOra) calUpdate2.ora = newOra;
+        await supabase.from('calendario').update(calUpdate2).eq('contenuto_id', task.id_contenuto);
+      }
+    }
     await loadTasks();
   };
 
