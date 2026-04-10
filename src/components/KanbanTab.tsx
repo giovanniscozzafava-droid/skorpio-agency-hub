@@ -57,8 +57,10 @@ function getTargetDate(scadenza: string, ora: string | null): Date {
   return new Date(`${scadenza}T${ora ? ora.slice(0, 5) : '23:59'}:00`);
 }
 
-function LiveClock({ scadenza, ora }: { scadenza: string; ora: string | null }) {
+function LiveClock({ scadenza, ora, onReschedule }: { scadenza: string; ora: string | null; onReschedule?: (newDate: string) => void }) {
   const [diff, setDiff] = useState(() => getTargetDate(scadenza, ora).getTime() - Date.now());
+  const [showPicker, setShowPicker] = useState(false);
+  const [newDate, setNewDate] = useState('');
   useEffect(() => { const id = setInterval(() => setDiff(getTargetDate(scadenza, ora).getTime() - Date.now()), 60000); return () => clearInterval(id); }, [scadenza, ora]);
   const abs = Math.abs(diff);
   const d = Math.floor(abs / 86400000), h = Math.floor((abs % 86400000) / 3600000), m = Math.floor((abs % 3600000) / 60000);
@@ -67,21 +69,50 @@ function LiveClock({ scadenza, ora }: { scadenza: string; ora: string | null }) 
   const level = isScaduto ? 'scaduto' : d > 7 ? 'ok' : d >= 1 ? 'warn' : 'urgent';
   const s = { ok: { bg: 'hsl(214 80% 55%/0.1)', c: 'hsl(214 70% 44%)', b: 'hsl(214 80% 55%/0.25)' }, warn: { bg: 'hsl(38 92% 50%/0.12)', c: 'hsl(32 95% 35%)', b: 'hsl(38 92% 50%/0.35)' }, urgent: { bg: 'hsl(0 80% 55%/0.12)', c: 'hsl(0 70% 42%)', b: 'hsl(0 80% 55%/0.4)' }, scaduto: { bg: 'hsl(0 80% 55%/0.14)', c: 'hsl(0 70% 38%)', b: 'hsl(0 80% 55%/0.5)' } }[level];
   return (
-    <div className={`mt-2 flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-semibold${level === 'urgent' ? ' animate-pulse' : ''}`} style={{ background: s.bg, border: `1px solid ${s.b}`, color: s.c }}>
-      <span className="uppercase tracking-wide" style={{ fontSize: '0.65rem' }}>{isScaduto ? 'SCADUTO' : level === 'urgent' ? 'URGENTE' : level === 'warn' ? 'IN SCADENZA' : 'SCADE TRA'}</span>
-      <span className="font-mono tabular-nums" style={{ fontSize: '0.72rem' }}>{text}</span>
+    <div className="mt-2">
+      <div
+        className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-semibold${level === 'urgent' ? ' animate-pulse' : ''}${isScaduto && onReschedule ? ' cursor-pointer hover:opacity-80' : ''}`}
+        style={{ background: s.bg, border: `1px solid ${s.b}`, color: s.c }}
+        onClick={e => {
+          if (isScaduto && onReschedule) {
+            e.stopPropagation();
+            const domani = new Date(); domani.setDate(domani.getDate() + 1);
+            setNewDate(`${domani.getFullYear()}-${String(domani.getMonth()+1).padStart(2,'0')}-${String(domani.getDate()).padStart(2,'0')}`);
+            setShowPicker(v => !v);
+          }
+        }}
+      >
+        <span className="uppercase tracking-wide" style={{ fontSize: '0.65rem' }}>{isScaduto ? 'SCADUTO' : level === 'urgent' ? 'URGENTE' : level === 'warn' ? 'IN SCADENZA' : 'SCADE TRA'}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="font-mono tabular-nums" style={{ fontSize: '0.72rem' }}>{text}</span>
+          {isScaduto && onReschedule && <span style={{ fontSize: '0.65rem' }}>🔄</span>}
+        </div>
+      </div>
+      {showPicker && onReschedule && (
+        <div className="mt-1.5 flex gap-1" onClick={e => e.stopPropagation()}>
+          <input type="date" className="flex-1 text-[11px] px-1.5 py-1 rounded border" style={{ borderColor: '#FCA5A5' }} value={newDate} onChange={e => setNewDate(e.target.value)} />
+          <button
+            disabled={!newDate}
+            onClick={() => { onReschedule(newDate); setShowPicker(false); }}
+            className="px-2 py-1 rounded text-[10px] font-bold text-white disabled:opacity-40"
+            style={{ background: '#3B82F6' }}
+          >✅</button>
+          <button onClick={() => setShowPicker(false)} className="text-[10px] px-1 text-muted-foreground">✕</button>
+        </div>
+      )}
     </div>
   );
 }
 
 // ── TaskCard ──────────────────────────────────────────────────────────────────
 
-function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate, revisionCount, isProgrammato, canEditProgrammazione, onRiprogramma, onEditPubDate, clientLogoUrl, onPriorityChange }: {
+function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate, revisionCount, isProgrammato, canEditProgrammazione, onRiprogramma, onEditPubDate, clientLogoUrl, onPriorityChange, onReschedule }: {
   task: Task; team: TeamMember[]; utente: TeamMember | null; draggingId: string | null;
   onDragStart: () => void; onDragEnd: () => void; onClick: () => void;
   showFaseBadge?: boolean; pubDate?: { data: string | null; ora: string | null } | null; revisionCount?: number;
   isProgrammato?: boolean; canEditProgrammazione?: boolean; onRiprogramma?: () => void; onEditPubDate?: (d: string, o: string | null) => void;
   clientLogoUrl?: string | null; onPriorityChange?: (taskId: string, newPrio: string) => void;
+  onReschedule?: (taskId: string, newDate: string) => void;
 }) {
   const member = team.find(m => m.nome === task.assegnato_a);
   const isAuto = task.assegnato_da?.includes('Sistema') || task.assegnato_da?.includes('⚡');
@@ -139,11 +170,11 @@ function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onCl
           ) : (
             <>
               {isProgrammato && pubDate.data && <p className="text-[11px] font-bold mt-0.5" style={{ color: '#6D28D9' }}>{new Date(pubDate.data + 'T00:00:00').toLocaleDateString('it-IT', { weekday: 'short', day: '2-digit', month: '2-digit' })}{pubDate.ora && <span className="ml-1 font-mono">{pubDate.ora.slice(0, 5)}</span>}</p>}
-              <LiveClock scadenza={pubDate.data} ora={pubDate.ora} />
+              <LiveClock scadenza={pubDate.data} ora={pubDate.ora} onReschedule={onReschedule ? (d) => onReschedule(task.id, d) : undefined} />
             </>
           )}
         </div>
-      ) : task.scadenza ? <LiveClock scadenza={task.scadenza} ora={task.ora} /> : scadInfo ? (
+      ) : task.scadenza ? <LiveClock scadenza={task.scadenza} ora={task.ora} onReschedule={onReschedule ? (d) => onReschedule(task.id, d) : undefined} /> : scadInfo ? (
         <div className="inline-flex items-center text-xs px-1.5 py-0.5 rounded mt-1.5 font-medium" style={{ background: scadInfo.bg, color: scadInfo.color }}>{scadInfo.label}</div>
       ) : null}
 
@@ -291,6 +322,11 @@ export function KanbanTab({ team, clienti, personaView, focusTaskId }: { team: T
     await loadTasks();
   };
 
+  const handleReschedule = async (taskId: string, newDate: string) => {
+    await supabase.from('task').update({ scadenza: newDate }).eq('id', taskId);
+    await loadTasks();
+  };
+
   const handleDropStandard = async (nuovoStato: string) => {
     if (!dragItem) return;
     setDropTarget(null);
@@ -400,7 +436,7 @@ export function KanbanTab({ team, clienti, personaView, focusTaskId }: { team: T
                     <span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ background: `${col.colore}20`, color: col.colore }}>{ct.length}</span>
                   </div>
                   <div className="kanban-col-body">
-                    {ct.map(t => <TaskCard key={t.id} task={t} team={team} utente={utente} draggingId={dragItem} onDragStart={() => setDragItem(t.id)} onDragEnd={() => setDragItem(null)} onClick={() => setSelectedTask(t)} showFaseBadge={false} pubDate={t.id_contenuto ? clpPubDates[t.id_contenuto] : null} revisionCount={t.id_contenuto ? clpRevisionCount[t.id_contenuto] : undefined} isProgrammato={col.stato === 'Programmato'} canEditProgrammazione={canEditProgrammazione} onRiprogramma={() => t.id_contenuto && setRiprogrammaConfirm({ taskId: t.id, contenutoId: t.id_contenuto, desc: t.descrizione.slice(0, 50) })} onEditPubDate={(d, o) => t.id_contenuto && handleEditPubDate(t.id_contenuto, d, o)} clientLogoUrl={t.cliente_id ? clientLogoMap[t.cliente_id] : clientLogoByName[t.cliente_nome]} onPriorityChange={handlePriorityChange} />)}
+                    {ct.map(t => <TaskCard key={t.id} task={t} team={team} utente={utente} draggingId={dragItem} onDragStart={() => setDragItem(t.id)} onDragEnd={() => setDragItem(null)} onClick={() => setSelectedTask(t)} showFaseBadge={false} pubDate={t.id_contenuto ? clpPubDates[t.id_contenuto] : null} revisionCount={t.id_contenuto ? clpRevisionCount[t.id_contenuto] : undefined} isProgrammato={col.stato === 'Programmato'} canEditProgrammazione={canEditProgrammazione} onRiprogramma={() => t.id_contenuto && setRiprogrammaConfirm({ taskId: t.id, contenutoId: t.id_contenuto, desc: t.descrizione.slice(0, 50) })} onEditPubDate={(d, o) => t.id_contenuto && handleEditPubDate(t.id_contenuto, d, o)} clientLogoUrl={t.cliente_id ? clientLogoMap[t.cliente_id] : clientLogoByName[t.cliente_nome]} onPriorityChange={handlePriorityChange} onReschedule={handleReschedule} />)}
                     {ct.length === 0 && <div className="flex items-center justify-center h-12 text-xs rounded-lg" style={{ color: 'hsl(var(--muted-foreground))', border: `1px dashed ${col.border}40` }}>Nessun task</div>}
                   </div>
                 </div>
@@ -441,7 +477,7 @@ export function KanbanTab({ team, clienti, personaView, focusTaskId }: { team: T
                     <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: `${col.colore}20`, color: col.colore }}>{ct.length}</span>
                   </div>
                   <div className="kanban-col-body">
-                    {ct.map(t => <TaskCard key={t.id} task={t} team={team} utente={utente} draggingId={dragItem} onDragStart={() => setDragItem(t.id)} onDragEnd={() => setDragItem(null)} onClick={() => setSelectedTask(t)} showFaseBadge={true} revisionCount={t.id_contenuto ? clpRevisionCount[t.id_contenuto] : undefined} clientLogoUrl={t.cliente_id ? clientLogoMap[t.cliente_id] : clientLogoByName[t.cliente_nome]} onPriorityChange={handlePriorityChange} />)}
+                    {ct.map(t => <TaskCard key={t.id} task={t} team={team} utente={utente} draggingId={dragItem} onDragStart={() => setDragItem(t.id)} onDragEnd={() => setDragItem(null)} onClick={() => setSelectedTask(t)} showFaseBadge={true} revisionCount={t.id_contenuto ? clpRevisionCount[t.id_contenuto] : undefined} clientLogoUrl={t.cliente_id ? clientLogoMap[t.cliente_id] : clientLogoByName[t.cliente_nome]} onPriorityChange={handlePriorityChange} onReschedule={handleReschedule} />)}
                     {ct.length === 0 && <div className="flex items-center justify-center h-16 text-xs rounded-lg" style={{ color: 'hsl(var(--skorpio-text-tertiary))', border: `1px dashed ${col.border}40` }}>Nessun task</div>}
                   </div>
                 </div>
