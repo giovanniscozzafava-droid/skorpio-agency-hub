@@ -2182,6 +2182,35 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
       if (ev.contenuto_id) {
         console.log('[CalSync] handleEventDrop — aggiorno data_pubblicazione', { contenutoId: ev.contenuto_id, newDateStr });
         await supabase.from('contenuti').update({ data_pubblicazione: newDateStr }).eq('id', ev.contenuto_id);
+        // Aggiorna anche scadenza di tutti i task collegati a questo CLP
+        const taskUpdate: any = { scadenza: newDateStr };
+        if (newOra) taskUpdate.ora = newOra;
+        await supabase.from('task').update(taskUpdate)
+          .eq('id_contenuto', ev.contenuto_id)
+          .neq('stato', 'Completato')
+          .neq('stato', 'Archiviato');
+        console.log('[CalSync] rischedulati task collegati a', ev.contenuto_id);
+      }
+
+      // Per appuntamenti senza [TASK:] — cerca task per data+descrizione
+      if (ev.tipo === 'appuntamento' && !taskId) {
+        const descClean = (ev.descrizione || '').replace(/\s*\[TASK:[^\]]+\]/g, '').trim();
+        if (descClean) {
+          const { data: matchTasks } = await supabase.from('task')
+            .select('id')
+            .eq('scadenza', oldDate)
+            .ilike('descrizione', `%${descClean.slice(0, 40)}%`)
+            .neq('stato', 'Completato')
+            .neq('stato', 'Archiviato');
+          if (matchTasks?.length) {
+            const taskUpdatePayload: any = { scadenza: newDateStr };
+            if (newOra) taskUpdatePayload.ora = newOra;
+            for (const mt of matchTasks) {
+              await supabase.from('task').update(taskUpdatePayload).eq('id', mt.id);
+            }
+            console.log('[CalSync] rischedulati', matchTasks.length, 'task per descrizione match');
+          }
+        }
       }
 
       // Set undo data
