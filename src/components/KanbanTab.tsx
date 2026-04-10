@@ -123,13 +123,14 @@ function LiveClock({ scadenza, ora, onReschedule }: { scadenza: string; ora: str
 
 // ── TaskCard ──────────────────────────────────────────────────────────────────
 
-function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate, revisionCount, isProgrammato, canEditProgrammazione, onRiprogramma, onEditPubDate, clientLogoUrl, onPriorityChange, onReschedule }: {
+function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onClick, showFaseBadge = true, pubDate, revisionCount, isProgrammato, canEditProgrammazione, onRiprogramma, onEditPubDate, clientLogoUrl, onPriorityChange, onReschedule, hideCountdown }: {
   task: Task; team: TeamMember[]; utente: TeamMember | null; draggingId: string | null;
   onDragStart: () => void; onDragEnd: () => void; onClick: () => void;
   showFaseBadge?: boolean; pubDate?: { data: string | null; ora: string | null } | null; revisionCount?: number;
   isProgrammato?: boolean; canEditProgrammazione?: boolean; onRiprogramma?: () => void; onEditPubDate?: (d: string, o: string | null) => void;
   clientLogoUrl?: string | null; onPriorityChange?: (taskId: string, newPrio: string) => void;
   onReschedule?: (taskId: string, newDate: string, newOra?: string) => void;
+  hideCountdown?: boolean;
 }) {
   const member = team.find(m => m.nome === task.assegnato_a);
   const isAuto = task.assegnato_da?.includes('Sistema') || task.assegnato_da?.includes('⚡');
@@ -151,7 +152,7 @@ function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onCl
 
   return (
     <div className={`task-card ${draggingId === task.id ? 'dragging' : ''}`} draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onClick={onClick}
-      style={{ borderLeft: `3px solid ${PRIORITA_COLOR[task.priorita] || '#64748B'}`, ...(scadInfo?.label.includes('SCADUTO') ? { borderColor: '#EF4444' } : {}) }}>
+      style={{ borderLeft: `3px solid ${PRIORITA_COLOR[task.priorita] || '#64748B'}`, ...(!hideCountdown && scadInfo?.label.includes('SCADUTO') ? { borderColor: '#EF4444' } : {}) }}>
       <div className="flex items-center gap-1.5 mb-1">
         {isAuto && <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: 'hsl(38 92% 50%/0.15)', color: 'hsl(32 95% 40%)' }}>⚡ Auto</span>}
         {(revisionCount ?? 0) >= 3 && <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ background: '#FEF3C7', color: '#D97706', border: '1px solid #FDE68A' }}>⚠️ {revisionCount} rev</span>}
@@ -169,7 +170,7 @@ function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onCl
       </div>
       {task.cliente_nome && <div className="flex items-center gap-1.5 mt-1 truncate"><ClienteLogo nome={task.cliente_nome} logoUrl={clientLogoUrl} size={16} /><span className="text-xs truncate" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>{task.cliente_nome.slice(0, 20)}</span></div>}
 
-      {pubDate?.data ? (
+      {!hideCountdown && pubDate?.data ? (
         <div className="mt-1.5">
           <div className="flex items-center justify-between">
             <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: '#7C3AED', opacity: 0.7 }}>📡 Pubblicazione</p>
@@ -191,7 +192,7 @@ function TaskCard({ task, team, utente, draggingId, onDragStart, onDragEnd, onCl
             </>
           )}
         </div>
-      ) : task.scadenza ? <LiveClock scadenza={task.scadenza} ora={task.ora} onReschedule={onReschedule ? (d, o) => onReschedule(task.id, d, o) : undefined} /> : scadInfo ? (
+      ) : !hideCountdown && task.scadenza ? <LiveClock scadenza={task.scadenza} ora={task.ora} onReschedule={onReschedule ? (d, o) => onReschedule(task.id, d, o) : undefined} /> : !hideCountdown && scadInfo ? (
         <div className="inline-flex items-center text-xs px-1.5 py-0.5 rounded mt-1.5 font-medium" style={{ background: scadInfo.bg, color: scadInfo.color }}>{scadInfo.label}</div>
       ) : null}
 
@@ -479,7 +480,7 @@ export function KanbanTab({ team, clienti, personaView, focusTaskId }: { team: T
                     <span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ background: `${col.colore}20`, color: col.colore }}>{ct.length}</span>
                   </div>
                   <div className="kanban-col-body">
-                    {ct.map(t => <TaskCard key={t.id} task={t} team={team} utente={utente} draggingId={dragItem} onDragStart={() => setDragItem(t.id)} onDragEnd={() => setDragItem(null)} onClick={() => setSelectedTask(t)} showFaseBadge={false} pubDate={t.id_contenuto ? clpPubDates[t.id_contenuto] : null} revisionCount={t.id_contenuto ? clpRevisionCount[t.id_contenuto] : undefined} isProgrammato={col.stato === 'Programmato'} canEditProgrammazione={canEditProgrammazione} onRiprogramma={() => t.id_contenuto && setRiprogrammaConfirm({ taskId: t.id, contenutoId: t.id_contenuto, desc: t.descrizione.slice(0, 50) })} onEditPubDate={(d, o) => t.id_contenuto && handleEditPubDate(t.id_contenuto, d, o)} clientLogoUrl={t.cliente_id ? clientLogoMap[t.cliente_id] : clientLogoByName[t.cliente_nome]} onPriorityChange={handlePriorityChange} onReschedule={handleReschedule} />)}
+                    {ct.map(t => <TaskCard key={t.id} task={t} team={team} utente={utente} draggingId={dragItem} onDragStart={() => setDragItem(t.id)} onDragEnd={() => setDragItem(null)} onClick={() => setSelectedTask(t)} showFaseBadge={false} pubDate={t.id_contenuto ? clpPubDates[t.id_contenuto] : null} revisionCount={t.id_contenuto ? clpRevisionCount[t.id_contenuto] : undefined} isProgrammato={col.stato === 'Programmato'} canEditProgrammazione={canEditProgrammazione} onRiprogramma={() => t.id_contenuto && setRiprogrammaConfirm({ taskId: t.id, contenutoId: t.id_contenuto, desc: t.descrizione.slice(0, 50) })} onEditPubDate={(d, o) => t.id_contenuto && handleEditPubDate(t.id_contenuto, d, o)} clientLogoUrl={t.cliente_id ? clientLogoMap[t.cliente_id] : clientLogoByName[t.cliente_nome]} onPriorityChange={handlePriorityChange} onReschedule={handleReschedule} hideCountdown={col.stato === 'Pubblicato'} />)}
                     {ct.length === 0 && <div className="flex items-center justify-center h-12 text-xs rounded-lg" style={{ color: 'hsl(var(--muted-foreground))', border: `1px dashed ${col.border}40` }}>Nessun task</div>}
                   </div>
                 </div>
