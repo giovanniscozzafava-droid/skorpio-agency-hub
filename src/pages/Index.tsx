@@ -10,6 +10,7 @@ import { ContenutiTab } from '../components/ContenutiTab';
 import { ClientiTab } from '../components/ClientiTab';
 import { RipreseTab } from '../components/RipreseTab';
 import { WipTab } from '../components/WipTab';
+import { MonitorTab } from '../components/MonitorTab';
 import { CalendarioTab } from '../components/CalendarioTab';
 import { CreativeEngineTab } from '../components/CreativeEngineTab';
 import { ChatPopup } from '../components/ChatPopup';
@@ -121,7 +122,7 @@ function MainApp() {
         )}
         {tab === 'clienti' && <ClientiTab />}
         {tab === 'riprese' && <RipreseTab clienti={clienti} team={team} />}
-        {tab === 'monitor' && <WipTab tabId="monitor" />}
+        {tab === 'monitor' && <MonitorTab clienti={clienti} />}
         {tab === 'siti' && <WipTab tabId="siti" />}
         {tab === 'andromeda' && <WipTab tabId="andromeda" />}
         {tab === 'report' && <WipTab tabId="report" />}
