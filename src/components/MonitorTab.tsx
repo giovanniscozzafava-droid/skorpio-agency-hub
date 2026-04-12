@@ -117,14 +117,42 @@ function NewMonitorModal({ clienti, onClose, onCreated }: { clienti: Cliente[]; 
 function ContenutiPanel({ monitor, contenuti, onReload }: { monitor: Monitor; contenuti: MonitorContenuto[]; onReload: () => void }) {
   const { utente, addToast } = useApp();
   const [driveFiles, setDriveFiles] = useState<DriveFile[]>([]); const [loadingDrive, setLoadingDrive] = useState(false); const [showDrive, setShowDrive] = useState(false); const [saving, setSaving] = useState(false);
+  const [folderId, setFolderId] = useState(monitor.drive_monitor_folder_id);
+
+  const ensureDriveFolder = async (): Promise<string | null> => {
+    if (folderId) return folderId;
+    // Create folder on Drive
+    addToast('📂 Creo cartella Monitor su Drive…', 'info');
+    try {
+      const { data: dt } = await supabase.from('team').select('id').eq('google_drive_connected', true).limit(1);
+      const tid = dt?.[0]?.id || utente?.id;
+      if (!tid) { addToast('⚠️ Nessun utente con Drive connesso', 'warn'); return null; }
+      const r = await invokeEdge('create-drive-folder', {
+        contenuto_id: `monitor_${monitor.slug}`,
+        titolo: `MONITOR_${monitor.cliente_nome}`,
+        cliente_nome: monitor.cliente_nome,
+        tipo: 'Monitor',
+        id_display: `MON_${monitor.slug}`,
+        team_id: tid,
+      });
+      if (r.success && r.folder_id) {
+        await supabase.from('monitor').update({ drive_monitor_folder_id: r.folder_id }).eq('id', monitor.id);
+        setFolderId(r.folder_id);
+        addToast(`✅ Cartella Drive "MONITOR_${monitor.cliente_nome}" creata!`, 'success');
+        return r.folder_id;
+      }
+    } catch (e: any) { addToast(`❌ Errore Drive: ${e.message}`, 'error'); }
+    return null;
+  };
 
   const loadDriveFiles = async () => {
-    if (!monitor.drive_monitor_folder_id) { addToast('⚠️ Cartella Drive non configurata', 'warn'); return; }
     setLoadingDrive(true); setShowDrive(true);
+    const driveFolder = await ensureDriveFolder();
+    if (!driveFolder) { setLoadingDrive(false); return; }
     try {
       const { data: dt } = await supabase.from('team').select('id').eq('google_drive_connected', true).limit(1);
       const tid = dt?.[0]?.id || utente?.id || '';
-      const result = await invokeEdge('google-drive-list-files', { folderId: monitor.drive_monitor_folder_id, teamId: tid });
+      const result = await invokeEdge('google-drive-list-files', { folderId: driveFolder, teamId: tid });
       setDriveFiles(result.files || []);
     } catch (e: any) { addToast(`❌ Drive: ${e.message}`, 'error'); }
     setLoadingDrive(false);
