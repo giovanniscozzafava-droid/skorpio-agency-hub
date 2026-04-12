@@ -281,6 +281,10 @@ export function TopBar({ team, taskCounts, tasks, clpPubDates, onViewPersona, pe
     { id: 'contenuti', label: '📹 Contenuti' },
     { id: 'clienti', label: '👥 Clienti' },
     { id: 'riprese', label: '🎬 Riprese' },
+    { id: 'monitor', label: '🖥️ Monitor' },
+    { id: 'siti', label: '🌐 Siti Web' },
+    { id: 'andromeda', label: '🏥 Andromeda' },
+    { id: 'report', label: '📊 Report' },
   ];
 
   return (
