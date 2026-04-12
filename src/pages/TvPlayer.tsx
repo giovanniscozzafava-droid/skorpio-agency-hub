@@ -121,10 +121,60 @@ export default function TvPlayer() {
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [currentIndex, activeContenuti, goNext, monitor?.durata_immagine]);
 
+  const [showControls, setShowControls] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleActivity = useCallback(() => {
+    setShowControls(true);
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    hideTimer.current = setTimeout(() => setShowControls(false), 3000);
+  }, []);
+
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFsChange);
+    window.addEventListener('mousemove', handleActivity);
+    window.addEventListener('touchstart', handleActivity);
+    // Auto-hide after 3s
+    hideTimer.current = setTimeout(() => setShowControls(false), 3000);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFsChange);
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('touchstart', handleActivity);
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+    };
+  }, [handleActivity]);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+  };
+
+  const FullscreenBtn = () => (
+    <button
+      onClick={toggleFullscreen}
+      style={{
+        position: 'fixed', top: 16, right: 16, zIndex: 9999,
+        background: 'rgba(0,0,0,0.6)', color: 'white', border: '1px solid rgba(255,255,255,0.2)',
+        borderRadius: 12, padding: '10px 16px', fontSize: 14, fontFamily: 'sans-serif',
+        cursor: 'pointer', backdropFilter: 'blur(8px)',
+        opacity: showControls ? 1 : 0, transition: 'opacity 0.3s ease',
+        pointerEvents: showControls ? 'auto' : 'none',
+      }}
+    >
+      {isFullscreen ? '⬜ Esci da fullscreen' : '⛶ Schermo intero'}
+    </button>
+  );
+
   // ── Render ─────────────────────────────────────────────────────────────────
   if (error) {
     return (
       <div style={{ background: '#000', color: '#333', width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <FullscreenBtn />
         <p style={{ fontSize: 14, fontFamily: 'sans-serif' }}>{error}</p>
       </div>
     );
@@ -133,6 +183,7 @@ export default function TvPlayer() {
   if (!monitor || activeContenuti.length === 0) {
     return (
       <div style={{ background: '#000', width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16 }}>
+        <FullscreenBtn />
         <div style={{ width: 40, height: 40, border: '3px solid #333', borderTopColor: '#666', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
         <p style={{ color: '#444', fontSize: 12, fontFamily: 'sans-serif' }}>{monitor ? 'Nessun contenuto programmato' : 'Caricamento…'}</p>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -146,7 +197,9 @@ export default function TvPlayer() {
   const transform = transitioning && trans === 'slide' ? 'translateX(100%)' : 'translateX(0)';
 
   return (
-    <div style={{ background: '#000', width: '100vw', height: '100vh', overflow: 'hidden', cursor: 'none', position: 'relative' }}>
+    <div style={{ background: '#000', width: '100vw', height: '100vh', overflow: 'hidden', cursor: showControls ? 'default' : 'none', position: 'relative' }}
+      onClick={handleActivity}>
+      <FullscreenBtn />
       {/* Content */}
       <div style={{
         width: '100%', height: '100%',
