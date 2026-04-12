@@ -118,14 +118,20 @@ function ContenutiPanel({ monitor, contenuti, onReload }: { monitor: Monitor; co
   const { utente, addToast } = useApp();
   const [driveFiles, setDriveFiles] = useState<DriveFile[]>([]); const [loadingDrive, setLoadingDrive] = useState(false); const [showDrive, setShowDrive] = useState(false); const [saving, setSaving] = useState(false);
   const [folderId, setFolderId] = useState(monitor.drive_monitor_folder_id);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const getTeamId = async () => {
+    const { data: dt } = await supabase.from('team').select('id').eq('google_drive_connected', true).limit(1);
+    return dt?.[0]?.id || utente?.id || '';
+  };
 
   const ensureDriveFolder = async (): Promise<string | null> => {
     if (folderId) return folderId;
-    // Create folder on Drive
     addToast('📂 Creo cartella Monitor su Drive…', 'info');
     try {
-      const { data: dt } = await supabase.from('team').select('id').eq('google_drive_connected', true).limit(1);
-      const tid = dt?.[0]?.id || utente?.id;
+      const tid = await getTeamId();
       if (!tid) { addToast('⚠️ Nessun utente con Drive connesso', 'warn'); return null; }
       const r = await invokeEdge('create-drive-folder', {
         contenuto_id: `monitor_${monitor.slug}`,
@@ -138,7 +144,7 @@ function ContenutiPanel({ monitor, contenuti, onReload }: { monitor: Monitor; co
       if (r.success && r.folder_id) {
         await supabase.from('monitor').update({ drive_monitor_folder_id: r.folder_id }).eq('id', monitor.id);
         setFolderId(r.folder_id);
-        addToast(`✅ Cartella Drive "MONITOR_${monitor.cliente_nome}" creata!`, 'success');
+        addToast(`✅ Cartella Drive creata!`, 'success');
         return r.folder_id;
       }
     } catch (e: any) { addToast(`❌ Errore Drive: ${e.message}`, 'error'); }
@@ -150,20 +156,112 @@ function ContenutiPanel({ monitor, contenuti, onReload }: { monitor: Monitor; co
     const driveFolder = await ensureDriveFolder();
     if (!driveFolder) { setLoadingDrive(false); return; }
     try {
-      const { data: dt } = await supabase.from('team').select('id').eq('google_drive_connected', true).limit(1);
-      const tid = dt?.[0]?.id || utente?.id || '';
+      const tid = await getTeamId();
       const result = await invokeEdge('google-drive-list-files', { folderId: driveFolder, teamId: tid });
       setDriveFiles(result.files || []);
     } catch (e: any) { addToast(`❌ Drive: ${e.message}`, 'error'); }
     setLoadingDrive(false);
   };
 
+  // ── Upload file to Drive ───────────────────────────────────────────────────
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = ''; // reset input
+
+    const driveFolder = await ensureDriveFolder();
+    if (!driveFolder) return;
+
+    setUploading(true); setUploadProgress(0);
+    try {
+      const tid = await getTeamId();
+      const mimeType = file.type || 'application/octet-stream';
+
+      // Init resumable upload
+      const initRes = await invokeEdge('google-drive-upload-init', {
+        fileName: file.name,
+        mimeType,
+        fileSize: file.size,
+        teamId: tid,
+        clientName: monitor.cliente_nome,
+        zone: 'monitor',
+        contenutoId: `monitor_${monitor.slug}`,
+        idDisplay: `MON_${monitor.slug}`,
+        titolo: `MONITOR_${monitor.cliente_nome}`,
+        folderId: driveFolder,
+      });
+
+      const uploadUrl = initRes.uploadUrl;
+      if (!uploadUrl) throw new Error('Nessun uploadUrl ricevuto');
+
+      // Chunked upload
+      const CHUNK = 4 * 1024 * 1024;
+      let uploaded = 0;
+      let fileId = '';
+
+      while (uploaded < file.size) {
+        const end = Math.min(uploaded + CHUNK, file.size);
+        const chunk = file.slice(uploaded, end);
+        const contentRange = `bytes ${uploaded}-${end - 1}/${file.size}`;
+
+        const chunkRes = await fetch(`${SUPABASE_URL}/functions/v1/google-drive-upload-chunk`, {
+          method: 'POST',
+          headers: {
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+            'x-upload-url': uploadUrl,
+            'x-content-range': contentRange,
+            'x-content-type': mimeType,
+            'Content-Type': 'application/octet-stream',
+          },
+          body: chunk,
+        });
+
+        if (!chunkRes.ok) {
+          const err = await chunkRes.json().catch(() => ({ error: `HTTP ${chunkRes.status}` }));
+          throw new Error(err?.error || 'Upload chunk fallito');
+        }
+
+        const chunkData = await chunkRes.json();
+        uploaded = end;
+        setUploadProgress(Math.round((uploaded / file.size) * 100));
+
+        if (chunkData.fileId) fileId = chunkData.fileId;
+      }
+
+      if (!fileId) throw new Error('Upload completato ma nessun fileId');
+
+      // Auto-add to monitor contenuti
+      const isVideo = mimeType.startsWith('video/');
+      const thumb = `https://drive.google.com/thumbnail?id=${fileId}&sz=w640`;
+      const streamUrl = `${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${encodeURIComponent(fileId)}&teamId=${encodeURIComponent(tid)}`;
+
+      await supabase.from('monitor_contenuti').insert({
+        monitor_id: monitor.id, cliente_id: monitor.cliente_id,
+        titolo: file.name.replace(/\.[^/.]+$/, ''),
+        tipo: isVideo ? 'video' : 'immagine',
+        drive_file_id: fileId, drive_url: streamUrl, thumbnail_url: thumb,
+        durata_secondi: isVideo ? 0 : monitor.durata_immagine,
+        ordine: contenuti.length,
+      });
+
+      onReload();
+      addToast(`✅ "${file.name}" caricato e aggiunto al monitor!`, 'success');
+
+      // Refresh Drive files list if open
+      if (showDrive) loadDriveFiles();
+
+    } catch (e: any) {
+      addToast(`❌ Upload fallito: ${e.message}`, 'error');
+    }
+    setUploading(false); setUploadProgress(0);
+  };
+
   const addFromDrive = async (file: DriveFile) => {
     setSaving(true);
     const isVideo = file.mimeType.startsWith('video/');
     const thumb = file.thumbnailLink || `https://drive.google.com/thumbnail?id=${file.id}&sz=w640`;
-    const { data: dt } = await supabase.from('team').select('id').eq('google_drive_connected', true).limit(1);
-    const tid = dt?.[0]?.id || utente?.id || '';
+    const tid = await getTeamId();
     const streamUrl = `${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${encodeURIComponent(file.id)}&teamId=${encodeURIComponent(tid)}`;
     await supabase.from('monitor_contenuti').insert({ monitor_id: monitor.id, cliente_id: monitor.cliente_id, titolo: file.name.replace(/\.[^/.]+$/, ''), tipo: isVideo ? 'video' : 'immagine', drive_file_id: file.id, drive_url: streamUrl, thumbnail_url: thumb, durata_secondi: isVideo ? 0 : monitor.durata_immagine, ordine: contenuti.length });
     setSaving(false); onReload(); addToast(`✅ "${file.name}" aggiunto`, 'success');
@@ -177,10 +275,25 @@ function ContenutiPanel({ monitor, contenuti, onReload }: { monitor: Monitor; co
     <div className="rounded-xl border" style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}>
       <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: 'hsl(var(--border))' }}>
         <span className="text-sm font-bold" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>🎬 Contenuti ({contenuti.length})</span>
-        <button onClick={loadDriveFiles} disabled={loadingDrive} className="text-xs px-3 py-1 rounded-lg font-semibold text-white" style={{ background: '#22C55E' }}>{loadingDrive ? '⏳…' : '📂 Sfoglia Drive'}</button>
+        <div className="flex gap-1.5">
+          <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFileUpload} />
+          <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
+            className="text-xs px-3 py-1 rounded-lg font-semibold text-white" style={{ background: '#3B82F6' }}>
+            {uploading ? `⏳ ${uploadProgress}%` : '⬆️ Carica'}
+          </button>
+          <button onClick={loadDriveFiles} disabled={loadingDrive} className="text-xs px-3 py-1 rounded-lg font-semibold text-white" style={{ background: '#22C55E' }}>{loadingDrive ? '⏳…' : '📂 Sfoglia Drive'}</button>
+        </div>
       </div>
+      {/* Upload progress bar */}
+      {uploading && (
+        <div className="px-4 pb-2">
+          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'hsl(var(--muted))' }}>
+            <div className="h-full rounded-full transition-all" style={{ background: '#3B82F6', width: `${uploadProgress}%` }} />
+          </div>
+        </div>
+      )}
       <div className="p-3 space-y-2 max-h-[300px] overflow-y-auto">
-        {contenuti.length === 0 ? <p className="text-xs text-center py-6" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>Nessun contenuto. Clicca "📂 Sfoglia Drive"!</p> : contenuti.map(c => (
+        {contenuti.length === 0 ? <p className="text-xs text-center py-6" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>Nessun contenuto. Clicca "⬆️ Carica" o "📂 Sfoglia Drive"!</p> : contenuti.map(c => (
           <div key={c.id} className="flex items-center gap-3 p-2 rounded-lg" style={{ background: c.attivo ? 'hsl(var(--muted)/0.3)' : 'hsl(0 0% 50%/0.05)', opacity: c.attivo ? 1 : 0.5 }}>
             <div className="w-12 h-8 rounded overflow-hidden flex-shrink-0" style={{ background: '#1E293B' }}>{c.thumbnail_url ? <img src={c.thumbnail_url} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <div className="w-full h-full flex items-center justify-center text-sm">{c.tipo==='video'?'🎥':'🖼️'}</div>}</div>
             <div className="flex-1 min-w-0"><p className="text-xs font-semibold truncate" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>{c.titolo}</p><p className="text-[10px]" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>{c.tipo==='video'?'🎥 Video':`🖼️ ${c.durata_secondi}s`}</p></div>
