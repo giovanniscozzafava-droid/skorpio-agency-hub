@@ -51,17 +51,23 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
   const [completing, setCompleting] = useState<string | null>(null);
   const [isEvening, setIsEvening] = useState(false);
   const [minimized, setMinimized] = useState(false);
+  const [viewPerson, setViewPerson] = useState<string>(utente.nome);
+  const [reassignId, setReassignId] = useState<string | null>(null);
+
+  const isManager = utente.ruolo === 'Admin' || utente.nome === 'Elisa';
 
   const loadPriorities = useCallback(async () => {
     const now = new Date();
     const isMorning = now.getHours() < 17;
     setIsEvening(!isMorning);
 
-    // 1. Fetch manually assigned priorities from Elisa/Admin
+    const targetPerson = isManager ? viewPerson : utente.nome;
+
+    // 1. Fetch manually assigned priorities
     const { data: manualPrios } = await supabase
       .from('daily_priorities')
       .select('task_id, nota, show_morning, show_evening, creato_da')
-      .eq('assegnato_a', utente.nome)
+      .eq('assegnato_a', targetPerson)
       .eq('attivo', true);
 
     const manualTaskIds = new Set<string>();
@@ -73,18 +79,18 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
         .forEach(p => { manualTaskIds.add(p.task_id); manualNotes[p.task_id] = p.nota || ''; manualCreators[p.task_id] = p.creato_da; });
     }
 
-    // 2. Fetch all tasks for this user
-    const { data } = await supabase
-      .from('task')
-      .select('*')
-      .eq('assegnato_a', utente.nome)
-      .neq('stato', 'Archiviato')
-      .order('scadenza', { ascending: true, nullsFirst: false });
+    // 2. Fetch tasks — managers see ALL, others see own
+    const query = supabase.from('task').select('*').neq('stato', 'Archiviato').order('scadenza', { ascending: true, nullsFirst: false });
+    if (!isManager) query.eq('assegnato_a', utente.nome);
+    const { data } = await query;
 
     if (!data) { setLoading(false); return; }
 
-    // Carica anche le date pubblicazione CLP
-    const contenutoIds = [...new Set(data.filter(t => t.id_contenuto).map(t => t.id_contenuto))];
+    // Filter to selected person for managers
+    const filtered = isManager ? data.filter(t => t.assegnato_a === viewPerson) : data;
+
+    // Carica date pubblicazione CLP
+    const contenutoIds = [...new Set(filtered.filter(t => t.id_contenuto).map(t => t.id_contenuto))];
     let pubDates: Record<string, { data: string | null; ora: string | null }> = {};
     if (contenutoIds.length > 0) {
       const { data: clps } = await supabase
@@ -96,9 +102,8 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
       }
     }
 
-    // Filtra e ordina per urgenza
     const now2 = Date.now();
-    const scored = data
+    const scored = filtered
       .filter(t => t.stato !== 'Completato')
       .map(t => {
         let ms = Infinity;
@@ -107,37 +112,32 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
 
         const isScaduto = ms < now2;
         const diffDays = (ms - now2) / 86400000;
-        let score = 100; // default: no date
-        if (isScaduto) score = -10; // scaduto = massima urgenza
+        let score = 100;
+        if (isScaduto) score = -10;
         else if (diffDays <= 1) score = 0;
         else if (diffDays <= 3) score = 10;
         else if (diffDays <= 7) score = 20;
         else if (diffDays <= 14) score = 30;
         else score = 50;
 
-        // Boost per priorità alta
         if (t.priorita === '🔴 Alta') score -= 5;
-
-        // Boost per priorità assegnate manualmente da admin
         const isManual = manualTaskIds.has(t.id);
         if (isManual) score = -20;
 
         return { ...t, _score: score, _ms: ms, _isScaduto: isScaduto, _diffDays: diffDays, _pubData: t.id_contenuto ? pubDates[t.id_contenuto]?.data : null, _isManual: isManual, _manualNote: manualNotes[t.id] || '', _manualCreator: manualCreators[t.id] || '' };
       })
       .sort((a, b) => a._score - b._score || a._ms - b._ms)
-      .slice(0, 10); // max 10 task
+      .slice(0, 15);
 
-    // Per la sera: mostra anche i completati di oggi
     if (now.getHours() >= 17) {
       const todayStr = now.toISOString().slice(0, 10);
-      const { data: completedToday } = await supabase
-        .from('task')
-        .select('*')
-        .eq('assegnato_a', utente.nome)
+      const completedQuery = supabase.from('task').select('*')
         .eq('stato', 'Completato')
         .gte('updated_at', todayStr + 'T00:00:00')
         .lte('updated_at', todayStr + 'T23:59:59');
-
+      if (!isManager) completedQuery.eq('assegnato_a', utente.nome);
+      else completedQuery.eq('assegnato_a', viewPerson);
+      const { data: completedToday } = await completedQuery;
       if (completedToday) {
         completedToday.forEach(t => {
           if (!scored.find(s => s.id === t.id)) {
@@ -149,7 +149,7 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
 
     setTasks(scored as any);
     setLoading(false);
-  }, [utente.nome]);
+  }, [utente.nome, isManager, viewPerson]);
 
   useEffect(() => { loadPriorities(); }, [loadPriorities]);
 
@@ -159,6 +159,12 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
     await supabase.from('task').update({ stato: newStato }).eq('id', taskId);
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, stato: newStato } : t));
     setCompleting(null);
+  };
+
+  const handleReassign = async (taskId: string, newPerson: string) => {
+    await supabase.from('task').update({ assegnato_a: newPerson }).eq('id', taskId);
+    setReassignId(null);
+    loadPriorities();
   };
 
   const getCountdownLabel = (t: any) => {
@@ -210,7 +216,9 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
           </div>
           <p className="text-white/70 text-sm font-medium">{greeting}, {utente.nome.split(' ')[0]}</p>
           <h2 className="text-white text-xl font-bold mt-1">
-            {isEvening ? 'Hai completato le tue priorita?' : 'Le tue priorita per oggi'}
+            {isManager && viewPerson !== utente.nome
+              ? `Task di ${viewPerson}`
+              : isEvening ? 'Hai completato le tue priorita?' : 'Le tue priorita per oggi'}
           </h2>
           {isEvening && (
             <div className="flex gap-3 mt-3">
@@ -220,6 +228,23 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
               <div className="px-3 py-1.5 rounded-lg text-xs font-bold" style={{ background: pendingCount > 0 ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.1)', color: pendingCount > 0 ? '#FCA5A5' : '#94A3B8' }}>
                 {pendingCount} in sospeso
               </div>
+            </div>
+          )}
+          {/* Team member tabs for managers */}
+          {isManager && (
+            <div className="flex gap-1 mt-3 overflow-x-auto pb-1">
+              {team.filter(m => m.nome).map(m => (
+                <button key={m.id}
+                  onClick={() => { setViewPerson(m.nome); setLoading(true); }}
+                  className="text-[10px] px-2.5 py-1 rounded-full font-semibold whitespace-nowrap transition-all"
+                  style={{
+                    background: viewPerson === m.nome ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.08)',
+                    color: viewPerson === m.nome ? 'white' : 'rgba(255,255,255,0.5)',
+                    border: viewPerson === m.nome ? '1px solid rgba(255,255,255,0.3)' : '1px solid transparent',
+                  }}>
+                  {m.nome}
+                </button>
+              ))}
             </div>
           )}
         </div>
@@ -239,13 +264,14 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
               {tasks.map(t => {
                 const done = t.stato === 'Completato';
                 return (
-                  <div key={t.id}
-                    className="flex items-center gap-3 p-3 rounded-xl transition-all"
-                    style={{
-                      background: done ? 'hsl(142 70% 45% / 0.06)' : 'hsl(var(--muted))',
-                      opacity: done ? 0.6 : 1,
-                      border: done ? '1px solid hsl(142 70% 45% / 0.2)' : '1px solid transparent',
-                    }}>
+                  <div key={t.id}>
+                    <div
+                      className="flex items-center gap-3 p-3 rounded-xl transition-all"
+                      style={{
+                        background: done ? 'hsl(142 70% 45% / 0.06)' : 'hsl(var(--muted))',
+                        opacity: done ? 0.6 : 1,
+                        border: done ? '1px solid hsl(142 70% 45% / 0.2)' : '1px solid transparent',
+                      }}>
 
                     {/* Checkbox */}
                     <button
@@ -295,6 +321,32 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
                     {done && (
                       <span className="text-[10px] font-bold flex-shrink-0" style={{ color: 'hsl(142 70% 45%)' }}>Fatto</span>
                     )}
+
+                    {/* Reassign for managers */}
+                    {isManager && !done && (
+                      <button
+                        onClick={e => { e.stopPropagation(); setReassignId(reassignId === t.id ? null : t.id); }}
+                        className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
+                        style={{ background: 'hsl(var(--muted))', color: 'hsl(var(--muted-foreground))' }}
+                        title="Riassegna">
+                        🔀
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Inline reassign picker */}
+                  {isManager && reassignId === t.id && (
+                    <div className="flex gap-1 mt-1 mb-1 px-3 flex-wrap" onClick={e => e.stopPropagation()}>
+                      {team.filter(m => m.nome && m.nome !== t.assegnato_a).map(m => (
+                        <button key={m.id}
+                          onClick={() => handleReassign(t.id, m.nome)}
+                          className="text-[10px] px-2 py-1 rounded-lg font-semibold transition-all"
+                          style={{ background: 'hsl(214 80% 55% / 0.1)', color: 'hsl(214 70% 44%)', border: '1px solid hsl(214 80% 55% / 0.2)' }}>
+                          → {m.nome}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   </div>
                 );
               })}
