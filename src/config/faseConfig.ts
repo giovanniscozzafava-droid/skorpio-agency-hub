@@ -71,12 +71,14 @@ export const FASE_TIPO_MAP: Record<string, string> = Object.fromEntries(
   Object.entries(FASE_TO_TASK_TIPO).map(([fase, { tipo }]) => [fase, tipo])
 );
 
-/** Centralised team member assignments per task type — single source of truth */
+/** Centralised team member assignments per task type — DEFAULTS.
+ *  Per Premontaggio/Montaggio/Upload, il valore viene sovrascritto
+ *  da contenuti.assegnato_montaggio se impostato da Elisa. */
 export const TEAM_ASSIGNMENTS: Record<string, string> = {
   'Scrittura script':    'Giovanni',
-  'Premontaggio':        'Luca',
-  'Montaggio':           'Alessandro',
-  'Upload esportato':    'Alessandro',
+  'Premontaggio':        'Luca',       // default — override da assegnato_montaggio
+  'Montaggio':           'Alessandro', // default — override da assegnato_montaggio
+  'Upload esportato':    'Alessandro', // default — override da assegnato_montaggio
   'Revisione montaggio': 'Elisa',
   'Programmazione':      'Elisa',
   'Cleanup':             'Elisa',
