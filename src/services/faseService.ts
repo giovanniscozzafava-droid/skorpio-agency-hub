@@ -198,22 +198,6 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
           console.error('[FaseService][async] errore nota Drive:', e);
         }
       }
-
-      // ── Riassegnazione dinamica: usa assegnato_montaggio del CLP ────────
-      // Se Elisa ha impostato chi monta, Premontaggio/Montaggio/Upload
-      // vanno a quella persona (non più hardcoded Luca/Alessandro)
-      const MONTAGGIO_TASKS = ['Premontaggio', 'Montaggio', 'Upload esportato'];
-      if (rpcResult.task_id && MONTAGGIO_TASKS.includes(rpcResult.task_created)) {
-        try {
-          const montatore = contenuto?.assegnato_montaggio;
-          if (montatore && montatore !== rpcResult.task_assigned) {
-            await supabase.from('task').update({ assegnato_a: montatore }).eq('id', rpcResult.task_id);
-            console.log(`[FaseService][async] task ${rpcResult.task_created} riassegnato a ${montatore} (assegnato_montaggio)`);
-          }
-        } catch (e) {
-          console.error('[FaseService][async] errore riassegnazione montatore:', e);
-        }
-      }
     } catch (e) {
       console.error('[FaseService][async] side effect non gestito:', e);
     }
@@ -221,6 +205,25 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
 
   // Fire and forget — non blocca il return
   asyncSideEffects().catch(e => console.error('[FaseService][async] unhandled:', e));
+
+  // ── Riassegnazione montatore — SINCRONO (deve completare prima del return) ──
+  const MONTAGGIO_TASKS = ['Premontaggio', 'Montaggio', 'Upload esportato'];
+  if (rpcResult.task_id && MONTAGGIO_TASKS.includes(rpcResult.task_created)) {
+    try {
+      const { data: clpData } = await supabase
+        .from('contenuti')
+        .select('assegnato_montaggio')
+        .eq('id', contenutoId)
+        .single();
+      const montatore = clpData?.assegnato_montaggio;
+      if (montatore) {
+        await supabase.from('task').update({ assegnato_a: montatore }).eq('id', rpcResult.task_id);
+        console.log(`[FaseService] task ${rpcResult.task_created} riassegnato a ${montatore} (assegnato_montaggio)`);
+      }
+    } catch (e) {
+      console.error('[FaseService] errore riassegnazione montatore:', e);
+    }
+  }
 
   console.timeEnd('[FaseService] total');
 
