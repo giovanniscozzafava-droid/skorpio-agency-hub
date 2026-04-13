@@ -28,6 +28,7 @@ export function DailyPriorityManager({ team, utente }: Props) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [saving, setSaving] = useState(false);
+  const [reassignPrioId, setReassignPrioId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [{ data: pData }, { data: tData }] = await Promise.all([
@@ -47,6 +48,15 @@ export function DailyPriorityManager({ team, utente }: Props) {
   const removePriority = async (id: string) => {
     await supabase.from('daily_priorities').update({ attivo: false }).eq('id', id);
     setPriorities(prev => prev.filter(p => p.id !== id));
+  };
+
+  const reassignPriority = async (prioId: string, taskId: string, newPerson: string) => {
+    // 1. Update priority → new person
+    await supabase.from('daily_priorities').update({ assegnato_a: newPerson }).eq('id', prioId);
+    // 2. Reassign the task itself
+    await supabase.from('task').update({ assegnato_a: newPerson }).eq('id', taskId);
+    setReassignPrioId(null);
+    await load();
   };
 
   const toggleTime = async (id: string, field: 'show_morning' | 'show_evening', value: boolean) => {
@@ -145,11 +155,28 @@ export function DailyPriorityManager({ team, utente }: Props) {
                     <span className="text-[10px] font-mono text-muted-foreground">{p.task?.id_display}</span>
                   </div>
                 </div>
+                <button onClick={() => setReassignPrioId(reassignPrioId === p.id ? null : p.id)}
+                  className="text-xs text-muted-foreground hover:text-blue-500 cursor-pointer flex-shrink-0" title="Riassegna">
+                  🔀
+                </button>
                 <button onClick={() => removePriority(p.id)}
                   className="text-xs text-muted-foreground hover:text-red-500 cursor-pointer flex-shrink-0" title="Rimuovi">
                   ✕
                 </button>
               </div>
+
+              {/* Reassign picker */}
+              {reassignPrioId === p.id && (
+                <div className="flex gap-1 flex-wrap">
+                  {team.filter(m => m.nome && m.nome !== selectedPerson).map(m => (
+                    <button key={m.id} onClick={() => reassignPriority(p.id, p.task_id, m.nome)}
+                      className="text-[10px] px-2 py-1 rounded-lg font-semibold transition-all cursor-pointer"
+                      style={{ background: '#3B82F615', color: '#3B82F6', border: '1px solid #3B82F630' }}>
+                      → {m.nome}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {/* Controls */}
               <div className="flex items-center gap-3 flex-wrap">
