@@ -1863,6 +1863,7 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
   const [eventi, setEventi] = useState<CalendarioEvent[]>([]);
   const [marketing, setMarketing] = useState<MarketingEvent[]>([]);
   const [contenuti, setContenuti] = useState<Contenuto[]>([]);
+  const [allContenuti, setAllContenuti] = useState<Contenuto[]>([]);
   const [loading, setLoading] = useState(true);
   const [showLegend, setShowLegend] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -1931,10 +1932,11 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
 
     const isAdmin = utente.ruolo === 'Admin';
 
-    const [evResAll, mktRes, contRes] = await Promise.all([
+    const [evResAll, mktRes, contRes, allContRes] = await Promise.all([
       supabase.from('calendario').select('*').gte('data', rangeStart).lte('data', rangeEnd).order('ora', { nullsFirst: true }),
       supabase.from('marketing_calendar').select('*').gte('data', rangeStart).lte('data', rangeEnd),
       supabase.from('contenuti').select('id, id_display, titolo, cliente_nome, tipo, canale, fase, data_pubblicazione, ora_pubblicazione, assegnato_montaggio').not('data_pubblicazione', 'is', null).neq('fase', 'Scartata'),
+      supabase.from('contenuti').select('id, id_display, titolo, cliente_nome, tipo, canale, fase, data_pubblicazione, ora_pubblicazione, assegnato_montaggio').neq('fase', 'Scartata').neq('fase', 'Pubblicato').order('created_at', { ascending: false }),
     ]);
 
     const eventiDB = (evResAll.data as CalendarioEvent[]) || [];
@@ -1981,6 +1983,7 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
     setEventi(eventiFiltrati);
     setMarketing((mktRes.data as MarketingEvent[]) || []);
     setContenuti((contRes.data as any[]) || []);
+    setAllContenuti((allContRes.data as any[]) || []);
     setLoading(false);
   }, [vista, currentDate, utente, isMobile]);
 
@@ -2412,7 +2415,7 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
         )}
 
         {showTaskModal && <NuovoTaskModal team={team} clienti={clienti} utente={utente} onClose={() => { setShowTaskModal(false); setQuickCreateData(null); }} onCreated={handleTaskCreated} dataPrecompilata={toDateStr(selectedDate)} />}
-        {showCLPPicker && <CLPPicker contenuti={contenuti} selectedDate={selectedDate} onSave={handleSaveCLP} onClose={() => setShowCLPPicker(false)} />}
+        {showCLPPicker && <CLPPicker contenuti={allContenuti} selectedDate={selectedDate} onSave={handleSaveCLP} onClose={() => setShowCLPPicker(false)} />}
         {showSlotModal && <SlotModal selectedDate={selectedDate} team={team} onSave={handleSaveSlot} onClose={() => setShowSlotModal(false)} />}
       </div>
     );
@@ -2587,7 +2590,7 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
 
       {/* ── Modals ───────────────────────────────────────────────────────────── */}
       {showTaskModal && <NuovoTaskModal team={team} clienti={clienti} utente={utente} onClose={() => { setShowTaskModal(false); setQuickCreateData(null); }} onCreated={handleTaskCreated} dataPrecompilata={toDateStr(selectedDate)} />}
-      {showCLPPicker && <CLPPicker contenuti={contenuti} selectedDate={selectedDate} onSave={handleSaveCLP} onClose={() => setShowCLPPicker(false)} />}
+      {showCLPPicker && <CLPPicker contenuti={allContenuti} selectedDate={selectedDate} onSave={handleSaveCLP} onClose={() => setShowCLPPicker(false)} />}
       {showSlotModal && <SlotModal selectedDate={selectedDate} team={team} onSave={handleSaveSlot} onClose={() => setShowSlotModal(false)} />}
 
       {/* ── Event Detail Panel ─────────────────────────────────────────────── */}
