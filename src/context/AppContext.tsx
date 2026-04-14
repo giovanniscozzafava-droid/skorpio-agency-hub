@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef, ReactNod
 import type { Session } from '@supabase/supabase-js';
 import type { TeamMember } from '../types';
 import { supabase } from '../integrations/supabase/client';
-import { checkAutoPubblica, syncMissingWorkflowTasks } from '../lib/clpWorkflow';
+import { checkAutoPubblica } from '../lib/clpWorkflow';
 
 interface AppContextType {
   utente: TeamMember | null;
@@ -193,17 +193,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           id,
           msg: `🚀 ${n} contenuto${n > 1 ? 'i' : ''} auto-pubblicato${n > 1 ? 'i' : ''} — task cleanup creati per Elisa`,
           tipo: 'success'
-        }]);
-        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 5000);
-      }
-      // Sync missing workflow tasks for CLPs already in workflow phases
-      const synced = await syncMissingWorkflowTasks();
-      if (synced > 0) {
-        const id = Math.random().toString(36).slice(2);
-        setToasts(prev => [...prev, {
-          id,
-          msg: `⚡ ${synced} task workflow creati automaticamente per CLP esistenti`,
-          tipo: 'info'
         }]);
         setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 5000);
       }

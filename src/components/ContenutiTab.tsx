@@ -6,7 +6,7 @@ import { parseLocalDate } from '../lib/dateUtils';
 import { CLPDetailPanel } from './CLPDetailPanel';
 import { NuovoCLPModal } from './NuovoCLPModal';
 import { cambiaFaseCLP } from '../services/faseService';
-import { FASE_CONFIG } from '../config/faseConfig';
+import { FASE_CONFIG, TEAM_ASSIGNMENTS } from '../config/faseConfig';
 
 const FASI: FaseCLP[] = ['Idea', 'Script', 'Girato', 'Pre montato', 'Montato', 'Uploadato', 'Revisionato', 'Programmato', 'Pubblicato', 'Scartata'];
 
@@ -131,10 +131,6 @@ export function ContenutiTab({ team, clienti }: ContentTabProps) {
       // Crea task per la nuova fase se non esiste già
       const tipoNuovo = FASE_TIPO[nuovaFase];
       if (tipoNuovo) {
-        const ASSEGNAMENTI: Record<string, string> = {
-          'Premontaggio': 'Luca', 'Montaggio': 'Alessandro', 'Upload esportato': 'Alessandro',
-          'Revisione montaggio': 'Elisa', 'Programmazione': 'Elisa',
-        };
         const { data: existing } = await supabase.from('task').select('id')
           .eq('id_contenuto', contenuto.id).eq('tipo', tipoNuovo)
           .neq('stato', 'Completato').neq('stato', 'Archiviato');
@@ -144,7 +140,7 @@ export function ContenutiTab({ team, clienti }: ContentTabProps) {
             id_display: idData || `TSK${Date.now()}`,
             descrizione: `${tipoNuovo} ${contenuto.id_display} – ${contenuto.titolo}${contenuto.cliente_nome ? ` (${contenuto.cliente_nome})` : ''}`,
             tipo: tipoNuovo, stato: 'Da fare',
-            assegnato_a: ASSEGNAMENTI[tipoNuovo] || 'Giovanni',
+            assegnato_a: (contenuto as any).assegnato_montaggio || TEAM_ASSIGNMENTS[tipoNuovo] || 'Giovanni',
             assegnato_da: '⚡ Sistema',
             cliente_id: contenuto.cliente_id, cliente_nome: contenuto.cliente_nome || '',
             id_contenuto: contenuto.id, priorita: '🟡 Media',

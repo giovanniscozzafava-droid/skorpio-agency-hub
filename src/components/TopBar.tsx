@@ -48,7 +48,6 @@ function CounterDropdown({ tasks, team, tipo, onClose, onClickTask, onReassign, 
   pos?: { top: number; left: number };
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
-  console.log('[CounterDropdown] rendering, tipo:', tipo, 'tasks:', tasks.length);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [newDate, setNewDate] = useState('');
   const [newPersona, setNewPersona] = useState('');

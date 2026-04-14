@@ -138,6 +138,9 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
   const [savingFase, setSavingFase] = useState(false);
   const [taskCompletato, setTaskCompletato] = useState(task.stato === 'Completato');
 
+  // Sync taskCompletato when task prop changes
+  useEffect(() => { setTaskCompletato(task.stato === 'Completato'); }, [task.stato]);
+
   // ── Cleanup task state ─────────────────────────────────────────────────────
   const [cleanupInfo, setCleanupInfo] = useState<{ count: number; totalSize: number; clipFolderId: string } | null>(null);
   const [loadingCleanup, setLoadingCleanup] = useState(false);

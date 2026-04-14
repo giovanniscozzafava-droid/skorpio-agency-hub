@@ -4,7 +4,6 @@ import type { TeamMember, ChatMessaggio, Task } from '../types';
 import { Avatar } from './Avatar';
 import { supabase } from '../lib/supabase';
 import { sounds } from '../lib/sounds';
-import { ArubaUpload } from './ArubaUpload';
 
 interface ChatPopupProps {
   team: TeamMember[];
@@ -775,21 +774,6 @@ export function ChatPopup({ team }: ChatPopupProps) {
                   {/* Input */}
                   <div className="px-3 py-2.5 border-t flex items-center gap-2 flex-shrink-0"
                     style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}>
-                    {/* Bottone Aruba upload */}
-                    <ArubaUpload
-                      variant="icon"
-                      percorso={`Chat/${utente.nome}`}
-                      onUploaded={async (url, nomeFile) => {
-                        // Invia link come messaggio in chat
-                        const testo = `☁️ File su Aruba Drive: ${nomeFile}\n${url}`;
-                        const { data } = await supabase
-                          .from('chat_messaggi')
-                          .insert({ da: utente.nome, a: contattoAttivo.nome, testo, tipo: 'messaggio', rif_task: '', letto: false })
-                          .select()
-                          .single();
-                        if (data) setMessaggi(prev => [...prev, data as ChatMessaggio]);
-                      }}
-                    />
                     <input
                       ref={inputRef}
                       type="text"
