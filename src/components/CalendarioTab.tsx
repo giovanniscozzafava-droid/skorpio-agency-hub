@@ -1425,13 +1425,18 @@ function CLPPicker({ contenuti, selectedDate, onSave, onClose }: CLPPickerProps)
         </div>
         <div className="flex-1 overflow-y-auto p-2 min-h-0">
           {available.length === 0 && <p className="text-center text-muted-foreground text-sm py-8">Nessun contenuto disponibile</p>}
-          {available.map(c => (
-            <div key={c.id} onClick={() => setSelected(selected?.id === c.id ? null : c)}
-              className={`p-3 rounded-lg border mb-2 cursor-pointer transition-all ${selected?.id === c.id ? 'border-primary bg-accent' : 'border-border hover:border-muted-foreground'}`}>
+          {available.map(c => {
+            const giaPosizionato = !!(c as any).data_pubblicazione;
+            return (
+            <div key={c.id} onClick={() => !giaPosizionato && setSelected(selected?.id === c.id ? null : c)}
+              className={`p-3 rounded-lg border mb-2 transition-all ${giaPosizionato ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} ${selected?.id === c.id ? 'border-primary bg-accent' : 'border-border hover:border-muted-foreground'}`}>
               <div className="flex items-center justify-between mb-1">
                 <span className="font-medium text-sm">{c.titolo}</span>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                  style={{ background: FASE_COLORS[c.fase] + '22', color: FASE_COLORS[c.fase] }}>{c.fase}</span>
+                <div className="flex items-center gap-1.5">
+                  {giaPosizionato && <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">📅 Già posizionato</span>}
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                    style={{ background: FASE_COLORS[c.fase] + '22', color: FASE_COLORS[c.fase] }}>{c.fase}</span>
+                </div>
               </div>
               <div className="flex gap-3 text-xs text-muted-foreground">
                 <span>{c.id_display}</span>
@@ -1440,7 +1445,8 @@ function CLPPicker({ contenuti, selectedDate, onSave, onClose }: CLPPickerProps)
                 {c.tipo && <span>• {c.tipo}</span>}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
         {selected && (
           <div className="p-4 border-t bg-accent/50">
