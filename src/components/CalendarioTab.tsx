@@ -1616,6 +1616,10 @@ function EventDetail({ ev, team, clienti, onClose, onDelete, onUpdate, now }: Ev
       const parentId = (ev as any).ricorrenza_parent_id || ev.id;
       await supabase.from('calendario').delete().eq('ricorrenza_parent_id', parentId).gte('data', ev.data);
     }
+    // Se l'evento è collegato a un CLP, pulisci data_pubblicazione
+    if (ev.contenuto_id && (ev.tipo === 'pubblicazione' || ev.tipo === 'contenuto')) {
+      await supabase.from('contenuti').update({ data_pubblicazione: null, ora_pubblicazione: null }).eq('id', ev.contenuto_id);
+    }
     onDelete();
   };
 
@@ -2337,7 +2341,14 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
   // ── Delete event (PRESERVED) ──────────────────────────────────────────────
   const handleDeleteEvent = async () => {
     if (!selectedEvent) return;
-    await supabase.from('calendario').delete().eq('id', selectedEvent.id);
+    const isSynthetic = selectedEvent.id.startsWith('synth-');
+    if (!isSynthetic) {
+      await supabase.from('calendario').delete().eq('id', selectedEvent.id);
+    }
+    // Se l'evento è collegato a un CLP, pulisci data_pubblicazione per evitare eventi sintetici fantasma
+    if (selectedEvent.contenuto_id && (selectedEvent.tipo === 'pubblicazione' || selectedEvent.tipo === 'contenuto')) {
+      await supabase.from('contenuti').update({ data_pubblicazione: null, ora_pubblicazione: null }).eq('id', selectedEvent.contenuto_id);
+    }
     setEventi(prev => prev.filter(e => e.id !== selectedEvent.id));
     setSelectedEvent(null);
     addToast('🗑️ Evento eliminato', 'info');
