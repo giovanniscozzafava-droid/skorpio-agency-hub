@@ -46,7 +46,7 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
   const [riassegnaA, setRiassegnaA]     = useState('');
   const [deleting, setDeleting]         = useState(false);
 
-  const [section, setSection] = useState<'profilo' | 'team' | 'integrazioni' | 'audit' | 'priorita'>('profilo');
+  const [section, setSection] = useState<'profilo' | 'team' | 'integrazioni' | 'audit' | 'priorita' | 'motherboard'>('profilo');
 
   // ── Snapshot dati ──────────────────────────────────────────────────────────
   const [snapshotRunning, setSnapshotRunning] = useState(false);
@@ -570,6 +570,19 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
               }}
             >
               Daily Priority
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              onClick={() => setSection('motherboard')}
+              className="flex-1 py-2.5 text-xs font-semibold transition-colors"
+              style={{
+                color: section === 'motherboard' ? '#EF4444' : 'hsl(var(--skorpio-text-secondary))',
+                borderBottom: section === 'motherboard' ? '2px solid #EF4444' : '2px solid transparent',
+                background: 'transparent',
+              }}
+            >
+              ⚡ Motherboard
             </button>
           )}
         </div>
@@ -1181,6 +1194,10 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
               </div>
             </div>
           )}
+
+          {section === 'motherboard' && isAdmin && (
+            <MotherboardPanel utente={utente} />
+          )}
         </div>
 
         {/* Footer */}
@@ -1274,5 +1291,152 @@ export function ImpostazioniPanel({ team, onTeamChange, onClose }: Props) {
         </div>
       )}
     </>
+  );
+}
+
+// ── Motherboard Panel ─────────────────────────────────────────────────────────
+interface FeatureFlag {
+  id: string; nome: string; descrizione: string; categoria: string;
+  attivo: boolean; updated_at: string; updated_by: string;
+}
+
+const CATEGORIA_CONFIG: Record<string, { emoji: string; label: string; color: string }> = {
+  workflow: { emoji: '⚙️', label: 'Workflow', color: '#3B82F6' },
+  ui: { emoji: '🎨', label: 'Interfaccia', color: '#8B5CF6' },
+  notifiche: { emoji: '🔔', label: 'Notifiche', color: '#F59E0B' },
+  integrazioni: { emoji: '🔗', label: 'Integrazioni', color: '#22C55E' },
+  sperimentali: { emoji: '🧪', label: 'Sperimentali', color: '#EC4899' },
+};
+
+function MotherboardPanel({ utente }: { utente: TeamMember }) {
+  const [flags, setFlags] = useState<FeatureFlag[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [toggling, setToggling] = useState<string | null>(null);
+
+  const loadFlags = useCallback(async () => {
+    const { data } = await supabase.from('feature_flags').select('*').order('categoria').order('nome');
+    setFlags((data as FeatureFlag[]) || []);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadFlags(); }, [loadFlags]);
+
+  const toggle = async (flag: FeatureFlag) => {
+    setToggling(flag.id);
+    const newVal = !flag.attivo;
+    await supabase.from('feature_flags').update({
+      attivo: newVal,
+      updated_at: new Date().toISOString(),
+      updated_by: utente.nome,
+    }).eq('id', flag.id);
+    setFlags(prev => prev.map(f => f.id === flag.id ? { ...f, attivo: newVal, updated_by: utente.nome } : f));
+    setToggling(null);
+  };
+
+  const allOn = async () => {
+    await supabase.from('feature_flags').update({ attivo: true, updated_by: utente.nome }).neq('id', '');
+    loadFlags();
+  };
+
+  const grouped = flags.reduce<Record<string, FeatureFlag[]>>((acc, f) => {
+    if (!acc[f.categoria]) acc[f.categoria] = [];
+    acc[f.categoria].push(f);
+    return acc;
+  }, {});
+
+  if (loading) return <div className="px-5 py-12 text-center text-sm text-muted-foreground">Caricamento…</div>;
+
+  const activeCount = flags.filter(f => f.attivo).length;
+  const totalCount = flags.length;
+
+  return (
+    <div className="px-5 py-5 space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-bold flex items-center gap-2" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>
+            ⚡ Motherboard
+          </h3>
+          <p className="text-[10px] mt-0.5" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+            {activeCount}/{totalCount} feature attive
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={allOn} className="text-[10px] px-2.5 py-1 rounded-lg font-semibold"
+            style={{ background: '#22C55E15', color: '#22C55E', border: '1px solid #22C55E30' }}>
+            🟢 Attiva tutte
+          </button>
+          <button onClick={loadFlags} className="text-[10px] px-2.5 py-1 rounded-lg"
+            style={{ background: 'hsl(var(--muted))', color: 'hsl(var(--muted-foreground))' }}>
+            🔄
+          </button>
+        </div>
+      </div>
+
+      {/* Status bar */}
+      <div className="h-2 rounded-full overflow-hidden" style={{ background: 'hsl(var(--muted))' }}>
+        <div className="h-full rounded-full transition-all" style={{
+          width: `${(activeCount / totalCount) * 100}%`,
+          background: activeCount === totalCount ? '#22C55E' : activeCount > totalCount * 0.7 ? '#F59E0B' : '#EF4444',
+        }} />
+      </div>
+
+      {/* Categories */}
+      {Object.entries(grouped).map(([cat, catFlags]) => {
+        const cfg = CATEGORIA_CONFIG[cat] || { emoji: '📦', label: cat, color: '#64748B' };
+        const catActive = catFlags.filter(f => f.attivo).length;
+        return (
+          <div key={cat}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs font-bold uppercase tracking-wider" style={{ color: cfg.color }}>
+                {cfg.emoji} {cfg.label}
+              </span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium"
+                style={{ background: `${cfg.color}15`, color: cfg.color }}>
+                {catActive}/{catFlags.length}
+              </span>
+              <div className="flex-1 h-px" style={{ background: `${cfg.color}20` }} />
+            </div>
+            <div className="space-y-1.5">
+              {catFlags.map(flag => (
+                <div key={flag.id} className="flex items-center gap-3 p-2.5 rounded-xl transition-all"
+                  style={{
+                    background: flag.attivo ? 'hsl(var(--muted) / 0.3)' : 'hsl(0 0% 50% / 0.04)',
+                    border: flag.attivo ? `1px solid ${cfg.color}20` : '1px solid transparent',
+                    opacity: flag.attivo ? 1 : 0.6,
+                  }}>
+                  {/* Toggle switch */}
+                  <button
+                    onClick={() => toggle(flag)}
+                    disabled={toggling === flag.id}
+                    className="relative flex-shrink-0 w-10 h-5 rounded-full transition-all cursor-pointer"
+                    style={{
+                      background: flag.attivo ? cfg.color : 'hsl(var(--muted))',
+                      opacity: toggling === flag.id ? 0.5 : 1,
+                    }}>
+                    <div className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform"
+                      style={{ transform: flag.attivo ? 'translateX(20px)' : 'translateX(0)' }} />
+                  </button>
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>{flag.nome}</p>
+                    <p className="text-[10px] mt-0.5" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>{flag.descrizione}</p>
+                  </div>
+                  {/* Status */}
+                  <div className="text-right flex-shrink-0">
+                    <span className="text-[9px] font-mono" style={{ color: flag.attivo ? '#22C55E' : '#94A3B8' }}>
+                      {flag.attivo ? 'ON' : 'OFF'}
+                    </span>
+                    {flag.updated_by && (
+                      <p className="text-[8px]" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>{flag.updated_by}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
