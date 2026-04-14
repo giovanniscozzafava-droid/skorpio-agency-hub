@@ -447,7 +447,11 @@ function DesktopDayView({ date, eventi, marketing, oggi, onEventClick, onSlotCli
     if (dragCreateStart !== null && !dragEvId) {
       const startH = Math.min(dragCreateStart, h);
       const endH = Math.max(dragCreateStart, h) + 1;
-      if (endH > startH) onQuickCreate(date, startH, endH);
+      if (startH === h) {
+        onSlotClick(date, h);
+      } else {
+        onQuickCreate(date, startH, endH);
+      }
       setDragCreateStart(null);
       setDragCreateEnd(null);
     }
