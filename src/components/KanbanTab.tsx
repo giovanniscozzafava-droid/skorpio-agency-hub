@@ -400,7 +400,19 @@ export function KanbanTab({ team, clienti, personaView, focusTaskId }: { team: T
     setDragItem(null);
     const { error } = await supabase.from('task').update({ stato: nuovoStato }).eq('id', task.id);
     if (error) { sounds.errore(); addToast('Errore', 'error'); }
-    else if (nuovoStato === 'Completato') { sounds.taskCompletato(); addToast('✅ Task completato!', 'success'); }
+    else if (nuovoStato === 'Completato') {
+      sounds.taskCompletato(); addToast('✅ Task completato!', 'success');
+      // Notifica a chi ha creato il task
+      if (task.assegnato_da && task.assegnato_da !== '⚡ Sistema' && task.assegnato_da !== utente?.nome) {
+        supabase.from('notifiche').insert({
+          destinatario: task.assegnato_da,
+          tipo: 'task_completato',
+          titolo: '✅ Task completato',
+          messaggio: `${utente?.nome} ha completato: ${task.descrizione.slice(0, 80)}`,
+          task_id_display: task.id_display || '',
+        }).catch(() => {});
+      }
+    }
     else { sounds.drop(); addToast(`↕️ → ${nuovoStato}`, 'info'); }
     await loadTasks();
   };
@@ -501,7 +513,7 @@ export function KanbanTab({ team, clienti, personaView, focusTaskId }: { team: T
                     <span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ background: `${col.colore}20`, color: col.colore }}>{ct.length}</span>
                   </div>
                   <div className="kanban-col-body">
-                    {ct.map(t => <TaskCard key={t.id} task={t} team={team} utente={utente} draggingId={dragItem} onDragStart={() => setDragItem(t.id)} onDragEnd={() => setDragItem(null)} onClick={() => setSelectedTask(t)} showFaseBadge={false} pubDate={t.id_contenuto ? clpPubDates[t.id_contenuto] : null} revisionCount={t.id_contenuto ? clpRevisionCount[t.id_contenuto] : undefined} isProgrammato={col.stato === 'Programmato'} canEditProgrammazione={canEditProgrammazione} onRiprogramma={() => t.id_contenuto && setRiprogrammaConfirm({ taskId: t.id, contenutoId: t.id_contenuto, desc: t.descrizione.slice(0, 50) })} onEditPubDate={(d, o) => t.id_contenuto && handleEditPubDate(t.id_contenuto, d, o)} clientLogoUrl={t.cliente_id ? clientLogoMap[t.cliente_id] : clientLogoByName[t.cliente_nome]} onPriorityChange={handlePriorityChange} onReschedule={handleReschedule} hideCountdown={col.stato === 'Pubblicato'} />)}
+                    {ct.map(t => <TaskCard key={t.id} task={t} team={team} utente={utente} draggingId={dragItem} onDragStart={() => setDragItem(t.id)} onDragEnd={() => setDragItem(null)} onClick={() => setSelectedTask(t)} showFaseBadge={false} pubDate={t.id_contenuto ? clpPubDates[t.id_contenuto] : null} revisionCount={t.id_contenuto ? clpRevisionCount[t.id_contenuto] : undefined} isProgrammato={col.stato === 'Programmato'} canEditProgrammazione={canEditProgrammazione} onRiprogramma={() => t.id_contenuto && setRiprogrammaConfirm({ taskId: t.id, contenutoId: t.id_contenuto, desc: t.descrizione.slice(0, 50) })} onEditPubDate={(d, o) => t.id_contenuto && handleEditPubDate(t.id_contenuto, d, o)} clientLogoUrl={t.cliente_id ? clientLogoMap[t.cliente_id] : clientLogoByName[t.cliente_nome]} onPriorityChange={handlePriorityChange} onReschedule={handleReschedule} hideCountdown={col.stato === 'Pubblicato' || t.stato === 'Completato'} />)}
                     {ct.length === 0 && <div className="flex items-center justify-center h-12 text-xs rounded-lg" style={{ color: 'hsl(var(--muted-foreground))', border: `1px dashed ${col.border}40` }}>Nessun task</div>}
                   </div>
                 </div>
