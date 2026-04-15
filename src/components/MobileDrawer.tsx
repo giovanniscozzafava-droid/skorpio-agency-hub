@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { X, LayoutGrid, Calendar, Bot, Video, Users, Clapperboard, Settings, LogOut, Monitor, Globe, HeartPulse, BarChart3 } from 'lucide-react';
+import { X, LayoutGrid, Calendar, Bot, Video, Users, Clapperboard, Settings, LogOut, Monitor, Globe, HeartPulse, BarChart3, Palette } from 'lucide-react';
 
 interface MobileDrawerProps {
   open: boolean;
@@ -16,6 +16,7 @@ const navItems = [
   { id: 'clienti', label: 'Clienti', icon: Users },
   { id: 'riprese', label: 'Riprese', icon: Clapperboard },
   { id: 'monitor', label: 'Monitor', icon: Monitor },
+  { id: 'assets', label: 'Assets', icon: Palette },
   { id: 'siti', label: 'Siti Web', icon: Globe },
   { id: 'andromeda', label: 'Andromeda', icon: HeartPulse },
   { id: 'report', label: 'Report', icon: BarChart3 },
