@@ -5,6 +5,9 @@ import { ClienteLogo } from './ClienteLogo';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const CANVA_CLIENT_ID = 'OC-AZ2QNp_DRJpc';
+const CANVA_REDIRECT_URI = `${window.location.origin}/canva-callback`;
+const CHUNK_SIZE = 4 * 1024 * 1024;
 
 async function invokeEdge(path: string, payload: Record<string, unknown> = {}) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/${path}`, {
@@ -23,334 +26,384 @@ interface Asset {
   id: string; cliente_id: string; cliente_nome: string; nome: string; tipo: string;
   drive_file_id: string | null; drive_url: string | null; thumbnail_url: string | null;
   mime_type: string | null; file_size: number; tags: string[]; categoria: string;
-  descrizione: string; colori_dominanti: string[]; larghezza: number | null;
-  altezza: number | null; orientamento: string; preferito: boolean; archiviato: boolean;
-  usato_in_clp: string[]; caricato_da: string; created_at: string;
+  descrizione: string; colori_dominanti: string[]; orientamento: string;
+  preferito: boolean; archiviato: boolean; caricato_da: string; created_at: string;
 }
 interface BrandKit {
-  id: string; cliente_id: string; cliente_nome: string;
+  id?: string; cliente_id: string; cliente_nome: string;
   colore_primario: string; colore_secondario: string; colore_accento: string;
   colore_sfondo: string; colore_testo: string; colori_extra: string[];
   font_primario: string; font_secondario: string; font_peso_titoli: string; font_peso_corpo: string;
-  logo_asset_id: string | null; logo_chiaro_asset_id: string | null; logo_icona_asset_id: string | null;
   mood_tags: string[]; stile_foto: string; stile_video: string;
-  regole_do: string[]; regole_dont: string[]; hashtag_fissi: string[];
-  tono_voce: string; canva_brand_kit_id: string | null;
+  regole_do: string[]; regole_dont: string[]; hashtag_fissi: string[]; tono_voce: string;
+  canva_brand_kit_id: string | null;
 }
 
-const TAGS_PRESET = ['ritratto', 'ambiente', 'prodotto', 'before-after', 'staff', 'trattamento', 'dettaglio', 'esterno', 'promo', 'logo'];
+const TAGS = ['ritratto', 'ambiente', 'prodotto', 'before-after', 'staff', 'trattamento', 'dettaglio', 'esterno', 'promo', 'logo'];
 const CATEGORIE = ['generale', 'social', 'catalogo', 'sito', 'stampa'];
-const MOOD_TAGS = ['minimal', 'bold', 'warm', 'clinical', 'luxury', 'playful', 'elegant', 'organic', 'dark', 'colorful'];
-const CHUNK_SIZE = 4 * 1024 * 1024;
+const MOODS = ['minimal', 'bold', 'warm', 'clinical', 'luxury', 'playful', 'elegant', 'organic', 'dark', 'colorful'];
 
-// ── Main Component ───────────────────────────────────────────────────────────
+const emptyKit = (cid: string, cn: string): BrandKit => ({
+  cliente_id: cid, cliente_nome: cn,
+  colore_primario: '#1a1a2e', colore_secondario: '#16213e', colore_accento: '#e94560',
+  colore_sfondo: '#FFFFFF', colore_testo: '#1A1A1A', colori_extra: [],
+  font_primario: 'Playfair Display', font_secondario: 'Inter',
+  font_peso_titoli: '700', font_peso_corpo: '400',
+  mood_tags: [], stile_foto: '', stile_video: '',
+  regole_do: [], regole_dont: [], hashtag_fissi: [], tono_voce: '',
+  canva_brand_kit_id: null,
+});
+
+// ── Main ─────────────────────────────────────────────────────────────────────
 export function AssetLibraryTab({ clienti }: { clienti: Cliente[] }) {
   const { utente, addToast } = useApp();
-  const [selCliente, setSelCliente] = useState<Cliente | null>(null);
+  const [sel, setSel] = useState<Cliente | null>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
-  const [brandKit, setBrandKit] = useState<BrandKit | null>(null);
+  const [kit, setKit] = useState<BrandKit | null>(null);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<'assets' | 'brandkit'>('assets');
-  const [filterTag, setFilterTag] = useState('');
-  const [filterCat, setFilterCat] = useState('');
+  const [tagF, setTagF] = useState('');
+  const [catF, setCatF] = useState('');
   const [search, setSearch] = useState('');
   const [uploading, setUploading] = useState(false);
-  const [uploadProg, setUploadProg] = useState(0);
-  const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
+  const [upProg, setUpProg] = useState(0);
+  const [upCount, setUpCount] = useState({ done: 0, total: 0 });
+  const [detail, setDetail] = useState<Asset | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // ── Load assets + brand kit ────────────────────────────────────────────────
-  const loadData = useCallback(async () => {
-    if (!selCliente) return;
+  const load = useCallback(async () => {
+    if (!sel) return;
     setLoading(true);
     const [{ data: a }, { data: bk }] = await Promise.all([
-      supabase.from('client_assets').select('*').eq('cliente_id', selCliente.id).eq('archiviato', false).order('created_at', { ascending: false }),
-      supabase.from('brand_kit').select('*').eq('cliente_id', selCliente.id).single(),
+      supabase.from('client_assets').select('*').eq('cliente_id', sel.id).eq('archiviato', false).order('created_at', { ascending: false }),
+      supabase.from('brand_kit').select('*').eq('cliente_id', sel.id).maybeSingle(),
     ]);
     setAssets((a as Asset[]) || []);
-    setBrandKit((bk as BrandKit) || null);
+    setKit((bk as BrandKit) || null);
     setLoading(false);
-  }, [selCliente]);
+  }, [sel]);
 
-  useEffect(() => { if (selCliente) loadData(); }, [selCliente, loadData]);
+  useEffect(() => { if (sel) load(); }, [sel, load]);
 
-  // ── Ensure Drive folder ────────────────────────────────────────────────────
+  // ── Ensure Drive folder for assets ─────────────────────────────────────────
   const ensureFolder = async (): Promise<string | null> => {
-    if (selCliente?.drive_assets_folder_id) return selCliente.drive_assets_folder_id;
+    if (sel?.drive_assets_folder_id) return sel.drive_assets_folder_id;
+    addToast('📂 Creo cartella Assets su Drive…', 'info');
     try {
       const { data: dt } = await supabase.from('team').select('id').eq('google_drive_connected', true).limit(1);
       const tid = dt?.[0]?.id || utente?.id;
-      if (!tid) return null;
+      if (!tid) { addToast('⚠️ Nessun utente con Drive connesso', 'warn'); return null; }
       const r = await invokeEdge('create-drive-folder', {
-        contenuto_id: `assets_${selCliente!.id}`,
-        titolo: `ASSETS_${selCliente!.nome}`,
-        cliente_nome: selCliente!.nome,
-        tipo: 'Assets', id_display: `AST_${selCliente!.nome}`,
-        team_id: tid,
+        contenuto_id: `assets_${sel!.id}`, titolo: `ASSETS_${sel!.nome}`,
+        cliente_nome: sel!.nome, tipo: 'Assets', id_display: `AST_${sel!.nome}`, team_id: tid,
       });
       if (r.success && r.folder_id) {
-        await supabase.from('clienti').update({ drive_assets_folder_id: r.folder_id }).eq('id', selCliente!.id);
-        setSelCliente(prev => prev ? { ...prev, drive_assets_folder_id: r.folder_id } : null);
+        await supabase.from('clienti').update({ drive_assets_folder_id: r.folder_id }).eq('id', sel!.id);
+        setSel(prev => prev ? { ...prev, drive_assets_folder_id: r.folder_id } : null);
+        addToast('✅ Cartella Drive creata!', 'success');
         return r.folder_id;
       }
-    } catch (e: any) { addToast(`❌ Drive: ${e.message}`, 'error'); }
+      addToast('⚠️ Cartella Drive non creata: ' + JSON.stringify(r), 'warn');
+    } catch (e: any) { addToast(`❌ Drive folder: ${e.message}`, 'error'); console.error('[AssetLib] ensureFolder:', e); }
     return null;
   };
 
-  // ── Upload files ───────────────────────────────────────────────────────────
+  // ── Upload ─────────────────────────────────────────────────────────────────
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || !selCliente) return;
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0 || !sel) return;
     e.target.value = '';
+
     const folderId = await ensureFolder();
-    if (!folderId) { addToast('⚠️ Impossibile creare cartella Drive', 'warn'); return; }
+    if (!folderId) return;
 
     setUploading(true);
+    setUpCount({ done: 0, total: fileList.length });
+
     const { data: dt } = await supabase.from('team').select('id').eq('google_drive_connected', true).limit(1);
     const tid = dt?.[0]?.id || utente?.id || '';
-    let done = 0;
+    if (!tid) { addToast('⚠️ Nessun utente Drive', 'warn'); setUploading(false); return; }
 
-    for (const file of Array.from(files)) {
-      setUploadProg(Math.round((done / files.length) * 100));
+    let done = 0;
+    for (const file of Array.from(fileList)) {
+      setUpProg(0);
       try {
         const mimeType = file.type || 'application/octet-stream';
+        addToast(`⬆️ Caricamento ${file.name}…`, 'info');
+
+        // Init resumable upload
         const initRes = await invokeEdge('google-drive-upload-init', {
           fileName: file.name, mimeType, fileSize: file.size, teamId: tid,
-          clientName: selCliente.nome, zone: 'assets',
-          contenutoId: `assets_${selCliente.id}`, idDisplay: `AST`,
-          titolo: `ASSETS_${selCliente.nome}`, folderId,
+          clientName: sel.nome, zone: 'assets',
+          contenutoId: `assets_${sel.id}`, idDisplay: 'AST',
+          titolo: `ASSETS_${sel.nome}`, folderId,
         });
-        const uploadUrl = initRes.uploadUrl;
-        if (!uploadUrl) throw new Error('No uploadUrl');
 
+        const uploadUrl = initRes.uploadUrl;
+        if (!uploadUrl) throw new Error('Nessun uploadUrl dal server. Risposta: ' + JSON.stringify(initRes));
+
+        // Chunked upload
         let uploaded = 0;
         let fileId = '';
         while (uploaded < file.size) {
           const end = Math.min(uploaded + CHUNK_SIZE, file.size);
           const chunk = file.slice(uploaded, end);
-          const cr = `bytes ${uploaded}-${end - 1}/${file.size}`;
+          const contentRange = `bytes ${uploaded}-${end - 1}/${file.size}`;
+
           const chunkRes = await fetch(`${SUPABASE_URL}/functions/v1/google-drive-upload-chunk`, {
             method: 'POST',
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'x-upload-url': uploadUrl, 'x-content-range': cr, 'x-content-type': mimeType, 'Content-Type': 'application/octet-stream' },
+            headers: {
+              'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`,
+              'x-upload-url': uploadUrl, 'x-content-range': contentRange,
+              'x-content-type': mimeType, 'Content-Type': 'application/octet-stream',
+            },
             body: chunk,
           });
-          if (!chunkRes.ok) throw new Error('Chunk failed');
+
+          if (!chunkRes.ok) {
+            const errBody = await chunkRes.json().catch(() => ({}));
+            throw new Error(`Chunk error ${chunkRes.status}: ${errBody?.error || 'unknown'}`);
+          }
+
           const cd = await chunkRes.json();
           uploaded = end;
+          setUpProg(Math.round((uploaded / file.size) * 100));
           if (cd.fileId) fileId = cd.fileId;
         }
 
-        if (!fileId) throw new Error('No fileId');
+        if (!fileId) throw new Error('Upload completato ma nessun fileId');
+
+        // Save to DB
         const isVideo = mimeType.startsWith('video/');
         const isImage = mimeType.startsWith('image/');
         const thumb = `https://drive.google.com/thumbnail?id=${fileId}&sz=w640`;
         const streamUrl = `${SUPABASE_URL}/functions/v1/google-drive-stream?fileId=${encodeURIComponent(fileId)}&teamId=${encodeURIComponent(tid)}`;
 
-        // Detect orientation from filename hints or default
-        let orientamento = 'orizzontale';
-        if (file.name.match(/vert|story|9.16|portrait/i)) orientamento = 'verticale';
-        else if (file.name.match(/quad|square|1.1/i)) orientamento = 'quadrato';
-
         await supabase.from('client_assets').insert({
-          cliente_id: selCliente.id, cliente_nome: selCliente.nome,
+          cliente_id: sel.id, cliente_nome: sel.nome,
           nome: file.name.replace(/\.[^/.]+$/, ''),
           tipo: isVideo ? 'video' : isImage ? 'foto' : 'grafica',
           drive_file_id: fileId, drive_url: streamUrl, thumbnail_url: thumb,
-          mime_type: mimeType, file_size: file.size, orientamento,
+          mime_type: mimeType, file_size: file.size,
           caricato_da: utente?.nome || '',
         });
+
         done++;
+        setUpCount({ done, total: fileList.length });
       } catch (err: any) {
+        console.error('[AssetLib] Upload error:', err);
         addToast(`❌ ${file.name}: ${err.message}`, 'error');
       }
     }
 
     setUploading(false);
-    setUploadProg(0);
-    addToast(`✅ ${done}/${files.length} asset caricati`, 'success');
-    loadData();
+    setUpProg(0);
+    if (done > 0) {
+      addToast(`✅ ${done} asset caricati per ${sel.nome}`, 'success');
+      load();
+    }
   };
 
-  // ── Filter assets ──────────────────────────────────────────────────────────
+  // ── Filter ─────────────────────────────────────────────────────────────────
   const filtered = assets.filter(a => {
-    if (filterTag && !a.tags.includes(filterTag)) return false;
-    if (filterCat && a.categoria !== filterCat) return false;
+    if (tagF && !a.tags.includes(tagF)) return false;
+    if (catF && a.categoria !== catF) return false;
     if (search) {
       const q = search.toLowerCase();
-      if (!a.nome.toLowerCase().includes(q) && !a.descrizione.toLowerCase().includes(q) && !a.tags.some(t => t.includes(q))) return false;
+      if (!(a.nome + a.descrizione + a.tags.join(' ')).toLowerCase().includes(q)) return false;
     }
     return true;
   });
 
-  // ── Toggle tag on asset ────────────────────────────────────────────────────
-  const toggleTag = async (assetId: string, tag: string) => {
-    const asset = assets.find(a => a.id === assetId);
-    if (!asset) return;
-    const newTags = asset.tags.includes(tag) ? asset.tags.filter(t => t !== tag) : [...asset.tags, tag];
-    await supabase.from('client_assets').update({ tags: newTags }).eq('id', assetId);
-    setAssets(prev => prev.map(a => a.id === assetId ? { ...a, tags: newTags } : a));
-    if (selectedAsset?.id === assetId) setSelectedAsset(prev => prev ? { ...prev, tags: newTags } : null);
+  const toggleTag = async (id: string, tag: string) => {
+    const a = assets.find(x => x.id === id); if (!a) return;
+    const nt = a.tags.includes(tag) ? a.tags.filter(t => t !== tag) : [...a.tags, tag];
+    await supabase.from('client_assets').update({ tags: nt }).eq('id', id);
+    setAssets(prev => prev.map(x => x.id === id ? { ...x, tags: nt } : x));
+    if (detail?.id === id) setDetail(prev => prev ? { ...prev, tags: nt } : null);
   };
 
-  const toggleFav = async (assetId: string) => {
-    const asset = assets.find(a => a.id === assetId);
-    if (!asset) return;
-    await supabase.from('client_assets').update({ preferito: !asset.preferito }).eq('id', assetId);
-    setAssets(prev => prev.map(a => a.id === assetId ? { ...a, preferito: !a.preferito } : a));
+  const toggleFav = async (id: string) => {
+    const a = assets.find(x => x.id === id); if (!a) return;
+    await supabase.from('client_assets').update({ preferito: !a.preferito }).eq('id', id);
+    setAssets(prev => prev.map(x => x.id === id ? { ...x, preferito: !a.preferito } : x));
   };
 
-  const archiveAsset = async (assetId: string) => {
-    await supabase.from('client_assets').update({ archiviato: true }).eq('id', assetId);
-    setAssets(prev => prev.filter(a => a.id !== assetId));
-    setSelectedAsset(null);
+  const archiveAsset = async (id: string) => {
+    await supabase.from('client_assets').update({ archiviato: true }).eq('id', id);
+    setAssets(prev => prev.filter(x => x.id !== id));
+    setDetail(null);
     addToast('🗑️ Asset archiviato', 'info');
   };
 
-  // ── No client selected ─────────────────────────────────────────────────────
-  if (!selCliente) return (
-    <div className="flex-1 overflow-auto p-4 md:p-6" style={{ background: 'hsl(var(--skorpio-bg))' }}>
-      <div className="mb-6">
-        <h1 className="text-xl font-bold" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>🎨 Asset Library & Brand Kit</h1>
-        <p className="text-sm mt-1" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>Seleziona un cliente per gestire il suo catalogo visivo</p>
-      </div>
-      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {clienti.map(c => (
-          <button key={c.id} onClick={() => setSelCliente(c)}
-            className="rounded-xl border p-4 text-left hover:shadow-lg transition-all group"
-            style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}>
-            <div className="flex items-center gap-3">
-              <ClienteLogo nome={c.nome} logoUrl={c.logo_url} size={40} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold truncate group-hover:text-[#8B5CF6] transition-colors" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>{c.nome}</p>
-                <p className="text-[10px]" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>Asset & Brand Kit</p>
+  // ── Canva OAuth ────────────────────────────────────────────────────────────
+  const connectCanva = () => {
+    const state = Math.random().toString(36).slice(2);
+    localStorage.setItem('canva_oauth_state', state);
+    if (sel) localStorage.setItem('canva_oauth_cliente_id', sel.id);
+    const scopes = 'asset:read asset:write brandtemplate:content:read brandtemplate:meta:read design:content:read design:meta:read folder:read folder:write profile:read';
+    const url = `https://www.canva.com/api/oauth/authorize?response_type=code&client_id=${CANVA_CLIENT_ID}&redirect_uri=${encodeURIComponent(CANVA_REDIRECT_URI)}&scope=${encodeURIComponent(scopes)}&state=${state}`;
+    window.open(url, '_blank', 'width=600,height=700');
+  };
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // CLIENT SELECTOR
+  // ══════════════════════════════════════════════════════════════════════════
+  if (!sel) return (
+    <div className="flex-1 overflow-auto p-6" style={{ background: 'hsl(var(--skorpio-bg))' }}>
+      <div className="max-w-4xl mx-auto">
+        <div className="mb-8 text-center">
+          <h1 className="text-2xl font-bold tracking-tight" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>🎨 Asset Library</h1>
+          <p className="text-sm mt-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>Catalogo visivo e Brand Kit per ogni cliente</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {clienti.map(c => (
+            <button key={c.id} onClick={() => setSel(c)}
+              className="rounded-2xl border p-5 text-left hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group"
+              style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}>
+              <div className="flex items-center gap-3">
+                <ClienteLogo nome={c.nome} logoUrl={c.logo_url} size={44} />
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold truncate transition-colors" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>{c.nome}</p>
+                  <p className="text-[11px] mt-0.5" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>Asset Library & Brand Kit</p>
+                </div>
               </div>
-              <span className="text-lg opacity-30 group-hover:opacity-100 transition-opacity">→</span>
-            </div>
-          </button>
-        ))}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
 
-  // ── Client selected — main UI ──────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // MAIN UI — CLIENT SELECTED
+  // ══════════════════════════════════════════════════════════════════════════
   return (
     <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'hsl(var(--skorpio-bg))' }}>
-      {/* Header */}
-      <div className="px-4 py-3 border-b flex items-center gap-3 flex-shrink-0 flex-wrap" style={{ borderColor: 'hsl(var(--border))', background: 'hsl(var(--card))' }}>
-        <button onClick={() => { setSelCliente(null); setAssets([]); setBrandKit(null); }}
-          className="text-sm px-3 py-1.5 rounded-lg" style={{ background: 'hsl(var(--muted))' }}>← Clienti</button>
-        <ClienteLogo nome={selCliente.nome} logoUrl={selCliente.logo_url} size={28} />
-        <h1 className="text-sm font-bold" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>{selCliente.nome}</h1>
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      <div className="px-4 py-3 border-b flex items-center gap-3 flex-shrink-0" style={{ borderColor: 'hsl(var(--border))', background: 'hsl(var(--card))' }}>
+        <button onClick={() => { setSel(null); setDetail(null); setAssets([]); }}
+          className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ background: 'hsl(var(--muted))', color: 'hsl(var(--skorpio-text-secondary))' }}>← Clienti</button>
+        <ClienteLogo nome={sel.nome} logoUrl={sel.logo_url} size={28} />
+        <span className="text-sm font-bold" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>{sel.nome}</span>
 
         {/* View toggle */}
-        <div className="flex gap-1 ml-auto rounded-lg p-0.5" style={{ background: 'hsl(var(--muted))' }}>
-          <button onClick={() => setView('assets')}
-            className="px-3 py-1 rounded-md text-xs font-semibold transition-all"
-            style={{ background: view === 'assets' ? '#8B5CF6' : 'transparent', color: view === 'assets' ? 'white' : 'hsl(var(--skorpio-text-secondary))' }}>
-            🖼️ Assets ({assets.length})
-          </button>
-          <button onClick={() => setView('brandkit')}
-            className="px-3 py-1 rounded-md text-xs font-semibold transition-all"
-            style={{ background: view === 'brandkit' ? '#EC4899' : 'transparent', color: view === 'brandkit' ? 'white' : 'hsl(var(--skorpio-text-secondary))' }}>
-            🎨 Brand Kit
-          </button>
+        <div className="flex gap-0.5 ml-auto rounded-xl p-0.5" style={{ background: 'hsl(var(--muted))' }}>
+          {([['assets', '🖼️ Assets', '#8B5CF6'], ['brandkit', '🎨 Brand Kit', '#EC4899']] as const).map(([v, label, col]) => (
+            <button key={v} onClick={() => setView(v as any)}
+              className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all"
+              style={{ background: view === v ? col : 'transparent', color: view === v ? '#fff' : 'hsl(var(--skorpio-text-tertiary))' }}>
+              {label} {v === 'assets' ? `(${assets.length})` : ''}
+            </button>
+          ))}
         </div>
+
+        {/* Canva connect */}
+        <button onClick={connectCanva} className="text-[10px] px-2.5 py-1.5 rounded-lg font-semibold transition-all hover:scale-105"
+          style={{ background: 'linear-gradient(135deg, #7B2FF7, #00C4CC)', color: 'white' }}>
+          🔗 Canva
+        </button>
       </div>
 
       {view === 'assets' ? (
         <div className="flex-1 flex overflow-hidden">
-          {/* Main content */}
+          {/* ── ASSETS VIEW ────────────────────────────────────────────────── */}
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Toolbar */}
-            <div className="px-4 py-2.5 border-b flex items-center gap-2 flex-wrap flex-shrink-0" style={{ borderColor: 'hsl(var(--border))' }}>
+            <div className="px-4 py-2 border-b flex items-center gap-2 flex-wrap flex-shrink-0" style={{ borderColor: 'hsl(var(--border))' }}>
               <input ref={fileRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleUpload} />
               <button onClick={() => fileRef.current?.click()} disabled={uploading}
-                className="text-xs px-3 py-1.5 rounded-lg font-semibold text-white" style={{ background: '#8B5CF6' }}>
-                {uploading ? `⏳ ${uploadProg}%` : '⬆️ Carica asset'}
+                className="text-xs px-4 py-1.5 rounded-xl font-bold text-white transition-all hover:scale-105 disabled:opacity-50"
+                style={{ background: '#8B5CF6' }}>
+                {uploading ? `⬆️ ${upCount.done}/${upCount.total} (${upProg}%)` : '⬆️ Carica'}
               </button>
 
-              {/* Search */}
-              <input className="sk-input text-xs flex-1 min-w-[120px]" placeholder="🔍 Cerca…" value={search} onChange={e => setSearch(e.target.value)} />
+              <div className="flex-1 min-w-[100px] relative">
+                <input className="sk-input w-full text-xs pl-7" placeholder="Cerca asset…" value={search} onChange={e => setSearch(e.target.value)} />
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px]">🔍</span>
+              </div>
 
-              {/* Category filter */}
-              <select className="sk-select text-xs" value={filterCat} onChange={e => setFilterCat(e.target.value)}>
-                <option value="">Tutte le categorie</option>
-                {CATEGORIE.map(c => <option key={c} value={c}>{c}</option>)}
+              <select className="sk-select text-[10px] py-1" value={catF} onChange={e => setCatF(e.target.value)}>
+                <option value="">Tutte</option>
+                {CATEGORIE.map(c => <option key={c}>{c}</option>)}
               </select>
 
-              {/* Tag filter */}
-              <div className="flex gap-1 flex-wrap">
-                {TAGS_PRESET.slice(0, 6).map(t => (
-                  <button key={t} onClick={() => setFilterTag(filterTag === t ? '' : t)}
-                    className="text-[10px] px-2 py-0.5 rounded-full font-medium transition-all"
-                    style={{ background: filterTag === t ? '#8B5CF620' : 'hsl(var(--muted))', color: filterTag === t ? '#8B5CF6' : 'hsl(var(--skorpio-text-tertiary))', border: filterTag === t ? '1px solid #8B5CF640' : '1px solid transparent' }}>
-                    {t}
-                  </button>
+              <div className="flex gap-1 overflow-x-auto">
+                {TAGS.map(t => (
+                  <button key={t} onClick={() => setTagF(tagF === t ? '' : t)}
+                    className="text-[9px] px-2 py-0.5 rounded-full font-semibold whitespace-nowrap transition-all"
+                    style={{
+                      background: tagF === t ? '#8B5CF6' : 'hsl(var(--muted))',
+                      color: tagF === t ? '#fff' : 'hsl(var(--skorpio-text-tertiary))',
+                    }}>{t}</button>
                 ))}
               </div>
             </div>
 
             {/* Upload progress */}
             {uploading && (
-              <div className="px-4 py-1">
-                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'hsl(var(--muted))' }}>
-                  <div className="h-full rounded-full transition-all" style={{ background: '#8B5CF6', width: `${uploadProg}%` }} />
-                </div>
+              <div className="h-1" style={{ background: 'hsl(var(--muted))' }}>
+                <div className="h-full transition-all duration-300" style={{ background: 'linear-gradient(90deg, #8B5CF6, #EC4899)', width: `${upProg}%` }} />
               </div>
             )}
 
-            {/* Asset grid — masonry style */}
+            {/* Grid */}
             <div className="flex-1 overflow-y-auto p-4">
               {loading ? (
-                <p className="text-center text-sm py-12" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>Caricamento…</p>
+                <div className="flex items-center justify-center py-20">
+                  <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: '#8B5CF640', borderTopColor: '#8B5CF6' }} />
+                </div>
               ) : filtered.length === 0 ? (
-                <div className="text-center py-16">
-                  <span className="text-5xl block mb-4">🖼️</span>
-                  <p className="text-sm font-medium" style={{ color: 'hsl(var(--skorpio-text-secondary))' }}>
-                    {assets.length === 0 ? 'Nessun asset. Carica il primo!' : 'Nessun risultato per i filtri selezionati'}
+                <div className="text-center py-20">
+                  <span className="text-6xl block mb-4 opacity-30">🖼️</span>
+                  <p className="font-medium" style={{ color: 'hsl(var(--skorpio-text-secondary))' }}>
+                    {assets.length === 0 ? `Nessun asset per ${sel.nome}` : 'Nessun risultato'}
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                    {assets.length === 0 ? 'Clicca "⬆️ Carica" per iniziare' : 'Prova a cambiare i filtri'}
                   </p>
                   {assets.length === 0 && (
-                    <button onClick={() => fileRef.current?.click()} className="mt-3 text-xs px-4 py-2 rounded-lg font-semibold text-white" style={{ background: '#8B5CF6' }}>
-                      ⬆️ Carica asset
+                    <button onClick={() => fileRef.current?.click()} className="mt-4 text-xs px-5 py-2 rounded-xl font-bold text-white" style={{ background: '#8B5CF6' }}>
+                      ⬆️ Carica i primi asset
                     </button>
                   )}
                 </div>
               ) : (
-                <div className="columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-3">
+                <div className="columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-3 [column-fill:_balance]">
                   {filtered.map(a => (
-                    <div key={a.id} onClick={() => setSelectedAsset(a)}
-                      className="mb-3 break-inside-avoid rounded-xl overflow-hidden border cursor-pointer group transition-all hover:shadow-xl hover:-translate-y-0.5"
-                      style={{ borderColor: a.preferito ? '#F59E0B40' : 'hsl(var(--border))', background: 'hsl(var(--card))' }}>
-                      {/* Thumbnail */}
-                      <div className="relative" style={{ background: '#0F172A' }}>
+                    <div key={a.id} onClick={() => setDetail(a)}
+                      className="mb-3 break-inside-avoid rounded-2xl overflow-hidden border cursor-pointer group transition-all duration-300 hover:shadow-2xl hover:-translate-y-1"
+                      style={{ borderColor: a.preferito ? '#F59E0B50' : 'transparent', background: 'hsl(var(--card))' }}>
+                      <div className="relative overflow-hidden" style={{ background: '#0a0a0f' }}>
                         {a.thumbnail_url ? (
-                          <img src={a.thumbnail_url} alt={a.nome} className="w-full object-cover" referrerPolicy="no-referrer"
-                            style={{ minHeight: 80, maxHeight: 300 }} loading="lazy" />
+                          <img src={a.thumbnail_url} alt={a.nome} loading="lazy" referrerPolicy="no-referrer"
+                            className="w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                            style={{ minHeight: 80 }}
+                            onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                         ) : (
-                          <div className="h-24 flex items-center justify-center text-2xl">{a.tipo === 'video' ? '🎥' : '🖼️'}</div>
+                          <div className="h-28 flex items-center justify-center text-3xl opacity-30">{a.tipo === 'video' ? '🎥' : '🖼️'}</div>
                         )}
-                        {/* Overlay */}
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-end">
-                          <div className="w-full p-2 opacity-0 group-hover:opacity-100 transition-opacity flex justify-between items-end">
+                        {/* Hover overlay */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-2.5">
+                          <div className="flex items-center justify-between w-full">
                             <button onClick={e => { e.stopPropagation(); toggleFav(a.id); }}
-                              className="w-7 h-7 rounded-full flex items-center justify-center text-sm"
-                              style={{ background: 'rgba(0,0,0,0.5)', color: a.preferito ? '#F59E0B' : 'white' }}>
+                              className="w-7 h-7 rounded-full backdrop-blur-md flex items-center justify-center transition-transform hover:scale-110"
+                              style={{ background: 'rgba(255,255,255,0.15)', color: a.preferito ? '#F59E0B' : '#fff' }}>
                               {a.preferito ? '★' : '☆'}
                             </button>
                             <div className="flex gap-1">
                               {a.tags.slice(0, 2).map(t => (
-                                <span key={t} className="text-[8px] px-1.5 py-0.5 rounded-full font-medium" style={{ background: 'rgba(139,92,246,0.8)', color: 'white' }}>{t}</span>
+                                <span key={t} className="text-[8px] px-1.5 py-0.5 rounded-full backdrop-blur-md font-semibold" style={{ background: 'rgba(139,92,246,0.6)', color: '#fff' }}>{t}</span>
                               ))}
                             </div>
                           </div>
                         </div>
-                        {a.tipo === 'video' && <span className="absolute top-2 right-2 text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ background: 'rgba(0,0,0,0.6)', color: 'white' }}>🎥</span>}
+                        {a.tipo === 'video' && <span className="absolute top-2 right-2 text-[9px] px-1.5 py-0.5 rounded-md font-bold backdrop-blur-md" style={{ background: 'rgba(0,0,0,0.5)', color: '#fff' }}>▶ Video</span>}
                       </div>
-                      {/* Info */}
-                      <div className="p-2">
-                        <p className="text-[11px] font-medium truncate" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>{a.nome}</p>
-                        <p className="text-[9px]" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
-                          {a.tipo} · {a.categoria}{a.file_size ? ` · ${(a.file_size / 1048576).toFixed(1)}MB` : ''}
+                      <div className="px-2.5 py-2">
+                        <p className="text-[11px] font-semibold truncate" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>{a.nome}</p>
+                        <p className="text-[9px] mt-0.5" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                          {a.categoria}{a.file_size ? ` · ${(a.file_size / 1048576).toFixed(1)}MB` : ''}
                         </p>
                       </div>
                     </div>
@@ -360,136 +413,117 @@ export function AssetLibraryTab({ clienti }: { clienti: Cliente[] }) {
             </div>
           </div>
 
-          {/* Asset detail sidebar */}
-          {selectedAsset && (
-            <AssetDetail asset={selectedAsset} onClose={() => setSelectedAsset(null)}
-              onToggleTag={toggleTag} onToggleFav={toggleFav} onArchive={archiveAsset}
-              onUpdate={(updated) => { setAssets(prev => prev.map(a => a.id === updated.id ? updated : a)); setSelectedAsset(updated); }} />
+          {/* ── Detail Sidebar ──────────────────────────────────────────────── */}
+          {detail && (
+            <div className="w-80 border-l flex-shrink-0 overflow-y-auto" style={{ borderColor: 'hsl(var(--border))', background: 'hsl(var(--card))' }}>
+              <div className="sticky top-0 z-10 px-3 py-2.5 border-b flex items-center justify-between backdrop-blur-md" style={{ background: 'hsl(var(--card) / 0.9)', borderColor: 'hsl(var(--border))' }}>
+                <span className="text-xs font-bold" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>Dettaglio asset</span>
+                <button onClick={() => setDetail(null)} className="w-6 h-6 rounded-full flex items-center justify-center text-xs hover:bg-[hsl(var(--muted))] transition-colors">✕</button>
+              </div>
+              <div style={{ background: '#0a0a0f' }}>
+                {detail.thumbnail_url ? (
+                  <img src={detail.thumbnail_url} alt={detail.nome} className="w-full object-contain" referrerPolicy="no-referrer" style={{ maxHeight: 260 }} />
+                ) : (
+                  <div className="h-36 flex items-center justify-center text-4xl opacity-20">🖼️</div>
+                )}
+              </div>
+              <div className="p-3 space-y-4">
+                <div>
+                  <p className="text-sm font-bold" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>{detail.nome}</p>
+                  <p className="text-[10px] mt-0.5" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                    {detail.tipo} · {detail.orientamento}{detail.file_size ? ` · ${(detail.file_size / 1048576).toFixed(1)}MB` : ''}
+                  </p>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2">
+                  <button onClick={() => toggleFav(detail.id)}
+                    className="flex-1 text-[10px] py-2 rounded-xl font-bold transition-all"
+                    style={{ background: detail.preferito ? '#F59E0B15' : 'hsl(var(--muted))', color: detail.preferito ? '#F59E0B' : 'hsl(var(--skorpio-text-secondary))', border: detail.preferito ? '1px solid #F59E0B30' : '1px solid transparent' }}>
+                    {detail.preferito ? '★ Preferito' : '☆ Preferito'}
+                  </button>
+                  {detail.drive_file_id && (
+                    <a href={`https://drive.google.com/file/d/${detail.drive_file_id}/view`} target="_blank" rel="noopener noreferrer"
+                      className="text-[10px] px-3 py-2 rounded-xl font-bold" style={{ background: '#3B82F615', color: '#3B82F6' }}>📂 Drive</a>
+                  )}
+                  <button onClick={() => archiveAsset(detail.id)}
+                    className="text-[10px] px-3 py-2 rounded-xl" style={{ background: '#EF444410', color: '#EF4444' }}>🗑️</button>
+                </div>
+
+                {/* Categoria */}
+                <div>
+                  <label className="text-[9px] font-bold uppercase tracking-widest" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>Categoria</label>
+                  <select className="sk-select w-full text-xs mt-1" value={detail.categoria}
+                    onChange={async e => {
+                      await supabase.from('client_assets').update({ categoria: e.target.value }).eq('id', detail.id);
+                      setDetail(prev => prev ? { ...prev, categoria: e.target.value } : null);
+                      setAssets(prev => prev.map(a => a.id === detail.id ? { ...a, categoria: e.target.value } : a));
+                    }}>
+                    {CATEGORIE.map(c => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+
+                {/* Tags */}
+                <div>
+                  <label className="text-[9px] font-bold uppercase tracking-widest" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>Tag</label>
+                  <div className="flex gap-1 flex-wrap mt-1.5">
+                    {TAGS.map(t => (
+                      <button key={t} onClick={() => toggleTag(detail.id, t)}
+                        className="text-[9px] px-2 py-0.5 rounded-full font-semibold transition-all"
+                        style={{
+                          background: detail.tags.includes(t) ? '#8B5CF6' : 'hsl(var(--muted))',
+                          color: detail.tags.includes(t) ? '#fff' : 'hsl(var(--skorpio-text-tertiary))',
+                        }}>{t}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Note */}
+                <div>
+                  <label className="text-[9px] font-bold uppercase tracking-widest" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>Note</label>
+                  <textarea className="sk-input w-full text-xs mt-1" rows={2} defaultValue={detail.descrizione}
+                    onBlur={async e => {
+                      await supabase.from('client_assets').update({ descrizione: e.target.value }).eq('id', detail.id);
+                      setDetail(prev => prev ? { ...prev, descrizione: e.target.value } : null);
+                    }} placeholder="Aggiungi note…" />
+                </div>
+
+                <div className="text-[9px] pt-2 border-t" style={{ color: 'hsl(var(--skorpio-text-tertiary))', borderColor: 'hsl(var(--border))' }}>
+                  <p>Caricato da {detail.caricato_da} · {new Date(detail.created_at).toLocaleDateString('it-IT')}</p>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       ) : (
-        <BrandKitEditor clienteId={selCliente.id} clienteNome={selCliente.nome} brandKit={brandKit} assets={assets} onReload={loadData} />
+        // ══════════════════════════════════════════════════════════════════
+        // BRAND KIT VIEW
+        // ══════════════════════════════════════════════════════════════════
+        <BrandKitEditor clienteId={sel.id} clienteNome={sel.nome} brandKit={kit} onReload={load} />
       )}
     </div>
   );
 }
 
-// ── Asset Detail Sidebar ─────────────────────────────────────────────────────
-function AssetDetail({ asset, onClose, onToggleTag, onToggleFav, onArchive, onUpdate }: {
-  asset: Asset; onClose: () => void; onToggleTag: (id: string, tag: string) => void;
-  onToggleFav: (id: string) => void; onArchive: (id: string) => void;
-  onUpdate: (a: Asset) => void;
-}) {
-  const [desc, setDesc] = useState(asset.descrizione);
-  const [cat, setCat] = useState(asset.categoria);
-
-  useEffect(() => { setDesc(asset.descrizione); setCat(asset.categoria); }, [asset.id]);
-
-  const saveField = async (field: string, value: any) => {
-    await supabase.from('client_assets').update({ [field]: value }).eq('id', asset.id);
-    onUpdate({ ...asset, [field]: value });
-  };
-
-  return (
-    <div className="w-72 border-l flex-shrink-0 overflow-y-auto" style={{ borderColor: 'hsl(var(--border))', background: 'hsl(var(--card))' }}>
-      <div className="sticky top-0 z-10 px-3 py-2 border-b flex items-center justify-between" style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}>
-        <span className="text-xs font-bold" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>Dettaglio</span>
-        <button onClick={onClose} className="text-sm">✕</button>
-      </div>
-
-      {/* Preview */}
-      <div style={{ background: '#0F172A' }}>
-        {asset.thumbnail_url ? (
-          <img src={asset.thumbnail_url} alt={asset.nome} className="w-full object-contain" referrerPolicy="no-referrer" style={{ maxHeight: 250 }} />
-        ) : (
-          <div className="h-32 flex items-center justify-center text-3xl">{asset.tipo === 'video' ? '🎥' : '🖼️'}</div>
-        )}
-      </div>
-
-      <div className="p-3 space-y-3">
-        {/* Name */}
-        <div>
-          <p className="text-xs font-bold" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>{asset.nome}</p>
-          <p className="text-[10px]" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
-            {asset.tipo} · {asset.orientamento} · {asset.file_size ? `${(asset.file_size / 1048576).toFixed(1)}MB` : ''}
-          </p>
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-2">
-          <button onClick={() => onToggleFav(asset.id)}
-            className="flex-1 text-[10px] py-1.5 rounded-lg font-semibold"
-            style={{ background: asset.preferito ? '#F59E0B15' : 'hsl(var(--muted))', color: asset.preferito ? '#F59E0B' : 'hsl(var(--skorpio-text-secondary))', border: asset.preferito ? '1px solid #F59E0B30' : '1px solid transparent' }}>
-            {asset.preferito ? '★ Preferito' : '☆ Preferito'}
-          </button>
-          <button onClick={() => onArchive(asset.id)}
-            className="text-[10px] px-3 py-1.5 rounded-lg" style={{ background: 'hsl(var(--muted))', color: '#EF4444' }}>🗑️</button>
-        </div>
-
-        {/* Categoria */}
-        <div>
-          <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>Categoria</label>
-          <select className="sk-select w-full text-xs mt-1" value={cat}
-            onChange={e => { setCat(e.target.value); saveField('categoria', e.target.value); }}>
-            {CATEGORIE.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-
-        {/* Tags */}
-        <div>
-          <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>Tag</label>
-          <div className="flex gap-1 flex-wrap mt-1">
-            {TAGS_PRESET.map(t => (
-              <button key={t} onClick={() => onToggleTag(asset.id, t)}
-                className="text-[10px] px-2 py-0.5 rounded-full font-medium transition-all"
-                style={{ background: asset.tags.includes(t) ? '#8B5CF620' : 'hsl(var(--muted))', color: asset.tags.includes(t) ? '#8B5CF6' : 'hsl(var(--skorpio-text-tertiary))', border: asset.tags.includes(t) ? '1px solid #8B5CF640' : '1px solid transparent' }}>
-                {t}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Descrizione */}
-        <div>
-          <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>Note</label>
-          <textarea className="sk-input w-full text-xs mt-1" rows={3} value={desc}
-            onChange={e => setDesc(e.target.value)}
-            onBlur={() => saveField('descrizione', desc)}
-            placeholder="Note sull'asset…" />
-        </div>
-
-        {/* Info */}
-        <div className="text-[9px] space-y-0.5 pt-2 border-t" style={{ color: 'hsl(var(--skorpio-text-tertiary))', borderColor: 'hsl(var(--border))' }}>
-          <p>Caricato da: {asset.caricato_da}</p>
-          <p>Data: {new Date(asset.created_at).toLocaleDateString('it-IT')}</p>
-          {asset.drive_file_id && <a href={`https://drive.google.com/file/d/${asset.drive_file_id}/view`} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: '#3B82F6' }}>📂 Apri su Drive</a>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Brand Kit Editor ─────────────────────────────────────────────────────────
-function BrandKitEditor({ clienteId, clienteNome, brandKit, assets, onReload }: {
-  clienteId: string; clienteNome: string; brandKit: BrandKit | null; assets: Asset[]; onReload: () => void;
+function BrandKitEditor({ clienteId, clienteNome, brandKit, onReload }: {
+  clienteId: string; clienteNome: string; brandKit: BrandKit | null; onReload: () => void;
 }) {
   const { addToast } = useApp();
-  const [kit, setKit] = useState<Partial<BrandKit>>(brandKit || {
-    colore_primario: '#000000', colore_secondario: '#666666', colore_accento: '#3B82F6',
-    colore_sfondo: '#FFFFFF', colore_testo: '#1A1A1A', colori_extra: [],
-    font_primario: 'Inter', font_secondario: 'Inter', font_peso_titoli: '700', font_peso_corpo: '400',
-    mood_tags: [], stile_foto: '', stile_video: '', regole_do: [], regole_dont: [],
-    hashtag_fissi: [], tono_voce: '',
-  });
+  const [k, setK] = useState<BrandKit>(brandKit || emptyKit(clienteId, clienteNome));
   const [saving, setSaving] = useState(false);
   const [newDo, setNewDo] = useState('');
   const [newDont, setNewDont] = useState('');
   const [newHash, setNewHash] = useState('');
 
+  const s = (field: string, val: any) => setK(prev => ({ ...prev, [field]: val }));
+  const toggleMood = (t: string) => s('mood_tags', (k.mood_tags || []).includes(t) ? k.mood_tags.filter(x => x !== t) : [...(k.mood_tags || []), t]);
+
   const save = async () => {
     setSaving(true);
-    const payload = { ...kit, cliente_id: clienteId, cliente_nome: clienteNome };
-    if (brandKit) {
+    const payload = { ...k, cliente_id: clienteId, cliente_nome: clienteNome };
+    delete (payload as any).id;
+    if (brandKit?.id) {
       await supabase.from('brand_kit').update(payload).eq('id', brandKit.id);
     } else {
       await supabase.from('brand_kit').insert(payload);
@@ -499,173 +533,132 @@ function BrandKitEditor({ clienteId, clienteNome, brandKit, assets, onReload }: 
     onReload();
   };
 
-  const set = (k: string, v: any) => setKit(prev => ({ ...prev, [k]: v }));
-  const toggleMood = (tag: string) => {
-    const cur = kit.mood_tags || [];
-    set('mood_tags', cur.includes(tag) ? cur.filter(t => t !== tag) : [...cur, tag]);
-  };
-
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-6 max-w-3xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-lg font-bold" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>🎨 Brand Kit — {clienteNome}</h2>
-          <p className="text-xs mt-0.5" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>Identità visiva e regole di stile</p>
+    <div className="flex-1 overflow-y-auto">
+      <div className="max-w-2xl mx-auto p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>🎨 Brand Kit</h2>
+            <p className="text-[11px]" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>Identità visiva di {clienteNome}</p>
+          </div>
+          <button onClick={save} disabled={saving}
+            className="px-5 py-2 rounded-xl text-sm font-bold text-white transition-all hover:scale-105"
+            style={{ background: 'linear-gradient(135deg, #EC4899, #8B5CF6)' }}>
+            {saving ? '⏳…' : '💾 Salva'}
+          </button>
         </div>
-        <button onClick={save} disabled={saving}
-          className="px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: '#EC4899' }}>
-          {saving ? '⏳…' : '💾 Salva Brand Kit'}
-        </button>
-      </div>
 
-      <div className="space-y-6">
-        {/* ── Palette Colori ──────────────────────────────────────────────── */}
-        <section className="rounded-xl border p-4" style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}>
-          <h3 className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: '#EC4899' }}>🎨 Palette Colori</h3>
-          <div className="grid grid-cols-5 gap-3">
-            {[['colore_primario', 'Primario'], ['colore_secondario', 'Secondario'], ['colore_accento', 'Accento'], ['colore_sfondo', 'Sfondo'], ['colore_testo', 'Testo']].map(([key, label]) => (
+        {/* Palette */}
+        <section className="rounded-2xl border p-5" style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}>
+          <h3 className="text-[10px] font-bold uppercase tracking-widest mb-4" style={{ color: '#EC4899' }}>🎨 Palette Colori</h3>
+          <div className="flex gap-4 justify-center mb-4">
+            {([['colore_primario', 'Primario'], ['colore_secondario', 'Secondario'], ['colore_accento', 'Accento'], ['colore_sfondo', 'Sfondo'], ['colore_testo', 'Testo']] as const).map(([key, label]) => (
               <div key={key} className="text-center">
-                <input type="color" value={(kit as any)[key] || '#000000'} onChange={e => set(key, e.target.value)}
-                  className="w-12 h-12 rounded-xl cursor-pointer border-2" style={{ borderColor: 'hsl(var(--border))' }} />
-                <p className="text-[10px] mt-1 font-medium" style={{ color: 'hsl(var(--skorpio-text-secondary))' }}>{label}</p>
-                <p className="text-[9px] font-mono" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>{(kit as any)[key]}</p>
+                <label className="block cursor-pointer">
+                  <input type="color" value={(k as any)[key] || '#000'} onChange={e => s(key, e.target.value)}
+                    className="w-14 h-14 rounded-2xl cursor-pointer border-2 p-0.5" style={{ borderColor: 'hsl(var(--border))' }} />
+                </label>
+                <p className="text-[9px] mt-1 font-semibold" style={{ color: 'hsl(var(--skorpio-text-secondary))' }}>{label}</p>
+                <p className="text-[8px] font-mono" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>{(k as any)[key]}</p>
               </div>
             ))}
           </div>
-          {/* Preview */}
-          <div className="mt-4 rounded-xl overflow-hidden" style={{ background: kit.colore_sfondo }}>
-            <div className="p-4">
-              <p className="text-lg font-bold" style={{ color: kit.colore_primario, fontFamily: kit.font_primario }}>Anteprima titolo</p>
-              <p className="text-sm mt-1" style={{ color: kit.colore_testo, fontFamily: kit.font_secondario }}>Testo di esempio con il font e i colori selezionati.</p>
-              <div className="flex gap-2 mt-2">
-                <span className="text-xs px-3 py-1 rounded-full text-white font-semibold" style={{ background: kit.colore_accento }}>Accento</span>
-                <span className="text-xs px-3 py-1 rounded-full font-semibold" style={{ background: kit.colore_secondario, color: 'white' }}>Secondario</span>
+          {/* Live preview */}
+          <div className="rounded-xl overflow-hidden border" style={{ background: k.colore_sfondo, borderColor: k.colore_secondario + '30' }}>
+            <div className="p-5">
+              <p className="text-xl mb-1" style={{ color: k.colore_primario, fontWeight: Number(k.font_peso_titoli) }}>{clienteNome}</p>
+              <p className="text-sm" style={{ color: k.colore_testo }}>Anteprima testo con i colori e font selezionati per il brand.</p>
+              <div className="flex gap-2 mt-3">
+                <span className="text-xs px-3 py-1 rounded-full text-white font-semibold" style={{ background: k.colore_accento }}>Accento</span>
+                <span className="text-xs px-3 py-1 rounded-full text-white font-semibold" style={{ background: k.colore_secondario }}>Secondario</span>
               </div>
             </div>
           </div>
         </section>
 
-        {/* ── Tipografia ─────────────────────────────────────────────────── */}
-        <section className="rounded-xl border p-4" style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}>
-          <h3 className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: '#EC4899' }}>🔤 Tipografia</h3>
+        {/* Tipografia */}
+        <section className="rounded-2xl border p-5" style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}>
+          <h3 className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: '#EC4899' }}>🔤 Tipografia</h3>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="sk-label">Font titoli</label>
-              <input className="sk-input w-full text-sm" value={kit.font_primario || ''} onChange={e => set('font_primario', e.target.value)} placeholder="es. Playfair Display" />
-            </div>
-            <div>
-              <label className="sk-label">Font corpo</label>
-              <input className="sk-input w-full text-sm" value={kit.font_secondario || ''} onChange={e => set('font_secondario', e.target.value)} placeholder="es. Inter" />
-            </div>
-            <div>
-              <label className="sk-label">Peso titoli</label>
-              <select className="sk-select w-full text-sm" value={kit.font_peso_titoli || '700'} onChange={e => set('font_peso_titoli', e.target.value)}>
-                <option value="400">Regular (400)</option><option value="500">Medium (500)</option>
-                <option value="600">Semibold (600)</option><option value="700">Bold (700)</option>
-                <option value="800">Extrabold (800)</option><option value="900">Black (900)</option>
-              </select>
-            </div>
-            <div>
-              <label className="sk-label">Peso corpo</label>
-              <select className="sk-select w-full text-sm" value={kit.font_peso_corpo || '400'} onChange={e => set('font_peso_corpo', e.target.value)}>
-                <option value="300">Light (300)</option><option value="400">Regular (400)</option>
-                <option value="500">Medium (500)</option><option value="600">Semibold (600)</option>
-              </select>
-            </div>
+            <div><label className="sk-label">Font titoli</label><input className="sk-input w-full text-sm" value={k.font_primario} onChange={e => s('font_primario', e.target.value)} /></div>
+            <div><label className="sk-label">Font corpo</label><input className="sk-input w-full text-sm" value={k.font_secondario} onChange={e => s('font_secondario', e.target.value)} /></div>
           </div>
         </section>
 
-        {/* ── Mood & Stile ───────────────────────────────────────────────── */}
-        <section className="rounded-xl border p-4" style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}>
-          <h3 className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: '#EC4899' }}>✨ Mood & Stile</h3>
+        {/* Mood */}
+        <section className="rounded-2xl border p-5" style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}>
+          <h3 className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: '#EC4899' }}>✨ Mood & Stile</h3>
           <div className="flex gap-1.5 flex-wrap mb-3">
-            {MOOD_TAGS.map(t => (
+            {MOODS.map(t => (
               <button key={t} onClick={() => toggleMood(t)}
                 className="text-xs px-3 py-1 rounded-full font-semibold transition-all"
-                style={{ background: (kit.mood_tags || []).includes(t) ? '#EC489920' : 'hsl(var(--muted))', color: (kit.mood_tags || []).includes(t) ? '#EC4899' : 'hsl(var(--skorpio-text-secondary))', border: (kit.mood_tags || []).includes(t) ? '1px solid #EC489940' : '1px solid transparent' }}>
+                style={{ background: (k.mood_tags || []).includes(t) ? '#EC4899' : 'hsl(var(--muted))', color: (k.mood_tags || []).includes(t) ? '#fff' : 'hsl(var(--skorpio-text-secondary))' }}>
                 {t}
               </button>
             ))}
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="sk-label">Stile foto</label>
-              <textarea className="sk-input w-full text-xs" rows={2} value={kit.stile_foto || ''} onChange={e => set('stile_foto', e.target.value)} placeholder="es. luminose, naturali, sfondi chiari" />
-            </div>
-            <div>
-              <label className="sk-label">Stile video</label>
-              <textarea className="sk-input w-full text-xs" rows={2} value={kit.stile_video || ''} onChange={e => set('stile_video', e.target.value)} placeholder="es. transizioni morbide, sottotitoli bianchi" />
-            </div>
+            <div><label className="sk-label">Stile foto</label><textarea className="sk-input w-full text-xs" rows={2} value={k.stile_foto} onChange={e => s('stile_foto', e.target.value)} placeholder="es. luminose, naturali" /></div>
+            <div><label className="sk-label">Stile video</label><textarea className="sk-input w-full text-xs" rows={2} value={k.stile_video} onChange={e => s('stile_video', e.target.value)} placeholder="es. transizioni morbide" /></div>
           </div>
-          <div className="mt-3">
-            <label className="sk-label">Tono di voce</label>
-            <input className="sk-input w-full text-sm" value={kit.tono_voce || ''} onChange={e => set('tono_voce', e.target.value)} placeholder="es. professionale ma accessibile, empatico" />
-          </div>
+          <div className="mt-3"><label className="sk-label">Tono di voce</label><input className="sk-input w-full text-sm" value={k.tono_voce} onChange={e => s('tono_voce', e.target.value)} placeholder="es. professionale ma accessibile" /></div>
         </section>
 
-        {/* ── Regole Do / Don't ──────────────────────────────────────────── */}
-        <section className="rounded-xl border p-4" style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}>
-          <h3 className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: '#EC4899' }}>📋 Regole</h3>
+        {/* Regole */}
+        <section className="rounded-2xl border p-5" style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}>
+          <h3 className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: '#EC4899' }}>📋 Regole</h3>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] font-bold" style={{ color: '#22C55E' }}>✅ DO</label>
               <div className="space-y-1 mt-1">
-                {(kit.regole_do || []).map((r, i) => (
-                  <div key={i} className="flex items-center gap-1 text-xs p-1.5 rounded" style={{ background: '#22C55E08' }}>
+                {(k.regole_do || []).map((r, i) => (
+                  <div key={i} className="flex items-center gap-1 text-xs p-1.5 rounded-lg" style={{ background: '#22C55E08' }}>
                     <span className="flex-1">{r}</span>
-                    <button onClick={() => set('regole_do', (kit.regole_do || []).filter((_, j) => j !== i))} className="text-[10px] text-red-400">✕</button>
+                    <button onClick={() => s('regole_do', k.regole_do.filter((_, j) => j !== i))} className="text-[10px] text-red-400 hover:text-red-600">✕</button>
                   </div>
                 ))}
-                <div className="flex gap-1">
-                  <input className="sk-input flex-1 text-xs" value={newDo} onChange={e => setNewDo(e.target.value)} placeholder="Aggiungi regola…"
-                    onKeyDown={e => { if (e.key === 'Enter' && newDo.trim()) { set('regole_do', [...(kit.regole_do || []), newDo.trim()]); setNewDo(''); } }} />
-                  <button onClick={() => { if (newDo.trim()) { set('regole_do', [...(kit.regole_do || []), newDo.trim()]); setNewDo(''); } }}
-                    className="text-xs px-2 rounded" style={{ background: '#22C55E15', color: '#22C55E' }}>+</button>
-                </div>
+                <div className="flex gap-1"><input className="sk-input flex-1 text-xs" value={newDo} onChange={e => setNewDo(e.target.value)} placeholder="Nuova regola…"
+                  onKeyDown={e => { if (e.key === 'Enter' && newDo.trim()) { s('regole_do', [...(k.regole_do || []), newDo.trim()]); setNewDo(''); } }} />
+                  <button onClick={() => { if (newDo.trim()) { s('regole_do', [...(k.regole_do || []), newDo.trim()]); setNewDo(''); } }} className="text-xs px-2 rounded-lg" style={{ background: '#22C55E15', color: '#22C55E' }}>+</button></div>
               </div>
             </div>
             <div>
               <label className="text-[10px] font-bold" style={{ color: '#EF4444' }}>❌ DON'T</label>
               <div className="space-y-1 mt-1">
-                {(kit.regole_dont || []).map((r, i) => (
-                  <div key={i} className="flex items-center gap-1 text-xs p-1.5 rounded" style={{ background: '#EF444408' }}>
+                {(k.regole_dont || []).map((r, i) => (
+                  <div key={i} className="flex items-center gap-1 text-xs p-1.5 rounded-lg" style={{ background: '#EF444408' }}>
                     <span className="flex-1">{r}</span>
-                    <button onClick={() => set('regole_dont', (kit.regole_dont || []).filter((_, j) => j !== i))} className="text-[10px] text-red-400">✕</button>
+                    <button onClick={() => s('regole_dont', k.regole_dont.filter((_, j) => j !== i))} className="text-[10px] text-red-400 hover:text-red-600">✕</button>
                   </div>
                 ))}
-                <div className="flex gap-1">
-                  <input className="sk-input flex-1 text-xs" value={newDont} onChange={e => setNewDont(e.target.value)} placeholder="Aggiungi regola…"
-                    onKeyDown={e => { if (e.key === 'Enter' && newDont.trim()) { set('regole_dont', [...(kit.regole_dont || []), newDont.trim()]); setNewDont(''); } }} />
-                  <button onClick={() => { if (newDont.trim()) { set('regole_dont', [...(kit.regole_dont || []), newDont.trim()]); setNewDont(''); } }}
-                    className="text-xs px-2 rounded" style={{ background: '#EF444415', color: '#EF4444' }}>+</button>
-                </div>
+                <div className="flex gap-1"><input className="sk-input flex-1 text-xs" value={newDont} onChange={e => setNewDont(e.target.value)} placeholder="Nuova regola…"
+                  onKeyDown={e => { if (e.key === 'Enter' && newDont.trim()) { s('regole_dont', [...(k.regole_dont || []), newDont.trim()]); setNewDont(''); } }} />
+                  <button onClick={() => { if (newDont.trim()) { s('regole_dont', [...(k.regole_dont || []), newDont.trim()]); setNewDont(''); } }} className="text-xs px-2 rounded-lg" style={{ background: '#EF444415', color: '#EF4444' }}>+</button></div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* ── Hashtag ────────────────────────────────────────────────────── */}
-        <section className="rounded-xl border p-4" style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}>
-          <h3 className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: '#EC4899' }}># Hashtag fissi</h3>
-          <div className="flex gap-1 flex-wrap">
-            {(kit.hashtag_fissi || []).map((h, i) => (
-              <span key={i} className="text-xs px-2 py-1 rounded-full flex items-center gap-1" style={{ background: '#3B82F615', color: '#3B82F6' }}>
-                #{h}
-                <button onClick={() => set('hashtag_fissi', (kit.hashtag_fissi || []).filter((_, j) => j !== i))} className="text-[10px]">✕</button>
+        {/* Hashtag */}
+        <section className="rounded-2xl border p-5" style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border))' }}>
+          <h3 className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: '#EC4899' }}># Hashtag fissi</h3>
+          <div className="flex gap-1.5 flex-wrap">
+            {(k.hashtag_fissi || []).map((h, i) => (
+              <span key={i} className="text-xs px-2.5 py-1 rounded-full flex items-center gap-1.5" style={{ background: '#3B82F615', color: '#3B82F6' }}>
+                #{h}<button onClick={() => s('hashtag_fissi', k.hashtag_fissi.filter((_, j) => j !== i))} className="text-[10px] hover:text-red-500">✕</button>
               </span>
             ))}
           </div>
-          <div className="flex gap-1 mt-2">
-            <input className="sk-input flex-1 text-xs" value={newHash} onChange={e => setNewHash(e.target.value.replace(/[^a-zA-Z0-9àèéìòù_]/g, ''))} placeholder="Aggiungi hashtag…"
-              onKeyDown={e => { if (e.key === 'Enter' && newHash.trim()) { set('hashtag_fissi', [...(kit.hashtag_fissi || []), newHash.trim()]); setNewHash(''); } }} />
-            <button onClick={() => { if (newHash.trim()) { set('hashtag_fissi', [...(kit.hashtag_fissi || []), newHash.trim()]); setNewHash(''); } }}
-              className="text-xs px-3 py-1 rounded-lg" style={{ background: '#3B82F615', color: '#3B82F6' }}>+</button>
-          </div>
+          <div className="flex gap-1 mt-2"><input className="sk-input flex-1 text-xs" value={newHash}
+            onChange={e => setNewHash(e.target.value.replace(/[^a-zA-Z0-9àèéìòù_]/g, ''))} placeholder="Nuovo hashtag…"
+            onKeyDown={e => { if (e.key === 'Enter' && newHash.trim()) { s('hashtag_fissi', [...(k.hashtag_fissi || []), newHash.trim()]); setNewHash(''); } }} />
+            <button onClick={() => { if (newHash.trim()) { s('hashtag_fissi', [...(k.hashtag_fissi || []), newHash.trim()]); setNewHash(''); } }}
+              className="text-xs px-3 rounded-lg" style={{ background: '#3B82F615', color: '#3B82F6' }}>#</button></div>
         </section>
 
-        {/* Save button bottom */}
         <button onClick={save} disabled={saving}
-          className="w-full py-3 rounded-xl text-sm font-semibold text-white" style={{ background: '#EC4899' }}>
+          className="w-full py-3 rounded-2xl text-sm font-bold text-white transition-all hover:scale-[1.02]"
+          style={{ background: 'linear-gradient(135deg, #EC4899, #8B5CF6)' }}>
           {saving ? '⏳ Salvataggio…' : '💾 Salva Brand Kit'}
         </button>
       </div>
