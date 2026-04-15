@@ -212,7 +212,6 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
         <div className="p-5 relative" style={{ background: isEvening ? 'linear-gradient(135deg, #1E1B4B, #312E81)' : 'linear-gradient(135deg, #6C5CE7, #A29BFE)' }}>
           <div className="absolute top-4 right-4 flex gap-1">
             <button onClick={() => setMinimized(true)} className="w-8 h-8 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-all cursor-pointer" style={{ fontSize: 18 }} title="Riduci a icona">—</button>
-            <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-all cursor-pointer" style={{ fontSize: 18 }} title="Chiudi">✕</button>
           </div>
           <p className="text-white/70 text-sm font-medium">{greeting}, {utente.nome.split(' ')[0]}</p>
           <h2 className="text-white text-xl font-bold mt-1">
@@ -357,12 +356,12 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
         {/* Footer */}
         <div className="px-5 py-4 border-t" style={{ borderColor: 'hsl(var(--border))' }}>
           <button
-            onClick={onClose}
+            onClick={() => setMinimized(true)}
             className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all cursor-pointer"
             style={{ background: 'hsl(var(--primary))', color: 'white' }}>
             {isEvening
-              ? (pendingCount > 0 ? 'Chiudi ('+pendingCount+' task ancora in sospeso)' : 'Ottimo lavoro! Chiudi')
-              : 'Inizia la giornata'}
+              ? (pendingCount > 0 ? '📋 Riduci ('+pendingCount+' task in sospeso)' : '✅ Ottimo lavoro! Riduci')
+              : '🚀 Inizia la giornata'}
           </button>
         </div>
       </div>
@@ -422,5 +421,5 @@ export function useDailyPopup(utente: TeamMember | null) {
     }
   }, [utente]);
 
-  return { show, close: () => setShow(false) };
+  return { show, close: () => {} }; // Non si chiude mai — solo minimizza
 }
