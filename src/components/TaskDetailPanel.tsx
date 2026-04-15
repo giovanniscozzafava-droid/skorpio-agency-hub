@@ -764,6 +764,17 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
       addToast(`Stato → ${nuovoStato}`, 'success');
     }
 
+    // Notifica a chi ha creato/assegnato il task
+    if (!error && nuovoStato === 'Completato' && task.assegnato_da && task.assegnato_da !== '⚡ Sistema' && task.assegnato_da !== utente?.nome) {
+      supabase.from('notifiche').insert({
+        destinatario: task.assegnato_da,
+        tipo: 'task_completato',
+        titolo: '✅ Task completato',
+        messaggio: `${utente?.nome} ha completato: ${task.descrizione.slice(0, 80)}`,
+        task_id_display: task.id_display || '',
+      }).catch(() => {});
+    }
+
     setSaving(false);
     if (!error && data) onUpdate(data as Task);
   };
