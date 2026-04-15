@@ -53,6 +53,7 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
   const [minimized, setMinimized] = useState(false);
   const [viewPerson, setViewPerson] = useState<string>(utente.nome);
   const [reassignId, setReassignId] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<'urgenza' | 'cliente' | 'tipo' | 'priorita'>('urgenza');
 
   const isManager = utente.ruolo === 'Admin' || utente.nome === 'Elisa';
 
@@ -181,6 +182,19 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
 
   const pendingCount = tasks.filter(t => t.stato !== 'Completato').length;
   const completedCount = tasks.filter(t => t.stato === 'Completato').length;
+
+  // Sort tasks based on selected sort
+  const sortedTasks = [...tasks].sort((a, b) => {
+    if (sortBy === 'urgenza') return (a as any)._score - (b as any)._score || (a as any)._ms - (b as any)._ms;
+    if (sortBy === 'cliente') return (a.cliente_nome || '').localeCompare(b.cliente_nome || '') || (a as any)._score - (b as any)._score;
+    if (sortBy === 'tipo') return (a.tipo || '').localeCompare(b.tipo || '') || (a as any)._score - (b as any)._score;
+    if (sortBy === 'priorita') {
+      const prio: Record<string, number> = { '🔴 Alta': 0, '🟡 Media': 1, '🟢 Bassa': 2 };
+      return (prio[a.priorita] ?? 1) - (prio[b.priorita] ?? 1) || (a as any)._score - (b as any)._score;
+    }
+    return 0;
+  });
+
   const greeting = isEvening
     ? 'Riepilogo giornata'
     : new Date().getHours() < 12 ? 'Buongiorno' : 'Buon pomeriggio';
@@ -248,11 +262,26 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
           )}
         </div>
 
+        {/* Sort buttons */}
+        <div className="px-5 pt-2 flex gap-1 flex-wrap">
+          {([['urgenza', '⏱️ Urgenza'], ['cliente', '👤 Cliente'], ['tipo', '📋 Tipo'], ['priorita', '🔴 Priorità']] as const).map(([key, label]) => (
+            <button key={key} onClick={() => setSortBy(key)}
+              className="text-[9px] px-2 py-0.5 rounded-full font-semibold transition-all"
+              style={{
+                background: sortBy === key ? 'hsl(270 60% 55% / 0.15)' : 'hsl(var(--muted))',
+                color: sortBy === key ? 'hsl(270 60% 55%)' : 'hsl(var(--skorpio-text-tertiary))',
+                border: sortBy === key ? '1px solid hsl(270 60% 55% / 0.3)' : '1px solid transparent',
+              }}>
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* Task list */}
         <div className="px-5 py-3 max-h-[50vh] overflow-y-auto">
           {loading ? (
             <div className="text-center py-8 text-sm text-muted-foreground">Caricamento...</div>
-          ) : tasks.length === 0 ? (
+          ) : sortedTasks.length === 0 ? (
             <div className="text-center py-8">
               <div className="text-3xl mb-2">🎉</div>
               <p className="text-sm font-medium" style={{ color: 'hsl(var(--skorpio-text-primary))' }}>Nessun task urgente!</p>
@@ -260,7 +289,7 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
             </div>
           ) : (
             <div className="space-y-2">
-              {tasks.map(t => {
+              {sortedTasks.map(t => {
                 const done = t.stato === 'Completato';
                 return (
                   <div key={t.id}>
@@ -304,6 +333,7 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
                       <div className="flex items-center gap-2 mt-1">
                         {t.cliente_nome && <span className="text-[10px] text-muted-foreground">{t.cliente_nome}</span>}
                         <span className="text-[10px] font-mono text-muted-foreground">{t.id_display}</span>
+                        {t.tipo && <span className="text-[9px] px-1.5 py-0.5 rounded font-medium" style={{ background: 'hsl(var(--muted))', color: 'hsl(var(--skorpio-text-secondary))' }}>{t.tipo}</span>}
                         {(t as any)._manualCreator && <span className="text-[10px]" style={{ color: 'hsl(270 60% 55%)' }}>da {(t as any)._manualCreator}</span>}
                       </div>
                       {(t as any)._manualNote && (
