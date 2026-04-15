@@ -311,7 +311,7 @@ export function AssetLibraryTab({ clienti }: { clienti: Cliente[] }) {
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Toolbar */}
             <div className="px-4 py-2 border-b flex items-center gap-2 flex-wrap flex-shrink-0" style={{ borderColor: 'hsl(var(--border))' }}>
-              <input ref={fileRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleUpload} />
+              <input ref={fileRef} type="file" accept="image/*,video/*" multiple style={{position:'absolute',width:0,height:0,overflow:'hidden',opacity:0}} onChange={handleUpload} />
               <button onClick={() => fileRef.current?.click()} disabled={uploading}
                 className="text-xs px-4 py-1.5 rounded-xl font-bold text-white transition-all hover:scale-105 disabled:opacity-50"
                 style={{ background: '#8B5CF6' }}>
