@@ -9,13 +9,13 @@
  *   - qualsiasi fase → 'Scartata' → valida (exit state)
  *   - forward (toIdx > fromIdx in FASE_ORDER) → sempre valido (skip permessi)
  *   - backward → valido SOLO se esplicitamente in FASE_TRANSITIONS[from]
+ *   - Scartata → valido SOLO se in FASE_TRANSITIONS['Scartata'] (= solo Idea)
  *   - fase sconosciuta → invalido
  *
- * Politica backward del progetto (restrittiva per design):
- *   Il rollback è consentito di UN livello verso 'Pre montato' dalle fasi
- *   Montato/Uploadato/Revisionato/Programmato. Da Programmato è inoltre
- *   consentito il rollback a Revisionato. Nessun'altra backward è permessa —
- *   scelta difensiva per evitare perdita di lavoro già fatto.
+ * Politica backward del progetto (attuale, liberale):
+ *   Le fasi di lavorazione (Pre montato in poi) permettono rollback profondo
+ *   fino a Girato/Script per supportare richieste di modifiche da parte della
+ *   revisione. Da Pubblicato si può solo andare a Scartata.
  */
 import { describe, it, expect } from 'vitest';
 import { isTransitionValid, FASE_ORDER } from './faseConfig';
@@ -86,27 +86,72 @@ describe('isTransitionValid', () => {
     });
   });
 
-  // ── BACKWARD TRANSITIONS PERMESSE (lista chiusa) ─────────────────────────
-  // Tutte e sole le backward esplicitamente dichiarate in FASE_TRANSITIONS.
+  // ── BACKWARD TRANSITIONS PERMESSE ────────────────────────────────────────
+  // Le fasi di lavorazione permettono rollback profondo per supportare
+  // richieste di modifiche da parte della revisione.
   describe('backward transitions esplicitamente permesse', () => {
-    it('Montato → Pre montato è valido (rollback singolo livello)', () => {
+    it('Script → Idea è valido (riscrittura brief)', () => {
+      expect(isTransitionValid('Script', 'Idea')).toBe(true);
+    });
+
+    it('Girato → Script è valido (ri-stesura dopo shooting)', () => {
+      expect(isTransitionValid('Girato', 'Script')).toBe(true);
+    });
+
+    it('Girato → Idea è valido (restart da zero dopo shooting)', () => {
+      expect(isTransitionValid('Girato', 'Idea')).toBe(true);
+    });
+
+    it('Pre montato → Girato è valido (re-shoot)', () => {
+      expect(isTransitionValid('Pre montato', 'Girato')).toBe(true);
+    });
+
+    it('Montato → Pre montato è valido (revisione pre-montaggio)', () => {
       expect(isTransitionValid('Montato', 'Pre montato')).toBe(true);
     });
 
-    it('Uploadato → Pre montato è valido (rollback singolo livello)', () => {
+    it('Montato → Girato è valido (rollback profondo)', () => {
+      expect(isTransitionValid('Montato', 'Girato')).toBe(true);
+    });
+
+    it('Uploadato → Montato è valido (richiesta modifiche da Elisa)', () => {
+      expect(isTransitionValid('Uploadato', 'Montato')).toBe(true);
+    });
+
+    it('Uploadato → Pre montato è valido', () => {
       expect(isTransitionValid('Uploadato', 'Pre montato')).toBe(true);
     });
 
-    it('Revisionato → Pre montato è valido (rollback singolo livello)', () => {
+    it('Uploadato → Girato è valido (rollback profondo)', () => {
+      expect(isTransitionValid('Uploadato', 'Girato')).toBe(true);
+    });
+
+    it('Revisionato → Montato è valido (seconda revisione)', () => {
+      expect(isTransitionValid('Revisionato', 'Montato')).toBe(true);
+    });
+
+    it('Revisionato → Pre montato è valido', () => {
       expect(isTransitionValid('Revisionato', 'Pre montato')).toBe(true);
     });
 
-    it('Programmato → Pre montato è valido (rollback singolo livello)', () => {
+    it('Revisionato → Girato è valido (rollback profondo)', () => {
+      expect(isTransitionValid('Revisionato', 'Girato')).toBe(true);
+    });
+
+    it('Programmato → Revisionato è valido (rollback pre-pubblicazione)', () => {
+      expect(isTransitionValid('Programmato', 'Revisionato')).toBe(true);
+    });
+
+    it('Programmato → Montato è valido', () => {
+      expect(isTransitionValid('Programmato', 'Montato')).toBe(true);
+    });
+
+    it('Programmato → Pre montato è valido', () => {
       expect(isTransitionValid('Programmato', 'Pre montato')).toBe(true);
     });
 
-    it('Programmato → Revisionato è valido (rollback singolo step)', () => {
-      expect(isTransitionValid('Programmato', 'Revisionato')).toBe(true);
+    it('Programmato → Girato è valido (rollback totale pre-pubblicazione)', () => {
+      expect(isTransitionValid('Programmato', 'Girato')).toBe(true);
     });
 
     it('Scartata → Idea è valido (unico recupero da exit state)', () => {
@@ -115,35 +160,15 @@ describe('isTransitionValid', () => {
   });
 
   // ── BACKWARD TRANSITIONS NON PERMESSE ────────────────────────────────────
-  // La politica è restrittiva per design: nessuna backward oltre quelle della
-  // sezione precedente è ammessa.
+  // Le transizioni backward NON dichiarate esplicitamente in FASE_TRANSITIONS
+  // sono bloccate. In particolare Pubblicato è quasi immutabile.
   describe('backward transitions NON permesse', () => {
-    it('Script → Idea NON è valido (brief non si riscrive dopo fase Script)', () => {
-      expect(isTransitionValid('Script', 'Idea')).toBe(false);
-    });
-
-    it('Girato → Script NON è valido', () => {
-      expect(isTransitionValid('Girato', 'Script')).toBe(false);
-    });
-
-    it('Girato → Idea NON è valido', () => {
-      expect(isTransitionValid('Girato', 'Idea')).toBe(false);
-    });
-
-    it('Pre montato → Girato NON è valido (nessun ri-shoot post pre-montaggio)', () => {
-      expect(isTransitionValid('Pre montato', 'Girato')).toBe(false);
-    });
-
-    it('Pre montato → Script NON è valido', () => {
+    it('Pre montato → Script NON è valido (backward non dichiarata)', () => {
       expect(isTransitionValid('Pre montato', 'Script')).toBe(false);
     });
 
     it('Pre montato → Idea NON è valido', () => {
       expect(isTransitionValid('Pre montato', 'Idea')).toBe(false);
-    });
-
-    it('Montato → Girato NON è valido (solo rollback a Pre montato permesso)', () => {
-      expect(isTransitionValid('Montato', 'Girato')).toBe(false);
     });
 
     it('Montato → Script NON è valido', () => {
@@ -154,34 +179,28 @@ describe('isTransitionValid', () => {
       expect(isTransitionValid('Montato', 'Idea')).toBe(false);
     });
 
-    it('Uploadato → Montato NON è valido (la politica richiede rollback a Pre montato)', () => {
-      // Nota: quando Elisa chiede modifiche, la transizione diretta UP→MO è
-      // bloccata — il workflow passa per Pre montato o via logica della SP.
-      expect(isTransitionValid('Uploadato', 'Montato')).toBe(false);
+    it('Uploadato → Script NON è valido', () => {
+      expect(isTransitionValid('Uploadato', 'Script')).toBe(false);
     });
 
-    it('Uploadato → Girato NON è valido', () => {
-      expect(isTransitionValid('Uploadato', 'Girato')).toBe(false);
+    it('Uploadato → Idea NON è valido', () => {
+      expect(isTransitionValid('Uploadato', 'Idea')).toBe(false);
     });
 
-    it('Revisionato → Montato NON è valido', () => {
-      expect(isTransitionValid('Revisionato', 'Montato')).toBe(false);
-    });
-
-    it('Revisionato → Girato NON è valido', () => {
-      expect(isTransitionValid('Revisionato', 'Girato')).toBe(false);
+    it('Revisionato → Script NON è valido', () => {
+      expect(isTransitionValid('Revisionato', 'Script')).toBe(false);
     });
 
     it('Revisionato → Idea NON è valido', () => {
       expect(isTransitionValid('Revisionato', 'Idea')).toBe(false);
     });
 
-    it('Programmato → Montato NON è valido', () => {
-      expect(isTransitionValid('Programmato', 'Montato')).toBe(false);
+    it('Programmato → Script NON è valido', () => {
+      expect(isTransitionValid('Programmato', 'Script')).toBe(false);
     });
 
-    it('Programmato → Girato NON è valido', () => {
-      expect(isTransitionValid('Programmato', 'Girato')).toBe(false);
+    it('Programmato → Idea NON è valido', () => {
+      expect(isTransitionValid('Programmato', 'Idea')).toBe(false);
     });
 
     it('Pubblicato → Programmato NON è valido (Pubblicato è quasi immutabile)', () => {
@@ -196,22 +215,19 @@ describe('isTransitionValid', () => {
       expect(isTransitionValid('Pubblicato', 'Idea')).toBe(false);
     });
 
-    // ⚠️ BUG NOTO catturato da questi test (2026-04-16)
-    // isTransitionValid considera 'Scartata' come fromIdx=-1 (non è in FASE_ORDER),
-    // quindi la regola "forward always allowed" (toIdx > fromIdx) permette
-    // erroneamente Scartata → qualsiasi fase di FASE_ORDER.
-    // L'intento di FASE_TRANSITIONS['Scartata'] = ['Idea'] era permettere
-    // il recupero solo a Idea.
-    // FIX richiesto: prima del check forward, aggiungere:
-    //   if (from === 'Scartata') return FASE_TRANSITIONS['Scartata'].includes(to);
-    // I 2 test sotto sono marcati .fails finché il bug non è risolto.
-    // Quando si applica il fix, rimuovere .fails e il suite passerà.
-    it.fails('Scartata → Script NON è valido (da Scartata si torna solo a Idea) [BUG NOTO]', () => {
+    // Scartata è un exit state: si può solo tornare a Idea per recuperare.
+    // Dopo il fix in isTransitionValid che gestisce 'from === Scartata' prima
+    // del check forward, queste transizioni sono correttamente bloccate.
+    it('Scartata → Script NON è valido (da Scartata si torna solo a Idea)', () => {
       expect(isTransitionValid('Scartata', 'Script')).toBe(false);
     });
 
-    it.fails('Scartata → Montato NON è valido [BUG NOTO]', () => {
+    it('Scartata → Montato NON è valido', () => {
       expect(isTransitionValid('Scartata', 'Montato')).toBe(false);
+    });
+
+    it('Scartata → Pubblicato NON è valido', () => {
+      expect(isTransitionValid('Scartata', 'Pubblicato')).toBe(false);
     });
   });
 

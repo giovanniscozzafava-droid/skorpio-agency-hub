@@ -48,6 +48,11 @@ export function isTransitionValid(from: string, to: string): boolean {
   if (from === to) return true;
   const allowed = FASE_TRANSITIONS[from];
   if (!allowed) return false;
+  // Scartata is an exit state: only transitions explicitly listed in
+  // FASE_TRANSITIONS['Scartata'] are allowed (currently: only → Idea).
+  // Must come BEFORE the forward-rule check below, otherwise fromIdx=-1
+  // makes every 'Scartata → fase in FASE_ORDER' appear as forward.
+  if (from === 'Scartata') return allowed.includes(to);
   // Also allow skipping forward (e.g. Idea → Girato via upload)
   const fromIdx = FASE_ORDER.indexOf(from as FaseCLP);
   const toIdx = FASE_ORDER.indexOf(to as FaseCLP);
