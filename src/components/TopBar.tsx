@@ -285,6 +285,7 @@ export function TopBar({ team, taskCounts, tasks, clpPubDates, onViewPersona, pe
     { id: 'siti', label: '🌐 Siti Web' },
     { id: 'andromeda', label: '🏥 Andromeda' },
     { id: 'report', label: '📊 Report' },
+    ...(isAdmin ? [{ id: 'debug', label: '🔧 Debug' }] : []),
   ];
 
   return (

@@ -4,6 +4,7 @@ import type { Session } from '@supabase/supabase-js';
 import type { TeamMember } from '../types';
 import { supabase } from '../integrations/supabase/client';
 import { checkAutoPubblica } from '../lib/clpWorkflow';
+import { installGlobalErrorListeners, setErrorLoggerUser } from '../lib/errorLogger';
 
 interface AppContextType {
   utente: TeamMember | null;
@@ -34,6 +35,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Sync Supabase session with auto-refresh retry
   const refreshRetries = useRef(0);
   const maxRetries = 3;
+
+  // Install global error listeners once
+  useEffect(() => {
+    installGlobalErrorListeners();
+  }, []);
+
+  // Sync error logger user whenever utente changes
+  useEffect(() => {
+    setErrorLoggerUser(utente?.nome || null);
+  }, [utente?.nome]);
 
   useEffect(() => {
     // Strip expired access_token from URL to prevent stale session loops

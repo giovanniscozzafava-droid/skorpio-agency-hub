@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { X, LayoutGrid, Calendar, Bot, Video, Users, Clapperboard, Settings, LogOut, Monitor, Globe, HeartPulse, BarChart3, Palette } from 'lucide-react';
+import { X, LayoutGrid, Calendar, Bot, Video, Users, Clapperboard, Settings, LogOut, Monitor, Globe, HeartPulse, BarChart3, Palette, Wrench } from 'lucide-react';
 
 interface MobileDrawerProps {
   open: boolean;
@@ -8,7 +8,7 @@ interface MobileDrawerProps {
   onOpenImpostazioni: () => void;
 }
 
-const navItems = [
+const baseNavItems = [
   { id: 'kanban', label: 'Kanban', icon: LayoutGrid },
   { id: 'calendario', label: 'Calendario', icon: Calendar },
   { id: 'creative', label: 'Creative Engine', icon: Bot },
@@ -22,8 +22,14 @@ const navItems = [
   { id: 'report', label: 'Report', icon: BarChart3 },
 ];
 
+const adminOnlyItems = [
+  { id: 'debug', label: 'Debug', icon: Wrench },
+];
+
 export function MobileDrawer({ open, onClose, onOpenImpostazioni }: MobileDrawerProps) {
-  const { tab, setTab, logout } = useApp();
+  const { tab, setTab, logout, utente } = useApp();
+  const isAdmin = utente?.ruolo === 'Admin';
+  const navItems = isAdmin ? [...baseNavItems, ...adminOnlyItems] : baseNavItems;
   const overlayRef = useRef<HTMLDivElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
   const startXRef = useRef<number | null>(null);

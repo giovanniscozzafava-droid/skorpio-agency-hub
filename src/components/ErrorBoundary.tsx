@@ -1,4 +1,5 @@
 import React from 'react';
+import { logError } from '../lib/errorLogger';
 
 interface Props {
   children: React.ReactNode;
@@ -29,23 +30,12 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[ErrorBoundary] caught:', error, info);
-    // Log to Supabase for later debugging
-    try {
-      const payload = {
-        tipo: 'react_error',
-        messaggio: error.message.slice(0, 500),
-        stack: (error.stack || '').slice(0, 2000),
-        component: (info.componentStack || '').slice(0, 1000),
-        url: window.location.href,
-        created_at: new Date().toISOString(),
-      };
-      // Non blocca il rendering se la tabella non esiste
-      import('../lib/supabase').then(({ supabase }) => {
-        supabase.from('error_log').insert(payload).then().catch(() => {});
-      }).catch(() => {});
-    } catch {
-      /* nulla */
-    }
+    logError({
+      tipo: 'react_error',
+      messaggio: error.message,
+      stack: error.stack,
+      component: (info.componentStack || '').slice(0, 1000),
+    }).catch(() => {});
   }
 
   reset = () => {

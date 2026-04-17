@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import { ClienteLogo } from './ClienteLogo';
+import { logError } from '../lib/errorLogger';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -103,7 +104,11 @@ export function AssetLibraryTab({ clienti }: { clienti: Cliente[] }) {
         return r.folder_id;
       }
       addToast('⚠️ Cartella Drive non creata: ' + JSON.stringify(r), 'warn');
-    } catch (e: any) { addToast(`❌ Drive folder: ${e.message}`, 'error'); console.error('[AssetLib] ensureFolder:', e); }
+    } catch (e: any) {
+      addToast(`❌ Drive folder: ${e.message}`, 'error');
+      console.error('[AssetLib] ensureFolder:', e);
+      logError({ tipo: 'asset_library_folder_error', messaggio: e?.message || 'ensureFolder failed', stack: e?.stack, component: 'AssetLibraryTab.ensureFolder', contesto: { cliente: sel?.nome } });
+    }
     return null;
   };
 
@@ -192,6 +197,7 @@ export function AssetLibraryTab({ clienti }: { clienti: Cliente[] }) {
       } catch (err: any) {
         console.error('[AssetLib] Upload error:', err);
         addToast(`❌ ${file.name}: ${err.message}`, 'error');
+        logError({ tipo: 'asset_upload_error', messaggio: err?.message || 'Upload failed', stack: err?.stack, component: 'AssetLibraryTab.handleUpload', contesto: { file_name: file.name, file_size: file.size, cliente: sel.nome } });
       }
     }
 

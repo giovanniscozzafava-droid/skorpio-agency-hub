@@ -12,6 +12,7 @@ import { RipreseTab } from '../components/RipreseTab';
 import { WipTab } from '../components/WipTab';
 import { MonitorTab } from '../components/MonitorTab';
 import { AssetLibraryTab } from '../components/AssetLibraryTab';
+import { DebugTab } from '../components/DebugTab';
 import { CalendarioTab } from '../components/CalendarioTab';
 import { CreativeEngineTab } from '../components/CreativeEngineTab';
 import { ChatPopup } from '../components/ChatPopup';
@@ -126,6 +127,7 @@ function MainApp() {
         {tab === 'monitor' && <MonitorTab clienti={clienti} />}
         {tab === 'siti' && <WipTab tabId="siti" />}
         {tab === 'assets' && <AssetLibraryTab clienti={clienti} />}
+        {tab === 'debug' && <DebugTab />}
         {tab === 'andromeda' && <WipTab tabId="andromeda" />}
         {tab === 'report' && <WipTab tabId="report" />}
       </div>
