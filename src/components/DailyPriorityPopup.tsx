@@ -455,12 +455,19 @@ export function useDailyPopup(utente: TeamMember | null) {
 
     const key = 'skorpio_daily_' + utente.nome;
     const eveningKey = 'skorpio_evening_' + utente.nome;
+    const minKey = 'skorpio_daily_minimized_' + utente.nome;
     const today = new Date().toISOString().slice(0, 10);
     const hour = new Date().getHours();
     const dayOfWeek = new Date().getDay(); // 0=dom, 6=sab
 
     // Solo lun-ven
     if (dayOfWeek === 0 || dayOfWeek === 6) return;
+
+    // Se ridotto ad icona, mostralo sempre (così l'icona resta visibile dopo refresh)
+    if (localStorage.getItem(minKey) === '1') {
+      setShow(true);
+      return;
+    }
 
     // Mattina (prima delle 17): mostra se non gia mostrato oggi
     if (hour < 17) {
