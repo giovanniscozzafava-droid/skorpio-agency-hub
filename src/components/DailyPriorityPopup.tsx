@@ -159,6 +159,24 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
     const newStato = currentStato === 'Completato' ? 'Da fare' : 'Completato';
     await supabase.from('task').update({ stato: newStato }).eq('id', taskId);
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, stato: newStato } : t));
+
+    // Notifica a chi ha creato/assegnato il task
+    if (newStato === 'Completato') {
+      const task = tasks.find(t => t.id === taskId);
+      if (task) {
+        const creator = task.assegnato_da;
+        if (creator && creator !== '⚡ Sistema' && creator !== utente.nome) {
+          await supabase.from('notifiche').insert({
+            destinatario: creator,
+            tipo: 'task_completato',
+            titolo: '✅ Task completato',
+            messaggio: `${utente.nome} ha completato: ${task.descrizione.slice(0, 80)}${task.descrizione.length > 80 ? '…' : ''}`,
+            task_id_display: task.id_display || '',
+          }).catch(() => {});
+        }
+      }
+    }
+
     setCompleting(null);
   };
 
