@@ -1,3 +1,4 @@
+import { devLog } from '../lib/devLog';
 /**
  * FaseService — Centralised CLP phase-change logic.
  *
@@ -53,7 +54,7 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
   const errors: string[] = [];
 
   console.time('[FaseService] total');
-  console.log('[FaseService] cambiaFaseCLP V3 (1 roundtrip)', { contenutoId, nuovaFase, source, userId, oldFase });
+  devLog('[FaseService] cambiaFaseCLP V3 (1 roundtrip)', { contenutoId, nuovaFase, source, userId, oldFase });
 
   // ── 1. VALIDAZIONE CLIENT-SIDE (0 roundtrip) ─────────────────────────────
   // Se il chiamante passa oldFase (dal local state), validiamo senza query.
@@ -103,12 +104,12 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
 
   // SP ha anche un no-op per same-fase (changed=false)
   if (rpcResult.changed === false) {
-    console.log('[FaseService] No-op: fase già uguale');
+    devLog('[FaseService] No-op: fase già uguale');
     console.timeEnd('[FaseService] total');
     return { success: true, oldFase: rpcResult.old_fase, newFase: rpcResult.new_fase, errors: [] };
   }
 
-  console.log('[FaseService] RPC success:', rpcResult);
+  devLog('[FaseService] RPC success:', rpcResult);
 
   // ── 3. SIDE EFFECTS ASINCRONI — fire and forget ────────────────────────
   const contenuto = rpcResult.contenuto;
@@ -138,7 +139,7 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
           });
           const result = await res.json();
           if (result.success) {
-            console.log('[FaseService][async] cartella Drive creata', { folder: result.folder_id });
+            devLog('[FaseService][async] cartella Drive creata', { folder: result.folder_id });
           } else {
             console.warn('[FaseService][async] Drive folder failed:', result);
           }
@@ -152,7 +153,7 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
         try {
           const team = await getTeam();
           await creaTaskCleanup(contenuto as unknown as Contenuto, team);
-          console.log('[FaseService][async] task cleanup creato');
+          devLog('[FaseService][async] task cleanup creato');
         } catch (e) {
           console.error('[FaseService][async] errore cleanup task:', e);
         }
@@ -178,7 +179,7 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
               .eq('contenuto_id', contenutoId)
               .eq('tipo', 'pubblicazione');
           }
-          console.log('[FaseService][async] calendario sync completato');
+          devLog('[FaseService][async] calendario sync completato');
         } catch (e) {
           console.error('[FaseService][async] errore calendario:', e);
         }
@@ -193,7 +194,7 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
             ? `📂 Carica il file esportato nella cartella "file_esportato/" su Google Drive:\n${contenuto.link_drive}\n\nPercorso: ${folderPath}`
             : `📂 Carica il file esportato nella sezione Riprese del CLP ${contenuto.id_display}, zona "File esportato".\n\nPercorso Drive: ${folderPath}`;
           await supabase.from('task').update({ note: driveNote }).eq('id', rpcResult.task_id);
-          console.log('[FaseService][async] nota Drive aggiunta al task Upload');
+          devLog('[FaseService][async] nota Drive aggiunta al task Upload');
         } catch (e) {
           console.error('[FaseService][async] errore nota Drive:', e);
         }
@@ -218,7 +219,7 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
       const montatore = clpData?.assegnato_montaggio;
       if (montatore) {
         await supabase.from('task').update({ assegnato_a: montatore }).eq('id', rpcResult.task_id);
-        console.log(`[FaseService] task ${rpcResult.task_created} riassegnato a ${montatore} (assegnato_montaggio)`);
+        devLog(`[FaseService] task ${rpcResult.task_created} riassegnato a ${montatore} (assegnato_montaggio)`);
       }
     } catch (e) {
       console.error('[FaseService] errore riassegnazione montatore:', e);

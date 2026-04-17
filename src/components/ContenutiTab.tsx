@@ -1,3 +1,4 @@
+import { devLog } from '../lib/devLog';
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
@@ -91,7 +92,7 @@ export function ContenutiTab({ team, clienti }: ContentTabProps) {
 
   // ── V3: usa FaseService con oldFase + optimistic update ──
   const handleFaseChange = async (contenuto: Contenuto, nuovaFase: FaseCLP) => {
-    console.log('[ContenutiTab] handleFaseChange V3', { id: contenuto.id, oldFase: contenuto.fase, nuovaFase });
+    devLog('[ContenutiTab] handleFaseChange V3', { id: contenuto.id, oldFase: contenuto.fase, nuovaFase });
 
     const FASE_SEQ = ['Idea', 'Script', 'Girato', 'Pre montato', 'Montato', 'Uploadato', 'Revisionato', 'Programmato', 'Pubblicato'];
     const oldIdx = FASE_SEQ.indexOf(contenuto.fase);
@@ -145,7 +146,7 @@ export function ContenutiTab({ team, clienti }: ContentTabProps) {
             cliente_id: contenuto.cliente_id, cliente_nome: contenuto.cliente_nome || '',
             id_contenuto: contenuto.id, priorita: '🟡 Media',
           });
-          console.log(`[ContenutiTab] Backward: creato task ${tipoNuovo} per ${contenuto.id_display}`);
+          devLog(`[ContenutiTab] Backward: creato task ${tipoNuovo} per ${contenuto.id_display}`);
         }
       }
     }

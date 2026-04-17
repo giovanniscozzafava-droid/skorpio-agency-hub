@@ -1,3 +1,4 @@
+import { devLog } from '../lib/devLog';
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import type { TeamMember } from '../types';
@@ -79,7 +80,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setTimeout(async () => {
             const { data, error } = await supabase.auth.refreshSession();
             if (data?.session) {
-              console.log('[Auth] Sessione ripristinata!');
+              devLog('[Auth] Sessione ripristinata!');
               setSession(data.session);
               refreshRetries.current = 0;
             } else {
@@ -99,7 +100,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const refreshInterval = setInterval(async () => {
       const { data } = await supabase.auth.refreshSession();
       if (data?.session) {
-        console.log('[Auth] Token refreshed proattivamente');
+        devLog('[Auth] Token refreshed proattivamente');
       }
     }, 50 * 60 * 1000);
 

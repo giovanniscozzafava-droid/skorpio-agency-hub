@@ -16,7 +16,7 @@ if (typeof window !== 'undefined' && window.location.hash.includes('access_token
     window.history.replaceState(null, '', window.location.pathname);
   } else {
     // No stored session — this is a fresh OAuth callback, let Supabase handle it
-    console.log('[Auth] Hash con token + nessuna sessione in storage → OAuth callback fresco');
+    // [Auth] OAuth callback fresco
     // Clean hash after Supabase reads it
     setTimeout(() => {
       if (window.location.hash.includes('access_token=')) {

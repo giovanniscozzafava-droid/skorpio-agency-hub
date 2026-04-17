@@ -1,3 +1,4 @@
+import { devLog } from '../lib/devLog';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '../lib/supabase';
@@ -406,7 +407,7 @@ function NuovaClipModal({ clienti, team, contenuti, onClose, onCreated, onClipUp
         // await supabase.from('contenuti').update({ fase: 'Girato' }).eq('id', contenutoId);
 
         // [NEW - FaseService centralizzato]
-        console.log('[Step2b] auto-avanzamento a Girato via FaseService', { contenutoId });
+        devLog('[Step2b] auto-avanzamento a Girato via FaseService', { contenutoId });
         const result = await cambiaFaseCLP({
           contenutoId,
           nuovaFase: 'Girato',
@@ -414,7 +415,7 @@ function NuovaClipModal({ clienti, team, contenuti, onClose, onCreated, onClipUp
           userId: utente?.id || 'unknown',
           oldFase: clpData.fase, // ← già fetchato sopra, evita SELECT duplicato
         });
-        console.log('[Step2b] risultato:', result);
+        devLog('[Step2b] risultato:', result);
         if (!result.success) {
           addToast('⚠️ Errore avanzamento a Girato: ' + result.errors.join(', '), 'warn');
         }
@@ -422,7 +423,7 @@ function NuovaClipModal({ clienti, team, contenuti, onClose, onCreated, onClipUp
       const faseAttuale = clpData?.fase === 'Girato' || fasePrecedente.includes(clpData?.fase || '');
       if (faseAttuale && clpData) {
         const taskResult = await creaTaskPremontaggio(clpData, team, rawCodes.length);
-        if (taskResult) console.log('[RipreseTab] Task Premontaggio creato:', taskResult.id_display);
+        if (taskResult) devLog('[RipreseTab] Task Premontaggio creato:', taskResult.id_display);
       }
     }
 

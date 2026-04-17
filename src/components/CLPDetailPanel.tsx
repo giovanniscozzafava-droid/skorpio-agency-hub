@@ -1,3 +1,4 @@
+import { devLog } from '../lib/devLog';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import { CalendarIcon } from 'lucide-react';
@@ -369,7 +370,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
     // [OLD] await supabase.from('contenuti').update({ fase: nuovaFase, data_pubblicazione: dataStr, ora_pubblicazione: oraStr }).eq('id', contenuto.id).select().single();
     // [NEW - FaseService + data separati]
     const { cambiaFaseCLP } = await import('../services/faseService');
-    console.log('[Step2c] CLPDetailPanel handleProgramma via FaseService', { id: contenuto.id, nuovaFase });
+    devLog('[Step2c] CLPDetailPanel handleProgramma via FaseService', { id: contenuto.id, nuovaFase });
     await cambiaFaseCLP({ contenutoId: contenuto.id, nuovaFase, source: 'contenuti', userId: utente?.id || 'unknown', oldFase: contenuto.fase });
     // Aggiorna data/ora separatamente
     const { data, error } = await supabase
@@ -555,7 +556,7 @@ export function CLPDetailPanel({ contenuto, team, clienti, onClose, onUpdate, on
     if (['Idea', 'Script'].includes(form.fase)) {
       // [OLD] await supabase.from('contenuti').update({ fase: 'Girato' }).eq('id', contenuto.id);
       const { cambiaFaseCLP: cambiaFaseClip } = await import('../services/faseService');
-      console.log('[Step2c] CLPDetailPanel auto-Girato via FaseService', { id: contenuto.id });
+      devLog('[Step2c] CLPDetailPanel auto-Girato via FaseService', { id: contenuto.id });
       await cambiaFaseClip({ contenutoId: contenuto.id, nuovaFase: 'Girato', source: 'contenuti', userId: utente?.id || 'unknown', oldFase: form.fase });
       // Optimistic update — la SP ha già creato il task Premontaggio (step 5-6)
       const updated = { ...contenuto, fase: 'Girato' as FaseCLP, updated_at: new Date().toISOString() };

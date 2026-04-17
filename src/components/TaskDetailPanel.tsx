@@ -1,3 +1,4 @@
+import { devLog } from '../lib/devLog';
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
@@ -698,7 +699,7 @@ export function TaskDetailPanel({ task, team, onClose, onUpdate, onDelete }: Tas
       // [OLD] await supabase.from('contenuti').update({ fase: 'Uploadato', note_revisione: '' }).eq('id', task.id_contenuto);
       // [NEW - FaseService centralizzato]
       const { cambiaFaseCLP } = await import('../services/faseService');
-      console.log('[Step2c] TaskDetailPanel upload esportato via FaseService', { id: task.id_contenuto });
+      devLog('[Step2c] TaskDetailPanel upload esportato via FaseService', { id: task.id_contenuto });
       await cambiaFaseCLP({ contenutoId: task.id_contenuto, nuovaFase: 'Uploadato', source: 'workflow', userId: utente?.id || 'unknown', oldFase: 'Montato' });
       await supabase.from('contenuti').update({ note_revisione: '' }).eq('id', task.id_contenuto);
       await supabase.from('task').update({ stato: 'Completato' }).eq('id', task.id);

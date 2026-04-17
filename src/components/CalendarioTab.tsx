@@ -1,3 +1,4 @@
+import { devLog } from '../lib/devLog';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
@@ -1988,7 +1989,7 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
           ev.persona === null
         );
 
-    console.log(`[Calendario] Loaded ${eventiFiltrati.length} events (total: ${tuttiEventi.length}, synth: ${syntheticPubs.length}), ${(mktRes.data || []).length} marketing events`);
+    devLog(`[Calendario] Loaded ${eventiFiltrati.length} events (total: ${tuttiEventi.length}, synth: ${syntheticPubs.length}), ${(mktRes.data || []).length} marketing events`);
 
     setEventi(eventiFiltrati);
     setMarketing((mktRes.data as MarketingEvent[]) || []);
@@ -2197,7 +2198,7 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
       // Sync with contenuti if linked
       // [CalSync] Aggiorna data_pubblicazione da drag (non è un cambio fase)
       if (ev.contenuto_id) {
-        console.log('[CalSync] handleEventDrop — aggiorno data_pubblicazione', { contenutoId: ev.contenuto_id, newDateStr });
+        devLog('[CalSync] handleEventDrop — aggiorno data_pubblicazione', { contenutoId: ev.contenuto_id, newDateStr });
         await supabase.from('contenuti').update({ data_pubblicazione: newDateStr }).eq('id', ev.contenuto_id);
         // Aggiorna anche scadenza di tutti i task collegati a questo CLP
         const taskUpdate: any = { scadenza: newDateStr };
@@ -2206,7 +2207,7 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
           .eq('id_contenuto', ev.contenuto_id)
           .neq('stato', 'Completato')
           .neq('stato', 'Archiviato');
-        console.log('[CalSync] rischedulati task collegati a', ev.contenuto_id);
+        devLog('[CalSync] rischedulati task collegati a', ev.contenuto_id);
       }
 
       // Per appuntamenti senza [TASK:] — cerca task per data+descrizione
@@ -2225,7 +2226,7 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
             for (const mt of matchTasks) {
               await supabase.from('task').update(taskUpdatePayload).eq('id', mt.id);
             }
-            console.log('[CalSync] rischedulati', matchTasks.length, 'task per descrizione match');
+            devLog('[CalSync] rischedulati', matchTasks.length, 'task per descrizione match');
           }
         }
       }
@@ -2286,7 +2287,7 @@ export function CalendarioTab({ team, clienti }: CalendarioTabProps) {
     if (!error && data) {
       setEventi(prev => [...prev, data as CalendarioEvent]);
       // [CalSync] Aggiorna data_pubblicazione direttamente (non è un cambio fase)
-      console.log('[CalSync] handleSaveCLP — aggiorno data_pubblicazione', { contenutoId: contenuto.id, dataStr, oraStr });
+      devLog('[CalSync] handleSaveCLP — aggiorno data_pubblicazione', { contenutoId: contenuto.id, dataStr, oraStr });
       await supabase.from('contenuti').update({ data_pubblicazione: dataStr, ora_pubblicazione: oraStr }).eq('id', contenuto.id);
 
       // [UNIFIED - old] Creazione task inline → ora usa creaTaskWorkflow centralizzato con keyword da faseConfig

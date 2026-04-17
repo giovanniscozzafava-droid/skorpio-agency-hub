@@ -1,3 +1,4 @@
+import { devLog } from './devLog';
 /**
  * CLP Workflow utilities — condivisi tra CLPDetailPanel e TaskDetailPanel
  */
@@ -328,7 +329,7 @@ export async function richiestaModifiche(
 
     if (newTask && newTask.length > 0 && newTask[0].assegnato_a !== realUploader) {
       await supabase.from('task').update({ assegnato_a: realUploader }).eq('id', newTask[0].id);
-      console.log(`[richiestaModifiche] Riassegnato Upload esportato a ${realUploader} (era ${newTask[0].assegnato_a})`);
+      devLog(`[richiestaModifiche] Riassegnato Upload esportato a ${realUploader} (era ${newTask[0].assegnato_a})`);
     }
   }
 
@@ -407,7 +408,7 @@ export async function avanzaFaseDaTask(
 
   // [OLD] await supabase.from('contenuti').update({ fase: nuovaFase }).eq('id', contenutoId);
   const { cambiaFaseCLP: cambiaFaseAF } = await import('../services/faseService');
-  console.log('[Step2c] avanzaFaseDaTask via FaseService', { contenutoId, nuovaFase });
+  devLog('[Step2c] avanzaFaseDaTask via FaseService', { contenutoId, nuovaFase });
   await cambiaFaseAF({ contenutoId, nuovaFase, source: 'kanban', userId: teamId || 'workflow', oldFase: faseCurrent });
 
   // Se stiamo andando INDIETRO: archivia task di fasi successive e crea task per la nuova fase
@@ -453,7 +454,7 @@ export async function avanzaFaseDaTask(
             cliente_id: contenuto.cliente_id, cliente_nome: contenuto.cliente_nome || '',
             id_contenuto: contenutoId, priorita: '🟡 Media',
           });
-          console.log(`[avanzaFaseDaTask] Backward: creato ${ft.tipo} per ${contenuto.id_display}`);
+          devLog(`[avanzaFaseDaTask] Backward: creato ${ft.tipo} per ${contenuto.id_display}`);
         }
       }
     }
@@ -544,7 +545,7 @@ export async function avanzaFaseDaTask(
     if (isProntoPerPubblicazione(contenuto.data_pubblicazione, contenuto.ora_pubblicazione)) {
       // [OLD] await supabase.from('contenuti').update({ fase: 'Pubblicato' }).eq('id', contenutoId);
       const { cambiaFaseCLP: cambiaFase } = await import('../services/faseService');
-      console.log('[Step2c] auto-publish via FaseService', { contenutoId });
+      devLog('[Step2c] auto-publish via FaseService', { contenutoId });
       await cambiaFase({ contenutoId, nuovaFase: 'Pubblicato', source: 'workflow', userId: teamId || 'workflow', oldFase: 'Programmato' });
       await creaTaskCleanup(contenuto as Contenuto, team as any[]);
       return { completatoTask: true, taskCreato: !!newTask, driveTriggered };
@@ -595,7 +596,7 @@ export async function completaTaskEAvanzaFase(
 
   // [NEW - FaseService centralizzato]
   const { cambiaFaseCLP } = await import('../services/faseService');
-  console.log('[Step2c] completaTaskEAvanzaFase via FaseService', { contenutoId, faseNext });
+  devLog('[Step2c] completaTaskEAvanzaFase via FaseService', { contenutoId, faseNext });
   const faseResult = await cambiaFaseCLP({
     contenutoId,
     nuovaFase: faseNext,
@@ -604,7 +605,7 @@ export async function completaTaskEAvanzaFase(
     oldFase: contenuto.fase,
     taskIdCompletato: undefined, // task già completato sopra
   });
-  console.log('[Step2c] risultato:', faseResult);
+  devLog('[Step2c] risultato:', faseResult);
 
   // [UNIFIED - old] Creazione task successivo — ora lo fa FaseService.cambiaFaseCLP() (step 5)
   // if (stepForNextTask.tipoNext) {
@@ -626,7 +627,7 @@ export async function completaTaskEAvanzaFase(
     if (isProntoPerPubblicazione(contenuto.data_pubblicazione, contenuto.ora_pubblicazione)) {
       // [OLD] await supabase.from('contenuti').update({ fase: 'Pubblicato' }).eq('id', contenutoId);
       const { cambiaFaseCLP: cambiaFase2 } = await import('../services/faseService');
-      console.log('[Step2c] auto-publish via FaseService (completaTaskEAvanzaFase)', { contenutoId });
+      devLog('[Step2c] auto-publish via FaseService (completaTaskEAvanzaFase)', { contenutoId });
       await cambiaFase2({ contenutoId, nuovaFase: 'Pubblicato', source: 'kanban', userId: teamId || 'workflow', oldFase: 'Programmato' });
       await creaTaskCleanup(contenuto as Contenuto, team as any[]);
       return 'Pubblicato' as FaseCLP;
@@ -644,7 +645,7 @@ function isProntoPerPubblicazione(dataPub: string | null, oraPub: string | null,
   if (!dataPub) return false;
   let ora = oraPub;
   if (!ora) {
-    console.log('[AutoPub] ora mancante, uso default 10:00', contenutoId || '');
+    devLog('[AutoPub] ora mancante, uso default 10:00', contenutoId || '');
     ora = '10:00:00';
   }
   const now = new Date();
@@ -681,7 +682,7 @@ export async function checkAutoPubblica(): Promise<number> {
   // [NEW - FaseService centralizzato]
   const { cambiaFaseCLP } = await import('../services/faseService');
   for (const id of ids) {
-    console.log('[Step2c] checkAutoPubblica via FaseService', { id });
+    devLog('[Step2c] checkAutoPubblica via FaseService', { id });
     await cambiaFaseCLP({ contenutoId: id, nuovaFase: 'Pubblicato', source: 'workflow', userId: 'auto-publish', oldFase: 'Programmato' });
   }
 
@@ -762,7 +763,7 @@ export async function creaTaskCleanup(contenuto: Contenuto, team: any[]): Promis
 export async function syncMissingWorkflowTasks(): Promise<number> {
   // [DISABLED] Disabilitato per debug — questa funzione causava regressioni di fase
   // e task duplicati. L'unico punto autorizzato a cambiare fase è faseService.ts (stored procedure).
-  console.log('[DISABLED] syncMissingWorkflowTasks — disabilitato per debug');
+  devLog('[DISABLED] syncMissingWorkflowTasks — disabilitato per debug');
   return 0;
 }
 
