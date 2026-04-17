@@ -20,6 +20,8 @@ import { DeadlineAlertModal } from '../components/DeadlineAlertModal';
 import { DailyPriorityPopup, useDailyPopup } from '../components/DailyPriorityPopup';
 import { TaskDetailPanel } from '../components/TaskDetailPanel';
 import { WhatsNewModal, useWhatsNew } from '../components/WhatsNewModal';
+import { BottomNav } from '../components/BottomNav';
+import { MobileDrawer } from '../components/MobileDrawer';
 import { parseLocalDate } from '../lib/dateUtils';
 import type { TeamMember, Cliente, Task } from '../types';
 import { supabase } from '../integrations/supabase/client';
@@ -39,6 +41,7 @@ function MainApp() {
   }, []);
   const dailyPopup = useDailyPopup(utente);
   const [popupTask, setPopupTask] = useState<Task | null>(null);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const whatsNew = useWhatsNew(utente?.nome ?? null);
 
   const loadSharedData = useCallback(() => {
@@ -158,6 +161,12 @@ function MainApp() {
       {whatsNew.show && utente && (
         <WhatsNewModal userName={utente.nome} onClose={whatsNew.close} />
       )}
+
+      {/* Mobile Drawer (hamburger menu) — triggered by BottomNav */}
+      <MobileDrawer open={mobileDrawerOpen} onClose={() => setMobileDrawerOpen(false)} onOpenImpostazioni={() => {}} />
+
+      {/* Bottom Navigation — mobile + tablet */}
+      <BottomNav onOpenDrawer={() => setMobileDrawerOpen(true)} />
     </div>
   );
 }
