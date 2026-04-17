@@ -320,14 +320,30 @@ export function DebugTab() {
                 </div>
               )}
 
-              {selectedError.contesto && (
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>Contesto</p>
-                  <pre className="text-[10px] p-2 rounded-lg overflow-auto max-h-40 font-mono" style={{ background: 'hsl(var(--muted))', color: 'hsl(var(--skorpio-text-secondary))' }}>
-                    {(() => { try { return JSON.stringify(JSON.parse(selectedError.contesto), null, 2); } catch { return selectedError.contesto; } })()}
-                  </pre>
-                </div>
-              )}
+              {selectedError.contesto && (() => {
+                let parsed: any = null;
+                try { parsed = JSON.parse(selectedError.contesto); } catch {}
+                const screenshotUrl = parsed?.screenshot_url;
+                return (
+                  <>
+                    {screenshotUrl && (
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>📸 Screenshot</p>
+                        <a href={screenshotUrl} target="_blank" rel="noopener noreferrer" className="block rounded-lg overflow-hidden border hover:ring-2 hover:ring-purple-400 transition-all" style={{ borderColor: 'hsl(var(--border))' }}>
+                          <img src={screenshotUrl} alt="Screenshot dell'errore" className="w-full max-h-60 object-contain" style={{ background: '#0F172A' }} />
+                        </a>
+                        <p className="text-[9px] mt-1 text-center" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>Click per ingrandire in una nuova scheda</p>
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>Contesto</p>
+                      <pre className="text-[10px] p-2 rounded-lg overflow-auto max-h-40 font-mono" style={{ background: 'hsl(var(--muted))', color: 'hsl(var(--skorpio-text-secondary))' }}>
+                        {parsed ? JSON.stringify(parsed, null, 2) : selectedError.contesto}
+                      </pre>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
         )}

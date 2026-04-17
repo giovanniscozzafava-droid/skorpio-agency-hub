@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 
@@ -14,6 +14,38 @@ const CATEGORIE = [
   { id: 'ux', label: '🎨 UI/UX confusa', desc: 'Difficile capire cosa fare' },
 ];
 
+// Ridimensiona e comprime lo screenshot per non saturare il bucket
+async function compressImage(file: File | Blob, maxSize = 1600, quality = 0.75): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = () => {
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let { width, height } = img;
+        if (width > maxSize || height > maxSize) {
+          const ratio = Math.min(maxSize / width, maxSize / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { reject(new Error('Canvas ctx null')); return; }
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(blob => {
+          if (blob) resolve(blob);
+          else reject(new Error('Canvas blob null'));
+        }, 'image/jpeg', quality);
+      };
+      img.onerror = reject;
+      img.src = reader.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 export function BugReportModal({ onClose }: Props) {
   const { utente, addToast } = useApp();
   const [categoria, setCategoria] = useState('bug');
@@ -21,6 +53,73 @@ export function BugReportModal({ onClose }: Props) {
   const [cosaMiAspettavo, setCosaMiAspettavo] = useState('');
   const [cosaEsuccesso, setCosaEsuccesso] = useState('');
   const [sending, setSending] = useState(false);
+  const [screenshot, setScreenshot] = useState<{ preview: string; blob: Blob } | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  // Listener globale: Cmd+V / Ctrl+V → se ha immagine, la usa come screenshot
+  useEffect(() => {
+    const handler = async (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (!file) continue;
+          try {
+            const compressed = await compressImage(file);
+            const preview = URL.createObjectURL(compressed);
+            setScreenshot({ preview, blob: compressed });
+            addToast('📸 Screenshot incollato!', 'success');
+          } catch (err: any) {
+            addToast('❌ Errore compressione screenshot', 'error');
+          }
+          return;
+        }
+      }
+    };
+    window.addEventListener('paste', handler);
+    return () => window.removeEventListener('paste', handler);
+  }, [addToast]);
+
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const compressed = await compressImage(file);
+      const preview = URL.createObjectURL(compressed);
+      setScreenshot({ preview, blob: compressed });
+    } catch (err) {
+      addToast('❌ Errore compressione', 'error');
+    }
+    e.target.value = '';
+  }, [addToast]);
+
+  const removeScreenshot = () => {
+    if (screenshot?.preview) URL.revokeObjectURL(screenshot.preview);
+    setScreenshot(null);
+  };
+
+  const uploadScreenshot = async (): Promise<string | null> => {
+    if (!screenshot) return null;
+    setUploading(true);
+    try {
+      const fileName = `bug_reports/${utente?.nome || 'anon'}_${Date.now()}.jpg`;
+      const { error } = await supabase.storage.from('bug-screenshots').upload(fileName, screenshot.blob, {
+        contentType: 'image/jpeg',
+        upsert: false,
+      });
+      if (error) {
+        console.warn('[BugReport] upload screenshot failed:', error);
+        return null;
+      }
+      const { data } = supabase.storage.from('bug-screenshots').getPublicUrl(fileName);
+      return data.publicUrl;
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const submit = async () => {
     if (!cosaStavoFacendo.trim() || !cosaEsuccesso.trim()) {
@@ -29,6 +128,8 @@ export function BugReportModal({ onClose }: Props) {
     }
     setSending(true);
     try {
+      const screenshotUrl = await uploadScreenshot();
+
       await supabase.from('error_log').insert({
         tipo: 'user_report',
         messaggio: `[${categoria}] ${cosaEsuccesso.slice(0, 400)}`,
@@ -40,6 +141,7 @@ export function BugReportModal({ onClose }: Props) {
           cosa_stavo_facendo: cosaStavoFacendo,
           cosa_mi_aspettavo: cosaMiAspettavo,
           cosa_e_successo: cosaEsuccesso,
+          screenshot_url: screenshotUrl,
           browser: navigator.userAgent,
           screen: `${window.screen.width}x${window.screen.height}`,
         }).slice(0, 4000),
@@ -118,6 +220,43 @@ export function BugReportModal({ onClose }: Props) {
               placeholder="Es. Non è successo niente, il bottone ha lampeggiato ma il file non è stato caricato" />
           </div>
 
+          {/* Screenshot */}
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-widest mb-1 block" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+              📸 Screenshot (opzionale)
+            </label>
+
+            {screenshot ? (
+              <div className="relative rounded-xl overflow-hidden border" style={{ borderColor: 'hsl(var(--border))' }}>
+                <img src={screenshot.preview} alt="Screenshot" className="w-full max-h-60 object-contain" style={{ background: '#0F172A' }} />
+                <button onClick={removeScreenshot}
+                  className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                  style={{ background: 'rgba(0,0,0,0.7)' }}>✕</button>
+                <div className="absolute bottom-2 left-2 px-2 py-1 rounded text-[10px] font-semibold text-white" style={{ background: 'rgba(0,0,0,0.7)' }}>
+                  {Math.round(screenshot.blob.size / 1024)} KB
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="p-3 rounded-xl border-2 border-dashed text-center" style={{ borderColor: 'hsl(var(--border))' }}>
+                  <p className="text-xs font-semibold" style={{ color: 'hsl(var(--skorpio-text-secondary))' }}>
+                    📋 Incolla screenshot con <kbd className="px-1.5 py-0.5 rounded text-[10px] font-mono" style={{ background: 'hsl(var(--muted))' }}>⌘V</kbd> (Mac) o <kbd className="px-1.5 py-0.5 rounded text-[10px] font-mono" style={{ background: 'hsl(var(--muted))' }}>Ctrl+V</kbd> (Windows)
+                  </p>
+                  <p className="text-[10px] mt-1" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                    Fai prima lo screenshot con <kbd className="px-1 py-0.5 rounded text-[9px] font-mono" style={{ background: 'hsl(var(--muted))' }}>⌘⇧4</kbd> (Mac) o <kbd className="px-1 py-0.5 rounded text-[9px] font-mono" style={{ background: 'hsl(var(--muted))' }}>Win+⇧+S</kbd> (Windows)
+                  </p>
+                </div>
+                <div className="text-center">
+                  <label className="text-[11px] font-semibold cursor-pointer inline-block px-3 py-1.5 rounded-lg transition-all hover:scale-105"
+                    style={{ background: 'hsl(var(--muted))', color: 'hsl(var(--skorpio-text-secondary))' }}>
+                    📁 …oppure carica dal disco
+                    <input type="file" accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Info auto */}
           <div className="text-[10px] p-2.5 rounded-lg" style={{ background: 'hsl(var(--muted))', color: 'hsl(var(--skorpio-text-tertiary))' }}>
             <p className="font-semibold mb-1">ℹ️ Info raccolte automaticamente:</p>
@@ -132,10 +271,10 @@ export function BugReportModal({ onClose }: Props) {
           <button onClick={onClose} className="text-xs px-4 py-2 rounded-xl font-semibold" style={{ background: 'hsl(var(--muted))', color: 'hsl(var(--skorpio-text-secondary))' }}>
             Annulla
           </button>
-          <button onClick={submit} disabled={sending || !cosaStavoFacendo.trim() || !cosaEsuccesso.trim()}
+          <button onClick={submit} disabled={sending || uploading || !cosaStavoFacendo.trim() || !cosaEsuccesso.trim()}
             className="flex-1 text-xs py-2 rounded-xl font-bold text-white transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ background: 'linear-gradient(135deg, #EF4444, #F97316)' }}>
-            {sending ? '⏳ Invio…' : '🚀 Invia segnalazione'}
+            {uploading ? '📤 Upload screenshot…' : sending ? '⏳ Invio…' : '🚀 Invia segnalazione'}
           </button>
         </div>
       </div>
