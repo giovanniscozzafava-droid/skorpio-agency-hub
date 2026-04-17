@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useApp } from '../context/AppContext';
 import { ClienteLogo } from './ClienteLogo';
@@ -69,7 +69,6 @@ export function AssetLibraryTab({ clienti }: { clienti: Cliente[] }) {
   const [upProg, setUpProg] = useState(0);
   const [upCount, setUpCount] = useState({ done: 0, total: 0 });
   const [detail, setDetail] = useState<Asset | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     if (!sel) return;
@@ -311,12 +310,12 @@ export function AssetLibraryTab({ clienti }: { clienti: Cliente[] }) {
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Toolbar */}
             <div className="px-4 py-2 border-b flex items-center gap-2 flex-wrap flex-shrink-0" style={{ borderColor: 'hsl(var(--border))' }}>
-              <input ref={fileRef} type="file" accept="image/*,video/*" multiple style={{position:'absolute',width:0,height:0,overflow:'hidden',opacity:0}} onChange={handleUpload} />
-              <button onClick={() => fileRef.current?.click()} disabled={uploading}
-                className="text-xs px-4 py-1.5 rounded-xl font-bold text-white transition-all hover:scale-105 disabled:opacity-50"
-                style={{ background: '#8B5CF6' }}>
+              <label className="text-xs px-4 py-1.5 rounded-xl font-bold text-white transition-all hover:scale-105 cursor-pointer inline-block"
+                style={{ background: uploading ? '#8B5CF680' : '#8B5CF6', pointerEvents: uploading ? 'none' : 'auto' }}>
                 {uploading ? `⬆️ ${upCount.done}/${upCount.total} (${upProg}%)` : '⬆️ Carica'}
-              </button>
+                <input type="file" accept="image/*,video/*" multiple onChange={handleUpload}
+                  style={{display:'none'}} disabled={uploading} />
+              </label>
 
               <div className="flex-1 min-w-[100px] relative">
                 <input className="sk-input w-full text-xs pl-7" placeholder="Cerca asset…" value={search} onChange={e => setSearch(e.target.value)} />
@@ -363,9 +362,10 @@ export function AssetLibraryTab({ clienti }: { clienti: Cliente[] }) {
                     {assets.length === 0 ? 'Clicca "⬆️ Carica" per iniziare' : 'Prova a cambiare i filtri'}
                   </p>
                   {assets.length === 0 && (
-                    <button onClick={() => fileRef.current?.click()} className="mt-4 text-xs px-5 py-2 rounded-xl font-bold text-white" style={{ background: '#8B5CF6' }}>
+                    <label className="mt-4 text-xs px-5 py-2 rounded-xl font-bold text-white cursor-pointer inline-block" style={{ background: '#8B5CF6' }}>
                       ⬆️ Carica i primi asset
-                    </button>
+                      <input type="file" accept="image/*,video/*" multiple onChange={handleUpload} style={{display:'none'}} />
+                    </label>
                   )}
                 </div>
               ) : (
