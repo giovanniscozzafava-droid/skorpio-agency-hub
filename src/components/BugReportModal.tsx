@@ -96,6 +96,26 @@ export function BugReportModal({ onClose }: Props) {
     e.target.value = '';
   }, [addToast]);
 
+  // Drag & drop support
+  const [dragging, setDragging] = useState(false);
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (files.length === 0) {
+      addToast('⚠️ Trascina un\'immagine', 'warn');
+      return;
+    }
+    try {
+      const compressed = await compressImage(files[0]);
+      const preview = URL.createObjectURL(compressed);
+      setScreenshot({ preview, blob: compressed });
+      addToast('📸 Screenshot caricato!', 'success');
+    } catch (err) {
+      addToast('❌ Errore compressione', 'error');
+    }
+  }, [addToast]);
+
   const removeScreenshot = () => {
     if (screenshot?.preview) URL.revokeObjectURL(screenshot.preview);
     setScreenshot(null);
@@ -237,23 +257,31 @@ export function BugReportModal({ onClose }: Props) {
                 </div>
               </div>
             ) : (
-              <div className="space-y-2">
-                <div className="p-3 rounded-xl border-2 border-dashed text-center" style={{ borderColor: 'hsl(var(--border))' }}>
-                  <p className="text-xs font-semibold" style={{ color: 'hsl(var(--skorpio-text-secondary))' }}>
-                    📋 Incolla screenshot con <kbd className="px-1.5 py-0.5 rounded text-[10px] font-mono" style={{ background: 'hsl(var(--muted))' }}>⌘V</kbd> (Mac) o <kbd className="px-1.5 py-0.5 rounded text-[10px] font-mono" style={{ background: 'hsl(var(--muted))' }}>Ctrl+V</kbd> (Windows)
-                  </p>
-                  <p className="text-[10px] mt-1" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
-                    Fai prima lo screenshot con <kbd className="px-1 py-0.5 rounded text-[9px] font-mono" style={{ background: 'hsl(var(--muted))' }}>⌘⇧4</kbd> (Mac) o <kbd className="px-1 py-0.5 rounded text-[9px] font-mono" style={{ background: 'hsl(var(--muted))' }}>Win+⇧+S</kbd> (Windows)
-                  </p>
-                </div>
-                <div className="text-center">
-                  <label className="text-[11px] font-semibold cursor-pointer inline-block px-3 py-1.5 rounded-lg transition-all hover:scale-105"
-                    style={{ background: 'hsl(var(--muted))', color: 'hsl(var(--skorpio-text-secondary))' }}>
-                    📁 …oppure carica dal disco
-                    <input type="file" accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
-                  </label>
-                </div>
-              </div>
+              <label
+                onDragEnter={e => { e.preventDefault(); setDragging(true); }}
+                onDragOver={e => { e.preventDefault(); setDragging(true); }}
+                onDragLeave={e => { e.preventDefault(); setDragging(false); }}
+                onDrop={handleDrop}
+                className="block p-6 rounded-xl border-2 border-dashed text-center cursor-pointer transition-all"
+                style={{
+                  borderColor: dragging ? '#EF4444' : 'hsl(var(--border))',
+                  background: dragging ? '#EF444410' : 'hsl(var(--muted) / 0.3)',
+                }}>
+                <div className="text-3xl mb-2">{dragging ? '📥' : '📸'}</div>
+                <p className="text-xs font-semibold" style={{ color: 'hsl(var(--skorpio-text-secondary))' }}>
+                  {dragging ? 'Rilascia qui lo screenshot' : 'Trascina qui lo screenshot'}
+                </p>
+                <p className="text-[10px] mt-1.5" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                  oppure incolla con <kbd className="px-1.5 py-0.5 rounded text-[9px] font-mono" style={{ background: 'hsl(var(--muted))' }}>⌘V</kbd> / <kbd className="px-1.5 py-0.5 rounded text-[9px] font-mono" style={{ background: 'hsl(var(--muted))' }}>Ctrl+V</kbd>
+                </p>
+                <p className="text-[10px] mt-2" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                  oppure clicca per caricare dal disco
+                </p>
+                <p className="text-[9px] mt-3 italic" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>
+                  Screenshot: <kbd className="px-1 py-0.5 rounded text-[8px] font-mono" style={{ background: 'hsl(var(--muted))' }}>⌘⇧4</kbd> (Mac) · <kbd className="px-1 py-0.5 rounded text-[8px] font-mono" style={{ background: 'hsl(var(--muted))' }}>Win+⇧+S</kbd> (Windows)
+                </p>
+                <input type="file" accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} />
+              </label>
             )}
           </div>
 

@@ -328,11 +328,24 @@ export function DebugTab() {
                   <>
                     {screenshotUrl && (
                       <div>
-                        <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>📸 Screenshot</p>
-                        <a href={screenshotUrl} target="_blank" rel="noopener noreferrer" className="block rounded-lg overflow-hidden border hover:ring-2 hover:ring-purple-400 transition-all" style={{ borderColor: 'hsl(var(--border))' }}>
-                          <img src={screenshotUrl} alt="Screenshot dell'errore" className="w-full max-h-60 object-contain" style={{ background: '#0F172A' }} />
-                        </a>
-                        <p className="text-[9px] mt-1 text-center" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>Click per ingrandire in una nuova scheda</p>
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'hsl(var(--skorpio-text-tertiary))' }}>📸 Screenshot</p>
+                          <div className="flex gap-1">
+                            <a href={screenshotUrl} target="_blank" rel="noopener noreferrer"
+                              className="text-[10px] px-2 py-1 rounded-lg font-bold transition-all hover:scale-105"
+                              style={{ background: '#3B82F615', color: '#3B82F6' }}
+                              title="Apri ingrandito in nuova scheda">
+                              🔍 Apri
+                            </a>
+                            <a href={screenshotUrl} download={`bug_${selectedError.id.slice(0, 8)}.jpg`}
+                              className="text-[10px] px-2 py-1 rounded-lg font-bold transition-all hover:scale-105"
+                              style={{ background: '#22C55E15', color: '#22C55E' }}
+                              title="Scarica immagine">
+                              ⬇️ Scarica
+                            </a>
+                          </div>
+                        </div>
+                        <img src={screenshotUrl} alt="Screenshot dell'errore" className="w-full rounded-lg border max-h-80 object-contain" style={{ background: '#0F172A', borderColor: 'hsl(var(--border))' }} />
                       </div>
                     )}
                     <div>
