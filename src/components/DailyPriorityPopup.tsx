@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Task, TeamMember } from '../types';
+import { completaTaskEAvanzaFase } from '../lib/clpWorkflow';
+import { sounds } from '../lib/sounds';
 
 interface DailyPriorityPopupProps {
   utente: TeamMember;
@@ -50,7 +52,13 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState<string | null>(null);
   const [isEvening, setIsEvening] = useState(false);
-  const [minimized, setMinimized] = useState(false);
+  // Persist minimized state across refresh
+  const minKey = 'skorpio_daily_minimized_' + utente.nome;
+  const [minimized, setMinimized] = useState<boolean>(() => localStorage.getItem(minKey) === '1');
+  useEffect(() => {
+    if (minimized) localStorage.setItem(minKey, '1');
+    else localStorage.removeItem(minKey);
+  }, [minimized, minKey]);
   const [viewPerson, setViewPerson] = useState<string>(utente.nome);
   const [reassignId, setReassignId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'urgenza' | 'cliente' | 'tipo' | 'priorita'>('urgenza');
@@ -156,28 +164,49 @@ export function DailyPriorityPopup({ utente, team, onClose, onTaskClick }: Daily
 
   const handleToggle = async (taskId: string, currentStato: string) => {
     setCompleting(taskId);
+    const task = tasks.find(t => t.id === taskId);
     const newStato = currentStato === 'Completato' ? 'Da fare' : 'Completato';
-    await supabase.from('task').update({ stato: newStato }).eq('id', taskId);
+
+    // Se completando un task CLP → usa la funzione che avanza anche la fase nel Kanban
+    const isCLPTask = task?.id_contenuto && ['Premontaggio','Montaggio','Upload esportato','Revisione montaggio','Programmazione','Supervisione','Scrittura script','Cleanup'].includes(task.tipo);
+
+    if (newStato === 'Completato' && isCLPTask && task) {
+      try {
+        const nuovaFase = await completaTaskEAvanzaFase(task.tipo, task.id_contenuto!, team, utente.id);
+        sounds.taskCompletato();
+        if (nuovaFase) {
+          // Toast inline via DOM event (il parent ha l'addToast)
+          window.dispatchEvent(new CustomEvent('skorpio-toast', { detail: { msg: `✅ ${task.tipo} → ${nuovaFase}`, tipo: 'success' } }));
+        }
+      } catch (e: any) {
+        console.error('[DailyPriority] completaTaskEAvanzaFase error:', e);
+        // Fallback: marca solo come completato
+        await supabase.from('task').update({ stato: 'Completato' }).eq('id', taskId);
+      }
+    } else {
+      // Task non-CLP o riapertura: update diretto
+      await supabase.from('task').update({ stato: newStato }).eq('id', taskId);
+    }
+
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, stato: newStato } : t));
 
     // Notifica a chi ha creato/assegnato il task
-    if (newStato === 'Completato') {
-      const task = tasks.find(t => t.id === taskId);
-      if (task) {
-        const creator = task.assegnato_da;
-        if (creator && creator !== '⚡ Sistema' && creator !== utente.nome) {
-          await supabase.from('notifiche').insert({
-            destinatario: creator,
-            tipo: 'task_completato',
-            titolo: '✅ Task completato',
-            messaggio: `${utente.nome} ha completato: ${task.descrizione.slice(0, 80)}${task.descrizione.length > 80 ? '…' : ''}`,
-            task_id_display: task.id_display || '',
-          }).catch(() => {});
-        }
+    if (newStato === 'Completato' && task) {
+      const creator = task.assegnato_da;
+      if (creator && creator !== '⚡ Sistema' && creator !== utente.nome) {
+        await supabase.from('notifiche').insert({
+          destinatario: creator,
+          tipo: 'task_completato',
+          titolo: '✅ Task completato',
+          messaggio: `${utente.nome} ha completato: ${task.descrizione.slice(0, 80)}${task.descrizione.length > 80 ? '…' : ''}`,
+          task_id_display: task.id_display || '',
+        }).catch(() => {});
       }
     }
 
     setCompleting(null);
+    // Reload per vedere eventuali nuovi task creati dal workflow
+    setTimeout(() => loadPriorities(), 800);
   };
 
   const handleReassign = async (taskId: string, newPerson: string) => {
