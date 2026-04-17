@@ -1,4 +1,5 @@
 import { devLog } from '../lib/devLog';
+import { logError } from '../lib/errorLogger';
 /**
  * FaseService — Centralised CLP phase-change logic.
  *
@@ -201,11 +202,27 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
       }
     } catch (e) {
       console.error('[FaseService][async] side effect non gestito:', e);
+      logError({
+        tipo: 'fase_service_side_effect',
+        messaggio: e instanceof Error ? e.message : String(e),
+        stack: e instanceof Error ? e.stack : undefined,
+        component: 'faseService.asyncSideEffects',
+        contesto: { contenutoId, nuovaFase, rpcResult },
+      });
     }
   };
 
   // Fire and forget — non blocca il return
-  asyncSideEffects().catch(e => console.error('[FaseService][async] unhandled:', e));
+  asyncSideEffects().catch(e => {
+    console.error('[FaseService][async] unhandled:', e);
+    logError({
+      tipo: 'fase_service_unhandled',
+      messaggio: e instanceof Error ? e.message : String(e),
+      stack: e instanceof Error ? e.stack : undefined,
+      component: 'faseService.asyncSideEffects.unhandled',
+      contesto: { contenutoId, nuovaFase },
+    });
+  });
 
   // ── Riassegnazione montatore — SINCRONO (deve completare prima del return) ──
   const MONTAGGIO_TASKS = ['Premontaggio', 'Montaggio', 'Upload esportato'];
@@ -223,6 +240,13 @@ export async function cambiaFaseCLP(params: CambiaFaseParams): Promise<FaseChang
       }
     } catch (e) {
       console.error('[FaseService] errore riassegnazione montatore:', e);
+      logError({
+        tipo: 'fase_service_reassign_error',
+        messaggio: e instanceof Error ? e.message : String(e),
+        stack: e instanceof Error ? e.stack : undefined,
+        component: 'faseService.reassignMontatore',
+        contesto: { contenutoId, nuovaFase, taskId: rpcResult.task_id, taskTipo: rpcResult.task_created },
+      });
     }
   }
 

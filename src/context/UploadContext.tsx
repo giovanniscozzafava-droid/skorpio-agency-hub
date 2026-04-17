@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useCallback, useRef, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { LogRipresa, Contenuto } from '../types';
+import { logError } from '../lib/errorLogger';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -237,6 +238,13 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         patchItem(uploadId, { status: 'failed', errorMsg: msg });
         runningRef.current.delete(uploadId);
         triggerNext();
+        logError({
+          tipo: 'clip_upload_init_error',
+          messaggio: msg,
+          stack: err instanceof Error ? err.stack : undefined,
+          component: 'UploadContext.initResumable',
+          contesto: { clipCode: clip.id_clip, clipDisplayId: clip.id_contenuto_display, clienteNome: clip.cliente_nome, zone, fileName, fileSize: file.size },
+        });
         return;
       }
     }
@@ -319,6 +327,13 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       patchItem(uploadId, { status: 'failed', errorMsg: msg.slice(0, 120) });
       runningRef.current.delete(uploadId);
       triggerNext();
+      logError({
+        tipo: 'clip_upload_chunk_error',
+        messaggio: msg,
+        stack: err instanceof Error ? err.stack : undefined,
+        component: 'UploadContext.chunkedUpload',
+        contesto: { clipCode: clip.id_clip, clipDisplayId: clip.id_contenuto_display, clienteNome: clip.cliente_nome, zone, fileName, fileSize: file.size, uploadedBytes },
+      });
       return;
     }
 
@@ -361,6 +376,13 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       patchItem(uploadId, { status: 'failed', errorMsg: `DB update fallito: ${msg.slice(0, 80)}` });
       runningRef.current.delete(uploadId);
       triggerNext();
+      logError({
+        tipo: 'clip_upload_db_error',
+        messaggio: `DB update log_riprese fallito: ${msg}`,
+        stack: err instanceof Error ? err.stack : undefined,
+        component: 'UploadContext.updateDB',
+        contesto: { clipId: clip.id, clipDisplayId: clip.id_contenuto_display, zone, fileId },
+      });
       return;
     }
 

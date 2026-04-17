@@ -11,6 +11,7 @@ import { useNotifiche } from '@/hooks/useNotifiche';
 import { DriveStorageIndicator } from './DriveStorageIndicator';
 import { UploadIndicator } from './UploadIndicator';
 import { MobileDrawer } from './MobileDrawer';
+import { BugReportModal } from './BugReportModal';
 import { Menu } from 'lucide-react';
 
 interface TopBarProps {
@@ -255,9 +256,33 @@ export function TopBar({ team, taskCounts, tasks, clpPubDates, onViewPersona, pe
   const [showImpostazioni, setShowImpostazioni] = useState(false);
   const [showNotifiche, setShowNotifiche] = useState(false);
   const [showDrawer, setShowDrawer] = useState(false);
+  const [showBugReport, setShowBugReport] = useState(false);
   const [counterDrop, setCounterDrop] = useState<DropdownType>(null);
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
+  const [erroriNonRisolti, setErroriNonRisolti] = useState(0);
   const { nonLette } = useNotifiche(utente?.nome ?? null);
+
+  // Load error count for Admin badge (only for admins, refresh ogni 30s)
+  useEffect(() => {
+    if (utente?.ruolo !== 'Admin') return;
+    const load = async () => {
+      const { count } = await supabase
+        .from('error_log')
+        .select('id', { count: 'exact', head: true })
+        .eq('risolto', false);
+      setErroriNonRisolti(count || 0);
+    };
+    load();
+    const t = setInterval(load, 30000);
+    // Realtime: nuovi errori in arrivo → incrementa
+    const ch = supabase
+      .channel('topbar_error_count')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'error_log' }, () => load())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'error_log' }, () => load())
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'error_log' }, () => load())
+      .subscribe();
+    return () => { clearInterval(t); supabase.removeChannel(ch); };
+  }, [utente?.ruolo]);
 
   const openDrop = (tipo: DropdownType, e: React.MouseEvent) => {
     if (counterDrop === tipo) { setCounterDrop(null); return; }
@@ -443,6 +468,31 @@ export function TopBar({ team, taskCounts, tasks, clpPubDates, onViewPersona, pe
           <UploadIndicator />
         </div>
 
+        {/* Bottone Bug Report — visibile a tutti */}
+        <div className="relative flex-shrink-0 mr-1">
+          <button
+            onClick={() => setShowBugReport(true)}
+            className="relative p-1.5 rounded-lg transition-colors hover:bg-white/10"
+            title="Segnala un problema"
+          >
+            <span className="text-base leading-none">🐛</span>
+          </button>
+        </div>
+
+        {/* Contatore errori — solo Admin */}
+        {isAdmin && erroriNonRisolti > 0 && (
+          <div className="relative flex-shrink-0 mr-1">
+            <button
+              onClick={() => { setTab('debug'); }}
+              className="relative px-2 py-1 rounded-lg transition-all hover:scale-105"
+              style={{ background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.4)' }}
+              title={`${erroriNonRisolti} errori da rivedere`}
+            >
+              <span className="text-[11px] font-bold text-white">🔧 {erroriNonRisolti > 99 ? '99+' : erroriNonRisolti}</span>
+            </button>
+          </div>
+        )}
+
         {/* Campanella notifiche */}
         <div className="relative flex-shrink-0 mr-2">
           <button
@@ -521,6 +571,9 @@ export function TopBar({ team, taskCounts, tasks, clpPubDates, onViewPersona, pe
           onClose={() => setShowImpostazioni(false)}
         />
       )}
+
+      {/* Bug Report Modal */}
+      {showBugReport && <BugReportModal onClose={() => setShowBugReport(false)} />}
     </>
   );
 }

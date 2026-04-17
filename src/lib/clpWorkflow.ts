@@ -1,4 +1,5 @@
 import { devLog } from './devLog';
+import { logError } from './errorLogger';
 /**
  * CLP Workflow utilities — condivisi tra CLPDetailPanel e TaskDetailPanel
  */
@@ -715,6 +716,12 @@ export async function checkAutoPubblica(): Promise<number> {
       }
     } catch (e) {
       console.error('[checkAutoPubblica] errore creaTaskCleanup:', e);
+      logError({
+        tipo: 'auto_pubblica_cleanup_error',
+        messaggio: e instanceof Error ? e.message : String(e),
+        stack: e instanceof Error ? e.stack : undefined,
+        component: 'clpWorkflow.checkAutoPubblica',
+      });
     }
   }
 
