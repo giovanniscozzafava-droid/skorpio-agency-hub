@@ -28,4 +28,5 @@ node generate-pack.mjs --topic "Apicoltura" --category giardino-faidate
 node render-video.mjs <slug> [--silent]                      # --silent: senza TTS (test)
 node publish-instagram.mjs <slug> [--dry-run]
 node daily.mjs [--no-publish]                                # ciclo completo
+node doctor.mjs [--live]                                     # cosa è configurato e cosa manca (--live prova le API)
 ```

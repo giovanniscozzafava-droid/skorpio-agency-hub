@@ -53,6 +53,11 @@ Avvio manuale: *Actions → MyStarterPack → Run workflow* (opzionale: slug di 
 - `ciao@`, `privacy@`, `social@mystarterpack.it` su Aruba o su Resend (connettore già disponibile in Skorpio) per le comunicazioni.
 - 👤 Newsletter "Il pack della settimana": dominio `mystarterpack.it` verificato su Resend (record DNS forniti da Resend), chiave API nel secret `RESEND_API_KEY` e come env Vercel; il modulo di iscrizione del sito e l'invio settimanale usano quella chiave.
 
+## Verifica rapida
+`cd mystarterpack/pipeline && node doctor.mjs` elenca cosa è configurato e cosa manca; `node doctor.mjs --live` prova davvero Gemini (testo e voce) e il token Instagram. Il workflow giornaliero lo esegue come primo passo, quindi se un segreto manca il run fallisce subito con un messaggio chiaro invece di consumare tempo.
+
+**Dove va la chiave Gemini:** in *GitHub → Settings → Secrets and variables → Actions → New repository secret*, nome esatto `GEMINI_API_KEY`. È lì che serve, perché il ciclo giornaliero gira su GitHub Actions. Le chiavi usate in altre sessioni o in altri progetti non sono visibili da qui: ogni ambiente è isolato e i valori dei segreti non sono leggibili da un agente.
+
 ## Checklist di attivazione (in ordine)
 1. Vercel project + DNS → sito online
 2. Amazon Associates → tag reale

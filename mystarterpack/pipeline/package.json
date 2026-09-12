@@ -10,7 +10,8 @@
     "pin": "node render-pin.mjs",
     "publish": "node publish-instagram.mjs",
     "indexnow": "node indexnow.mjs",
-    "daily": "node daily.mjs"
+    "daily": "node daily.mjs",
+    "doctor": "node doctor.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.0.0",

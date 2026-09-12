@@ -42,6 +42,10 @@ jobs:
       - name: Dipendenze pipeline
         working-directory: mystarterpack/pipeline
         run: npm ci --no-audit --no-fund && npx playwright-core install chromium --with-deps
+      - name: Verifica configurazione (chiavi e segreti)
+        working-directory: mystarterpack/pipeline
+        run: node doctor.mjs
+
       - name: Genera pack + reel (+ pubblica)
         working-directory: mystarterpack/pipeline
         run: |
