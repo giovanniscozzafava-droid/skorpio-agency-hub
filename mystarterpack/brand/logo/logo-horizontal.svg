@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 128" width="640" height="128" role="img" aria-label="MyStarterPack">
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="#1B1F3B"/>
+  <g fill="#FAF7F2"><circle cx="40" cy="40" r="11"/><circle cx="88" cy="40" r="11"/><circle cx="40" cy="88" r="11"/><circle cx="88" cy="88" r="11"/></g>
+  <circle cx="64" cy="64" r="13" fill="#FF5A36"/>
+  <text x="144" y="82" font-family="Space Grotesk, Inter, Arial, sans-serif" font-size="56" fill="#1B1F3B" letter-spacing="-1.5"><tspan font-weight="400">my</tspan><tspan font-weight="700">starterpack</tspan><tspan font-weight="700" fill="#FF5A36">.</tspan></text>
+</svg>

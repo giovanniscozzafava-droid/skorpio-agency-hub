@@ -1,0 +1,58 @@
+---
+import '../styles/global.css';
+import { SITE } from '../data/site';
+interface Props { title: string; description: string; image?: string; type?: string; jsonLd?: unknown; canonical?: string; }
+const { title, description, image = '/brand/og-default.png', type = 'website', jsonLd, canonical } = Astro.props;
+const url = canonical ?? new URL(Astro.url.pathname, SITE.url).toString();
+const fullTitle = title.includes(SITE.name) ? title : `${title} · ${SITE.name}`;
+---
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{fullTitle}</title>
+  <meta name="description" content={description} />
+  <link rel="canonical" href={url} />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="alternate" type="application/rss+xml" title={SITE.name} href="/rss.xml" />
+  <link rel="sitemap" href="/sitemap-index.xml" />
+  <meta property="og:type" content={type} />
+  <meta property="og:site_name" content={SITE.name} />
+  <meta property="og:title" content={fullTitle} />
+  <meta property="og:description" content={description} />
+  <meta property="og:url" content={url} />
+  <meta property="og:image" content={new URL(image, SITE.url).toString()} />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+  {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />}
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="logo" href="/"><img src="/brand/mark.svg" alt="" width="34" height="34" />my<b>starterpack</b><i>.</i></a>
+      <nav>
+        <a href="/categorie">Categorie</a>
+        <a href="/cerca">Cerca</a>
+        <a href="/come-scegliamo">Come scegliamo</a>
+        <a href={SITE.instagram} rel="me noopener" target="_blank">Instagram</a>
+      </nav>
+    </div>
+  </header>
+  <main><slot /></main>
+  <footer class="site-footer">
+    <div class="wrap">
+      <div>
+        <div class="punto">{SITE.tagline}</div>
+        <div>© {new Date().getFullYear()} {SITE.name} · un progetto <a href="https://fuyue.it" rel="noopener">{SITE.publisher}</a></div>
+        <div>In qualità di Affiliato Amazon, {SITE.name} riceve un guadagno dagli acquisti idonei. <a href="/affiliazione">Come funziona</a>.</div>
+      </div>
+      <div>
+        <a href="/categorie">Tutte le categorie</a> · <a href="/come-scegliamo">Come scegliamo</a> · <a href="/affiliazione">Affiliazione</a> · <a href="/privacy">Privacy</a> · <a href="/rss.xml">RSS</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

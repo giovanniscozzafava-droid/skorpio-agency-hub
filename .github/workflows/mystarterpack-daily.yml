@@ -1,0 +1,58 @@
+name: MyStarterPack · pack + reel giornaliero
+
+on:
+  schedule:
+    - cron: "0 6 * * *"   # 08:00 Italia (ora legale) — un pack e un reel al giorno
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: "Slug di un pack esistente da renderizzare/pubblicare (vuoto = nuovo pack dalla coda)"
+        required: false
+      publish:
+        description: "Pubblica su Instagram"
+        type: boolean
+        default: true
+
+concurrency: { group: mystarterpack-daily, cancel-in-progress: false }
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions: { contents: write }
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      IG_USER_ID: ${{ secrets.IG_USER_ID }}
+      IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+      SUPABASE_URL: ${{ secrets.MSP_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.MSP_SUPABASE_SERVICE_ROLE_KEY }}
+      AMAZON_TAG: ${{ vars.AMAZON_TAG || 'mystarterpack-21' }}
+      PLAYWRIGHT_BROWSERS_PATH: /home/runner/pw-browsers
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Dipendenze pipeline
+        working-directory: mystarterpack/pipeline
+        run: npm ci --no-audit --no-fund && npx playwright-core install chromium --with-deps
+      - name: Genera pack + reel (+ pubblica)
+        working-directory: mystarterpack/pipeline
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.slug }}" ]; then ARGS="--slug ${{ github.event.inputs.slug }}"; fi
+          if [ "${{ github.event.inputs.publish }}" = "false" ] || [ -z "$IG_ACCESS_TOKEN" ]; then ARGS="$ARGS --no-publish"; fi
+          node daily.mjs $ARGS
+      - name: Verifica build sito
+        working-directory: mystarterpack/site
+        run: npm ci --no-audit --no-fund && npm run build
+      - name: Carica reel come artifact (backup)
+        uses: actions/upload-artifact@v4
+        with: { name: reels-${{ github.run_id }}, path: mystarterpack/pipeline/out/**/reel.mp4, if-no-files-found: ignore, retention-days: 14 }
+      - name: Commit e push
+        run: |
+          git config user.name "mystarterpack-bot"
+          git config user.email "bot@mystarterpack.it"
+          git add mystarterpack/site/src/content/packs mystarterpack/site/public/images/products
+          git diff --cached --quiet || git commit -m "content(mystarterpack): pack giornaliero $(date -u +%F)"
+          git push origin HEAD:main

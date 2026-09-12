@@ -1,0 +1,16 @@
+---
+import Base from '../../layouts/Base.astro';
+import { getCollection } from 'astro:content';
+import categories from '../../data/categories.json';
+const packs = await getCollection('packs');
+---
+<Base title="Tutte le categorie" description="Sport, casa, tech, hobby, animali, bambini, viaggi: scegli l'area e trova lo starter pack con le 5 cose per iniziare.">
+  <section class="section"><div class="wrap">
+    <h1>Categorie</h1>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px">
+      {categories.map((c) => { const n = packs.filter((p) => p.data.category === c.slug).length; return (
+        <a class="cat-tile" href={`/categorie/${c.slug}`} style="padding:20px"><span class="emoji" style="font-size:32px">{c.emoji}</span><span>{c.name}<small>{n} pack · {c.tagline}</small></span></a>
+      ); })}
+    </div>
+  </div></section>
+</Base>

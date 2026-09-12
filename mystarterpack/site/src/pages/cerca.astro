@@ -1,0 +1,28 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base title="Cerca uno starter pack" description="Cerca tra tutti gli starter pack: scrivi cosa vuoi iniziare e trova le 5 cose che ti servono.">
+  <section class="section"><div class="wrap" style="max-width:820px">
+    <h1>Cosa vuoi iniziare?</h1>
+    <form class="search" id="f" onsubmit="return false"><input id="q" type="search" placeholder="es. correre, sushi, podcast, cucciolo, orto..." autofocus /></form>
+    <div id="out" class="grid" style="margin-top:24px"></div>
+    <p id="empty" hidden style="color:var(--muted)">Nessun pack trovato. Ne aggiungiamo uno ogni giorno: <a href="/categorie">sfoglia le categorie</a>.</p>
+  </div></section>
+  <script>
+    const out = document.getElementById('out')!, empty = document.getElementById('empty')!, q = document.getElementById('q') as HTMLInputElement;
+    let idx: any[] = [];
+    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    function renderList(list: any[]) {
+      out.innerHTML = list.map((p) => `<a class="card" href="/pack/${p.slug}"><div class="emoji">${p.emoji}</div><h3>${p.activity}</h3><p style="margin:0;font-size:15px;color:var(--muted)">${p.description}</p><div class="meta"><span class="badge">${p.categoryName}</span><span>Budget <b>${p.budget}</b></span></div></a>`).join('');
+      empty.hidden = list.length > 0;
+    }
+    function run() {
+      const t = norm(q.value.trim());
+      if (!t) return renderList(idx.slice(0, 30));
+      const terms = t.split(/\s+/);
+      renderList(idx.filter((p) => terms.every((w) => p.hay.includes(w))).slice(0, 60));
+    }
+    fetch('/search.json').then((r) => r.json()).then((d) => { idx = d.map((p: any) => ({ ...p, hay: norm([p.activity, p.title, p.description, p.categoryName, ...(p.tags||[]), ...(p.products||[])].join(' ')) })); q.value = new URLSearchParams(location.search).get('q') ?? ''; run(); });
+    q.addEventListener('input', run);
+  </script>
+</Base>

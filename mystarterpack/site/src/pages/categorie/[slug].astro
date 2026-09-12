@@ -1,0 +1,20 @@
+---
+import Base from '../../layouts/Base.astro';
+import PackCard from '../../components/PackCard.astro';
+import { getCollection } from 'astro:content';
+import categories from '../../data/categories.json';
+export async function getStaticPaths() {
+  const packs = await getCollection('packs');
+  return categories.map((c) => ({ params: { slug: c.slug }, props: { cat: c, packs: packs.filter((p) => p.data.category === c.slug).sort((a, b) => a.data.activity.localeCompare(b.data.activity, 'it')) } }));
+}
+const { cat, packs } = Astro.props;
+---
+<Base title={`${cat.name}: starter pack per iniziare`} description={`${cat.tagline} ${packs.length} starter pack nella categoria ${cat.name}: per ogni attività le 5 cose per iniziare, con budget e link Amazon.`}>
+  <section class="hero"><div class="quincunx"></div><div class="wrap">
+    <div class="crumbs"><a href="/">Home</a> › <a href="/categorie">Categorie</a></div>
+    <h1>{cat.emoji} {cat.name}</h1><p class="lead">{cat.tagline}</p>
+  </div></section>
+  <section class="section"><div class="wrap">
+    {packs.length ? <div class="grid">{packs.map((p) => <PackCard pack={p} />)}</div> : <p>Pack in arrivo. Torna domani.</p>}
+  </div></section>
+</Base>
