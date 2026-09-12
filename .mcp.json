@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "codebase-memory": {
+      "type": "stdio",
+      "command": "node",
+      "args": [".claude/mcp/codebase-memory/server.mjs"],
+      "env": {}
+    }
+  }
+}
