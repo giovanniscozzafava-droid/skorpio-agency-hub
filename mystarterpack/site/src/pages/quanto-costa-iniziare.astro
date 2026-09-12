@@ -1,0 +1,140 @@
+---
+import Base from '../layouts/Base.astro';
+import { getCollection } from 'astro:content';
+import { SITE } from '../data/site';
+import { categoryOf, parseBudget, euro } from '../data/packData';
+
+const packs = await getCollection('packs');
+const rows = packs.map((p) => {
+  const b = parseBudget(p.data.budgetTotal);
+  return {
+    slug: p.id,
+    emoji: p.data.emoji,
+    activity: p.data.activity,
+    category: categoryOf(p.data.category),
+    budgetTotal: p.data.budgetTotal,
+    level: p.data.level,
+    min: b.min,
+    max: b.max,
+  };
+});
+
+const byCategory = [...rows].sort(
+  (a, b) => a.category.name.localeCompare(b.category.name, 'it') || a.activity.localeCompare(b.activity, 'it'),
+);
+const byPrice = [...rows].sort((a, b) => a.min - b.min || a.max - b.max);
+const cheapest = byPrice.slice(0, 10);
+const priciest = [...byPrice].reverse().slice(0, 10);
+
+const count = rows.length;
+const avgMin = rows.reduce((s, r) => s + r.min, 0) / (count || 1);
+const avgMax = rows.reduce((s, r) => s + r.max, 0) / (count || 1);
+
+const today = new Date();
+const title = "Quanto costa iniziare? L'indice MyStarterPack";
+const description = `Il costo di partenza di ${count} attività a confronto: budget minimo e massimo di ogni starter pack, dalle più economiche alle più costose.`;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Dataset',
+  name: 'Indice MyStarterPack del costo di partenza',
+  description: `Budget indicativo di partenza per ${count} attività, hobby e momenti della vita: fascia minima e massima dei cinque prodotti essenziali di ogni starter pack.`,
+  url: `${SITE.url}/quanto-costa-iniziare`,
+  inLanguage: 'it',
+  isAccessibleForFree: true,
+  license: `${SITE.url}/privacy`,
+  creator: {
+    '@type': 'Organization',
+    name: SITE.name,
+    url: SITE.url,
+    parentOrganization: { '@type': 'Organization', name: SITE.publisher, url: 'https://fuyue.it' },
+  },
+  dateModified: today.toISOString().slice(0, 10),
+  variableMeasured: ['budget minimo', 'budget massimo', 'livello', 'categoria'],
+  distribution: [
+    { '@type': 'DataDownload', encodingFormat: 'application/json', contentUrl: `${SITE.url}/packs.json` },
+  ],
+};
+---
+<Base title={title} description={description} jsonLd={jsonLd}>
+  <section class="section"><div class="wrap">
+    <div class="crumbs" style="color:var(--muted)"><a href="/">Home</a> › Quanto costa iniziare</div>
+    <h1>Quanto costa iniziare? L'indice MyStarterPack</h1>
+    <div class="prose" style="max-width:760px">
+      <p>
+        La domanda che arriva prima di ogni altra è sempre la stessa: quanto devo mettere da parte per partire?
+        Qui la risposta è in chiaro per tutte le {count} attività che abbiamo coperto. Per ognuna indichiamo la
+        fascia di budget dei cinque prodotti essenziali: il minimo è quello che spendi trovando le offerte giuste,
+        il massimo è il listino pieno sui modelli che consigliamo. Nessun costo nascosto, nessun accessorio
+        opzionale gonfiato per far sembrare tutto più caro.
+      </p>
+      <p>
+        Le cifre sono indicative e cambiano con i prezzi di Amazon.it. Servono a capire l'ordine di grandezza
+        prima di decidere. Se una voce ti sembra fuori scala, apri il pack: dentro trovi il motivo di ogni scelta.
+      </p>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="k">{count}</div><div class="l">attività con uno starter pack completo</div></div>
+      <div class="stat"><div class="k">{euro(avgMin)}</div><div class="l">budget minimo medio per iniziare</div></div>
+      <div class="stat"><div class="k">{euro(avgMax)}</div><div class="l">budget massimo medio per iniziare</div></div>
+    </div>
+
+    <h2 id="le-piu-economiche">Le 10 attività più economiche da iniziare</h2>
+    <div class="data-table">
+      <table>
+        <caption>Starter pack con il budget minimo più basso, in ordine crescente</caption>
+        <thead><tr><th scope="col">#</th><th scope="col">Attività</th><th scope="col">Categoria</th><th scope="col">Budget</th></tr></thead>
+        <tbody>
+          {cheapest.map((r, i) => (
+            <tr>
+              <td class="num">{i + 1}</td>
+              <td>{r.emoji} <a href={`/pack/${r.slug}`}>{r.activity}</a></td>
+              <td>{r.category.name}</td>
+              <td class="num">{r.budgetTotal}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+
+    <h2 id="le-piu-costose" style="margin-top:36px">Le 10 più costose</h2>
+    <div class="data-table">
+      <table>
+        <caption>Starter pack con il budget minimo più alto, in ordine decrescente</caption>
+        <thead><tr><th scope="col">#</th><th scope="col">Attività</th><th scope="col">Categoria</th><th scope="col">Budget</th></tr></thead>
+        <tbody>
+          {priciest.map((r, i) => (
+            <tr>
+              <td class="num">{i + 1}</td>
+              <td>{r.emoji} <a href={`/pack/${r.slug}`}>{r.activity}</a></td>
+              <td>{r.category.name}</td>
+              <td class="num">{r.budgetTotal}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+
+    <h2 id="indice-completo" style="margin-top:36px">L'indice completo, categoria per categoria</h2>
+    <div class="data-table">
+      <table>
+        <caption>Tutte le {count} attività con budget di partenza e livello, ordinate per categoria</caption>
+        <thead><tr><th scope="col"></th><th scope="col">Attività</th><th scope="col">Categoria</th><th scope="col">Budget</th><th scope="col">Livello</th></tr></thead>
+        <tbody>
+          {byCategory.map((r) => (
+            <tr>
+              <td>{r.emoji}</td>
+              <td><a href={`/pack/${r.slug}`}>{r.activity}</a></td>
+              <td><a href={`/categorie/${r.category.slug}`}>{r.category.name}</a></td>
+              <td class="num">{r.budgetTotal}</td>
+              <td>{r.level}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:20px;font-size:14px;color:var(--muted)">
+      Vuoi gli stessi dati in formato leggibile da una macchina? Sono su <a href="/packs.json">/packs.json</a>.
+      I prezzi sono fasce indicative, aggiornate alla data di revisione di ciascun pack.
+    </p>
+  </div></section>
+</Base>

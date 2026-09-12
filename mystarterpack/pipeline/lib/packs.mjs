@@ -30,9 +30,21 @@ export function packExists(slug) { return fs.existsSync(path.join(PACKS_DIR, `${
 export function slugify(s) {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
-export function amazonLink(p) {
-  if (p.asin) return `https://www.amazon.it/dp/${p.asin}?tag=${AMAZON_TAG}&linkCode=ll1`;
-  return `https://www.amazon.it/s?k=${encodeURIComponent(p.amazonQuery)}&tag=${AMAZON_TAG}&linkCode=ll2`;
+/**
+ * Tag affiliato per canale: legge AMAZON_TAG_<CANALE> (WEB, IG, TT, YT, PIN, NL) con fallback ad AMAZON_TAG.
+ * Serve ad attribuire le vendite al canale che le ha generate senza toccare i link del sito.
+ */
+export const TAG_CHANNELS = ['web', 'ig', 'tt', 'yt', 'pin', 'nl'];
+const CHANNEL_ALIASES = { instagram: 'ig', reel: 'ig', reels: 'ig', story: 'ig', tiktok: 'tt', youtube: 'yt', shorts: 'yt', short: 'yt', pinterest: 'pin', newsletter: 'nl', email: 'nl', site: 'web', sito: 'web' };
+export function amazonTagFor(channel = 'web') {
+  const raw = String(channel || 'web').trim().toLowerCase();
+  const key = (CHANNEL_ALIASES[raw] || raw).replace(/[^a-z0-9]/g, '').toUpperCase();
+  return (key && process.env[`AMAZON_TAG_${key}`]) || process.env.AMAZON_TAG || process.env.PUBLIC_AMAZON_TAG || AMAZON_TAG;
+}
+export function amazonLink(p, channel = 'web') {
+  const tag = amazonTagFor(channel);
+  if (p.asin) return `https://www.amazon.it/dp/${p.asin}?tag=${tag}&linkCode=ll1`;
+  return `https://www.amazon.it/s?k=${encodeURIComponent(p.amazonQuery)}&tag=${tag}&linkCode=ll2`;
 }
 export function categoryOf(pack) { return CATEGORIES.find((c) => c.slug === pack.data.category) || CATEGORIES[0]; }
 export function outDir(slug) { const d = path.join(OUT_DIR, slug); fs.mkdirSync(d, { recursive: true }); return d; }
@@ -56,8 +68,30 @@ export function validatePack(data) {
   return e;
 }
 
-/** Caption Instagram standard del brand. */
-export function buildCaption(pack) {
+/** Tronca a max caratteri senza spezzare a metà parola quando possibile. */
+function clamp(s, max) {
+  const t = String(s == null ? '' : s).trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, Math.max(1, max - 1));
+  const sp = cut.lastIndexOf(' ');
+  return (sp > max * 0.6 ? cut.slice(0, sp) : cut).trimEnd() + '…';
+}
+const hashtag = (s) => `#${slugify(s).replace(/-/g, '')}`;
+/** n hashtag del pack, senza duplicati: brand, attività, categoria, tag editoriali. */
+export function packHashtags(pack, n = 5) {
+  const d = pack.data;
+  const cat = categoryOf(pack);
+  const out = [];
+  for (const s of ['mystarterpack', 'starterpack', d.activity, cat.slug, 'principianti', ...(d.tags || [])]) {
+    const t = hashtag(s || '');
+    if (t.length > 1 && !out.includes(t)) out.push(t);
+    if (out.length >= n) break;
+  }
+  return out;
+}
+
+/** Caption Instagram standard del brand. `channel` finisce nel parametro ?src= del link. */
+export function buildCaption(pack, channel = 'ig') {
   const d = pack.data;
   const cat = categoryOf(pack);
   const lines = [
@@ -66,8 +100,9 @@ export function buildCaption(pack) {
     `Le 5 cose per iniziare: ${d.activity.toLowerCase()} 👇`,
     ...d.products.map((p, i) => `${i + 1}. ${p.role.replace(/^(le|la|il|lo|i|gli|l')\s+/i, (m) => m)} → ${p.name} (${p.priceRange})`),
     '',
+    'Salva questo reel e mandalo a chi vuole iniziare 👉',
     `💶 Budget totale: ${d.budgetTotal}`,
-    `🔗 Link e guida completa: ${SITE_URL}/pack/${pack.slug}`,
+    `🔗 Link e guida completa: ${SITE_URL}/pack/${pack.slug}?src=${channel}`,
     '',
     'Le 5 cose per iniziare. Punto.',
     '',
@@ -76,4 +111,46 @@ export function buildCaption(pack) {
     ...(d.tags || []).slice(0, 5).map((t) => `#${slugify(t).replace(/-/g, '')}`),
   ];
   return lines.join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
+/** Descrizione del Pin Pinterest: max 500 caratteri, disclosure inclusa. */
+export function buildPinDescription(pack) {
+  const MAX = 500;
+  const d = pack.data;
+  const url = `${SITE_URL}/pack/${pack.slug}?src=pin`;
+  const tail = [`Guida completa e link: ${url}`, `#adv #affiliazione ${packHashtags(pack, 5).join(' ')}`];
+  const hook = clamp(d.video?.hook || d.title, 120);
+  const items = (d.products || []).slice(0, 5);
+  const line = (p, i, per) => {
+    const prefix = `${i + 1}. `;
+    const price = ` ${p.priceRange}`;
+    return prefix + clamp(`${p.role}: ${p.name}`, Math.max(14, per - prefix.length - price.length)) + price;
+  };
+  const budget = Math.max(1, MAX - tail.join('\n').length - hook.length - (items.length + 3));
+  let per = Math.floor(budget / Math.max(1, items.length));
+  let text = '';
+  for (;;) {
+    text = [hook, ...items.map((p, i) => line(p, i, per)), ...tail].join('\n');
+    if (text.length <= MAX || per <= 18) break;
+    per -= 2;
+  }
+  if (text.length > MAX) text = [hook, ...tail].join('\n');
+  return text.length > MAX ? clamp(text, MAX) : text;
+}
+
+/** Caption breve per TikTok / YouTube Shorts: max 300 caratteri, con disclosure. */
+export function buildShortCaption(pack, channel = 'tt') {
+  const MAX = 300;
+  const d = pack.data;
+  const url = `${SITE_URL}/pack/${pack.slug}?src=${channel}`;
+  const tail = `${url}\n#adv #affiliazione ${packHashtags(pack, 3).join(' ')}`;
+  const head = clamp(d.video?.hook || d.title, 110);
+  const budget = `Budget: ${d.budgetTotal}`;
+  const roles = (d.products || []).map((p) => p.role.replace(/^(?:(?:le|la|il|lo|i|gli)\s+|l'\s*)/i, '')).join(' · ');
+  const join = (...parts) => parts.filter(Boolean).join('\n');
+  const room = MAX - head.length - budget.length - tail.length - 3;
+  let mid = roles ? `Le 5 cose: ${roles}` : '';
+  if (mid && mid.length > room) mid = room >= 28 ? clamp(mid, room) : '';
+  const text = join(head, mid, budget, tail);
+  return text.length > MAX ? join(clamp(head, Math.max(20, head.length - (text.length - MAX) - 1)), mid, budget, tail) : text;
 }

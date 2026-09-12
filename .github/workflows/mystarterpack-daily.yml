@@ -27,6 +27,12 @@ jobs:
       SUPABASE_URL: ${{ secrets.MSP_SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.MSP_SUPABASE_SERVICE_ROLE_KEY }}
       AMAZON_TAG: ${{ vars.AMAZON_TAG || 'mystarterpack-21' }}
+      # Tag affiliati per canale: se la variabile non è impostata, lib/packs.mjs ricade su AMAZON_TAG.
+      AMAZON_TAG_WEB: ${{ vars.AMAZON_TAG_WEB || '' }}
+      AMAZON_TAG_IG: ${{ vars.AMAZON_TAG_IG || '' }}
+      AMAZON_TAG_TT: ${{ vars.AMAZON_TAG_TT || '' }}
+      AMAZON_TAG_PIN: ${{ vars.AMAZON_TAG_PIN || '' }}
+      INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
       PLAYWRIGHT_BROWSERS_PATH: /home/runner/pw-browsers
     steps:
       - uses: actions/checkout@v4
@@ -46,9 +52,16 @@ jobs:
       - name: Verifica build sito
         working-directory: mystarterpack/site
         run: npm ci --no-audit --no-fund && npm run build
-      - name: Carica reel come artifact (backup)
+      - name: Carica reel e creative statiche come artifact (backup)
         uses: actions/upload-artifact@v4
-        with: { name: reels-${{ github.run_id }}, path: mystarterpack/pipeline/out/**/reel.mp4, if-no-files-found: ignore, retention-days: 14 }
+        with:
+          name: reels-${{ github.run_id }}
+          path: |
+            mystarterpack/pipeline/out/**/reel.mp4
+            mystarterpack/pipeline/out/**/pin.jpg
+            mystarterpack/pipeline/out/**/cover-post.jpg
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Commit e push
         run: |
           git config user.name "mystarterpack-bot"

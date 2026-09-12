@@ -47,13 +47,16 @@ async function graph(pathname, params, method = 'POST') {
 
 export async function publishReel(slug, { dry = false } = {}) {
   const pack = readPack(slug); const dir = outDir(slug);
-  const mp4 = path.join(dir, 'reel.mp4'); const cover = path.join(dir, 'cover.jpg');
+  const mp4 = path.join(dir, 'reel.mp4');
+  // cover-post.jpg (render-pin.mjs, 1080x1350 brandizzata) se c'è, altrimenti il frame del reel.
+  const cover = [path.join(dir, 'cover-post.jpg'), path.join(dir, 'cover.jpg')].find((f) => fs.existsSync(f)) || null;
   if (!fs.existsSync(mp4)) throw new Error(`manca ${mp4}: esegui prima render-video.mjs`);
-  const caption = fs.existsSync(path.join(dir, 'caption.txt')) ? fs.readFileSync(path.join(dir, 'caption.txt'), 'utf8') : buildCaption(pack);
+  const caption = buildCaption(pack, 'ig');
   if (dry) { console.log('[dry-run] caption:\n' + caption); return { dry: true }; }
   const igUser = process.env.IG_USER_ID;
   if (!igUser || !process.env.IG_ACCESS_TOKEN) throw new Error('IG_USER_ID / IG_ACCESS_TOKEN mancanti (docs/SETUP.md, sezione Instagram)');
-  const { videoUrl, coverUrl } = await hostVideo(slug, mp4, fs.existsSync(cover) ? cover : null);
+  if (cover) console.log(`🖼️  cover: ${path.basename(cover)}`);
+  const { videoUrl, coverUrl } = await hostVideo(slug, mp4, cover);
   console.log(`☁️  video: ${videoUrl}`);
   const container = await graph(`${igUser}/media`, { media_type: 'REELS', video_url: videoUrl, caption, share_to_feed: 'true', ...(coverUrl ? { cover_url: coverUrl } : {}) });
   for (let i = 0; i < 40; i++) {

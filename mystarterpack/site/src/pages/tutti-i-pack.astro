@@ -1,0 +1,81 @@
+---
+import Base from '../layouts/Base.astro';
+import { getCollection } from 'astro:content';
+import { SITE } from '../data/site';
+import { categoryOf } from '../data/packData';
+
+const packs = await getCollection('packs');
+const entries = packs
+  .map((p) => ({
+    slug: p.id,
+    emoji: p.data.emoji,
+    activity: p.data.activity,
+    budgetTotal: p.data.budgetTotal,
+    category: categoryOf(p.data.category),
+  }))
+  .sort((a, b) => a.activity.localeCompare(b.activity, 'it'));
+
+function initialOf(s: string): string {
+  const c = s.trim().charAt(0).toUpperCase();
+  return /[A-ZÀ-Ý]/.test(c) ? c : '#';
+}
+
+const initials = [...new Set(entries.map((e) => initialOf(e.activity)))].sort((a, b) => a.localeCompare(b, 'it'));
+const groups = initials.map((k) => ({ k, list: entries.filter((e) => initialOf(e.activity) === k) }));
+
+const title = 'Tutti i pack, dalla A alla Z';
+const description = `Indice alfabetico completo: ${entries.length} starter pack, dalle attività sportive agli hobby, dai viaggi alla casa. Cinque prodotti per ciascuna.`;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: title,
+  description,
+  url: `${SITE.url}/tutti-i-pack`,
+  inLanguage: 'it',
+  isAccessibleForFree: true,
+  mainEntity: {
+    '@type': 'ItemList',
+    numberOfItems: entries.length,
+    itemListElement: entries.map((e, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: e.activity,
+      url: `${SITE.url}/pack/${e.slug}`,
+    })),
+  },
+};
+---
+<Base title={title} description={description} jsonLd={jsonLd}>
+  <section class="section"><div class="wrap">
+    <div class="crumbs" style="color:var(--muted)"><a href="/">Home</a> › Tutti i pack</div>
+    <h1>Tutti i pack, dalla A alla Z</h1>
+    <div class="prose" style="max-width:760px">
+      <p>
+        Questa è la mappa completa di MyStarterPack: {entries.length} starter pack in ordine alfabetico, senza
+        filtri e senza classifiche. Se sai già cosa cerchi, parti da qui. Se invece vuoi farti venire un'idea,
+        scorri la lista: è fatta anche per quello. Ogni voce porta a una pagina con cinque prodotti, uno per ogni
+        esigenza reale delle prime settimane, il budget complessivo e la lista di cosa lasciare perdere.
+      </p>
+      <p>
+        Preferisci muoverti per argomento? Usa le <a href="/categorie">categorie</a>. Vuoi confrontare i costi
+        prima di scegliere? C'è <a href="/quanto-costa-iniziare">l'indice dei budget</a>.
+      </p>
+    </div>
+    <p style="margin-top:8px;font-size:15px;font-family:var(--font-display);font-weight:600">
+      {initials.map((k) => (<><a href={`#lettera-${k}`} style="text-decoration:none">{k}</a>{' · '}</>))}
+    </p>
+    {groups.map((g) => (
+      <section>
+        <h2 class="az-initial" id={`lettera-${g.k}`}>{g.k}</h2>
+        <ul class="az">
+          {g.list.map((e) => (
+            <li>
+              {e.emoji} <a href={`/pack/${e.slug}`}>{e.activity}</a>
+              <span style="color:var(--muted)"> · {e.budgetTotal}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ))}
+  </div></section>
+</Base>

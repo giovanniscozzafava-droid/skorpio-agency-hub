@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<title>{{TITLE}}</title>
+<style>
+  /* Creativa statica MyStarterPack: Pin Pinterest 1000x1500 e cover post/OG 1080x1350.
+     Il layout è disegnato su una superficie di 1000px di larghezza e scalato con zoom
+     (token {{SCALE}} / {{STAGE_H}}): così un solo template copre entrambi i formati. */
+  :root {
+    --ink: #1B1F3B; --start: #FF5A36; --mint: #2EC4B6; --paper: #FAF7F2; --fog: #E8E4DD; --graphite: #2B2B2B;
+    --tint: {{TINT}};
+    --pad: 64px; --logoH: 62px; --emojiFs: 150px;
+    --titleFs: 86px; --subFs: 37px;
+    --chip: 84px; --roleFs: 25px; --nameFs: 40px; --priceFs: 30px; --rowPad: 24px; --footFs: 35px;
+  }
+  [data-format="cover"] {
+    --pad: 58px; --logoH: 58px; --emojiFs: 124px;
+    --titleFs: 76px; --subFs: 34px;
+    --chip: 78px; --roleFs: 24px; --nameFs: 37px; --priceFs: 28px; --rowPad: 14px; --footFs: 33px;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: {{W}}px; height: {{H}}px; overflow: hidden; background: var(--paper); }
+  body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: var(--graphite); -webkit-font-smoothing: antialiased; }
+  .display { font-family: 'Space Grotesk', 'Inter', system-ui, -apple-system, sans-serif; font-variant-numeric: tabular-nums; }
+  #stage { width: 1000px; height: {{STAGE_H}}px; zoom: {{SCALE}}; display: flex; flex-direction: column; background: var(--paper); }
+
+  /* Fascia alta: colore categoria al 14% su Carta */
+  header { position: relative; overflow: hidden; padding: var(--pad) var(--pad) calc(var(--pad) * 0.82); background: color-mix(in srgb, var(--tint) 14%, var(--paper)); }
+  header .quincunx { position: absolute; inset: 0; opacity: .06; background-image: radial-gradient(var(--ink) 3px, transparent 3.4px); background-size: 54px 54px; }
+  header > * { position: relative; }
+  .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+  .logo { height: var(--logoH); width: auto; display: block; }
+  .emoji { font-size: var(--emojiFs); line-height: 1; flex: none; margin-top: calc(var(--emojiFs) * -0.08); }
+  h1 { margin-top: calc(var(--pad) * 0.62); font-size: var(--titleFs); line-height: 1.04; letter-spacing: -0.035em; font-weight: 500; color: color-mix(in srgb, var(--ink) 62%, transparent); text-wrap: balance; }
+  h1 em { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-style: normal; font-weight: 700; color: var(--ink); }
+  .sub { margin-top: calc(var(--pad) * 0.34); font-size: var(--subFs); font-weight: 600; color: var(--ink); opacity: .72; letter-spacing: -0.01em; }
+
+  /* Lista dei 5 prodotti */
+  main { flex: 1 1 auto; min-height: 0; display: flex; padding: 0 var(--pad); }
+  ol { list-style: none; padding: 0; margin: auto 0; width: 100%; display: flex; flex-direction: column; justify-content: center; }
+  li { display: grid; grid-template-columns: var(--chip) minmax(0, 1fr) max-content; align-items: center; gap: 26px; padding: var(--rowPad) 0; border-top: 2px solid var(--fog); }
+  li:first-child { border-top: 0; }
+  .chip { width: var(--chip); height: var(--chip); border-radius: 999px; background: var(--start); color: #fff; display: grid; place-items: center; font-size: calc(var(--chip) * 0.52); font-weight: 700; line-height: 1; }
+  .txt { min-width: 0; }
+  .role { font-size: var(--roleFs); font-weight: 700; color: var(--start); letter-spacing: .1em; text-transform: uppercase; }
+  .name { margin-top: 8px; font-size: var(--nameFs); font-weight: 700; line-height: 1.1; letter-spacing: -0.025em; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .price { font-size: var(--priceFs); font-weight: 500; color: var(--ink); white-space: nowrap; border: 2px solid var(--fog); border-radius: 999px; padding: 10px 20px; background: #fff; }
+
+  /* Pill Inchiostro: budget + dominio */
+  footer { flex: none; margin: 0 var(--pad) var(--pad); padding: calc(var(--rowPad) + 8px) calc(var(--pad) * 0.62); border-radius: 999px; background: var(--ink); color: var(--paper); display: flex; align-items: center; justify-content: space-between; gap: 20px; font-size: var(--footFs); }
+  footer .budget { font-weight: 700; letter-spacing: -0.01em; white-space: nowrap; }
+  footer .budget small { font-weight: 500; opacity: .6; text-transform: uppercase; letter-spacing: .1em; font-size: .62em; margin-right: .5em; }
+  footer .site { font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; }
+  footer .site i { color: var(--start); font-style: normal; }
+</style>
+</head>
+<body data-format="{{FORMAT}}">
+<div id="stage" style="{{STAGE_STYLE}}">
+  <header>
+    <div class="quincunx"></div>
+    <div class="top"><img class="logo" src="{{LOGO}}" alt="MyStarterPack" /><div class="emoji">{{EMOJI}}</div></div>
+    <h1 class="display">Starter pack <em>{{ACTIVITY}}</em></h1>
+    <p class="sub">{{SUBTITLE}}</p>
+  </header>
+  <main><ol>{{ITEMS}}</ol></main>
+  <footer>
+    <span class="budget display"><small>Budget</small>{{BUDGET}}</span>
+    <span class="site display">mystarterpack<i>.</i>it</span>
+  </footer>
+</div>
+</body>
+</html>

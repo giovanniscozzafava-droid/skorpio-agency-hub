@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Ciclo giornaliero autonomo: nuovo pack → immagini → voce → reel → Instagram.
+ * Ciclo giornaliero autonomo: nuovo pack → immagini → voce → reel → creative statiche (pin/cover) → Instagram → IndexNow.
  * Uso: node daily.mjs [--slug <esistente>] [--no-publish] [--no-images] [--count 1]
  * Senza --slug genera un pack nuovo dalla coda topics.json. Con GEMINI_API_KEY assente si ferma con errore chiaro.
  * Idempotente: i pack con video.status = published non vengono ripubblicati.
@@ -8,12 +8,14 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { generatePack, nextTopic } from './generate-pack.mjs';
-import { readPack, listPacks } from './lib/packs.mjs';
+import { readPack, listPacks, SITE_URL } from './lib/packs.mjs';
 
 const args = process.argv.slice(2);
 const opt = (k) => (args.includes(k) ? args[args.indexOf(k) + 1] : undefined);
 const here = path.dirname(new URL(import.meta.url).pathname);
 const run = (script, ...a) => execFileSync(process.execPath, [path.join(here, script), ...a], { stdio: 'inherit' });
+/** Passi accessori (creative statiche, ping ai motori): un errore non deve fermare il ciclo. */
+const tryRun = (script, ...a) => { try { run(script, ...a); return true; } catch (e) { console.warn(`⚠️  ${script} saltato: ${e.message.split('\n')[0]}`); return false; } };
 
 async function main() {
   const count = Number(opt('--count') || 1);
@@ -34,7 +36,11 @@ async function main() {
     if (pack.data.video.status === 'published') { console.log(`↩︎  ${slug} già pubblicato`); continue; }
     if (!args.includes('--no-images')) { try { run('product-image.mjs', slug); } catch { console.warn('immagini saltate'); } }
     run('render-video.mjs', slug, '--retts');
-    if (!args.includes('--no-publish')) run('publish-instagram.mjs', slug);
+    tryRun('render-pin.mjs', slug);
+    if (!args.includes('--no-publish')) {
+      run('publish-instagram.mjs', slug);
+      tryRun('indexnow.mjs', `${SITE_URL}/pack/${slug}`);
+    }
   }
   console.log(`✅ daily completato: ${slugs.join(', ') || 'nessun pack'}`);
 }

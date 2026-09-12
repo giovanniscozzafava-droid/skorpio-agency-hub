@@ -4,6 +4,7 @@ import PackCard from '../components/PackCard.astro';
 import { getCollection } from 'astro:content';
 import categories from '../data/categories.json';
 import { SITE } from '../data/site';
+import Newsletter from '../components/Newsletter.astro';
 const packs = (await getCollection('packs')).sort((a, b) => b.data.publishedAt.valueOf() - a.data.publishedAt.valueOf());
 const latest = packs.slice(0, 9);
 const counts = Object.fromEntries(categories.map((c) => [c.slug, packs.filter((p) => p.data.category === c.slug).length]));
@@ -32,6 +33,7 @@ const jsonLd = { '@context': 'https://schema.org', '@type': 'WebSite', name: SIT
       {categories.map((c) => <a class="cat-tile" href={`/categorie/${c.slug}`}><span class="emoji">{c.emoji}</span><span>{c.name}<small>{counts[c.slug]} pack · {c.tagline}</small></span></a>)}
     </div>
   </div></section>
+  <section class="section"><div class="wrap" style="max-width:760px"><Newsletter src="home" /></div></section>
   <section class="section"><div class="wrap" style="max-width:760px">
     <h2>Come funziona</h2>
     <ol>

@@ -1,0 +1,111 @@
+---
+import Base from '../layouts/Base.astro';
+import { getCollection } from 'astro:content';
+import { SITE } from '../data/site';
+
+const packs = await getCollection('packs');
+const count = packs.length;
+const title = 'Chi scrive MyStarterPack';
+const description =
+  'La redazione, il metodo di lavoro, la politica di aggiornamento e di correzione, l’uso dichiarato di sistemi di intelligenza artificiale e le regole di indipendenza di MyStarterPack.';
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'AboutPage',
+  name: title,
+  description,
+  url: `${SITE.url}/redazione`,
+  inLanguage: 'it',
+  isAccessibleForFree: true,
+  mainEntity: {
+    '@type': 'Organization',
+    name: SITE.name,
+    url: SITE.url,
+    email: SITE.email,
+    logo: `${SITE.url}/brand/mark.svg`,
+    sameAs: [SITE.instagram, SITE.tiktok],
+    parentOrganization: { '@type': 'Organization', name: SITE.publisher, url: 'https://fuyue.it' },
+    publishingPrinciples: `${SITE.url}/come-scegliamo`,
+    correctionsPolicy: `${SITE.url}/redazione#correzioni`,
+    ethicsPolicy: `${SITE.url}/redazione#indipendenza`,
+    diversityPolicy: `${SITE.url}/redazione`,
+  },
+};
+---
+<Base title={title} description={description} jsonLd={jsonLd}>
+  <section class="section"><div class="wrap prose" style="max-width:760px">
+    <div class="crumbs" style="color:var(--muted)"><a href="/">Home</a> › Redazione</div>
+    <h1>Chi scrive MyStarterPack</h1>
+    <p class="lead" style="font-size:20px;color:var(--muted)">
+      Nessuna firma anonima e nessun mistero sul metodo. Qui trovi chi lavora ai pack, come li costruiamo,
+      quando li aggiorniamo e come segnalarci un errore.
+    </p>
+
+    <h2 id="redazione">La redazione</h2>
+    <p>
+      MyStarterPack è un progetto editoriale di <a href="https://fuyue.it" rel="noopener">{SITE.publisher}</a>,
+      agenzia digitale italiana. I contenuti sono prodotti dalla redazione interna dell'agenzia: un capo redazione
+      che definisce il perimetro e approva ogni pack, redattori che scrivono le schede prodotto, una revisione
+      finale su coerenza, prezzi e tono. Il responsabile editoriale è il team di Fuyue Digital Agency, che risponde
+      di quanto viene pubblicato su questo sito. Al momento la redazione mantiene {count} starter pack.
+    </p>
+    <p>
+      Non siamo un negozio e non vendiamo nulla. Scriviamo per chi parte da zero e ha bisogno di una risposta
+      breve: quali cinque cose serve comprare, quanto costano, cosa si può rimandare.
+    </p>
+
+    <h2 id="metodo">Il metodo editoriale</h2>
+    <p>
+      Ogni pack nasce da cinque esigenze reali della prima settimana, non da una classifica dei prodotti migliori
+      del mondo. Scegliamo articoli reperibili su Amazon.it, di marchi diffusi, con un rapporto qualità prezzo
+      sensato per un principiante. Indichiamo fasce di prezzo e non prezzi puntuali, perché i listini cambiano ogni
+      giorno. Le regole complete, compresi i criteri di esclusione, sono scritte in
+      <a href="/come-scegliamo">come scegliamo i 5 prodotti</a>.
+    </p>
+
+    <h2 id="aggiornamenti">Politica di aggiornamento</h2>
+    <p>
+      Ogni pack riporta in alto la data dell'ultima revisione, la stessa che finisce nei dati strutturati della
+      pagina. Le revisioni dei prezzi sono periodiche: controlliamo le fasce a rotazione e riscriviamo la scheda
+      quando un prodotto esce di produzione, cambia generazione o scivola fuori dalla fascia indicata. Se un
+      articolo non è più consigliabile lo sostituiamo e lo dichiariamo nel testo, invece di lasciare un link morto.
+      Le pagine non vengono mai aggiornate solo per cambiare la data.
+    </p>
+
+    <h2 id="correzioni">Politica di correzione</h2>
+    <p>
+      Sbagliamo anche noi. Se trovi un prezzo fuori scala, un prodotto non più disponibile, un dato tecnico errato
+      o un consiglio che non ti torna, scrivi a
+      <a href={`mailto:${SITE.email}`}>{SITE.email}</a>. Leggiamo tutte le segnalazioni e correggiamo le pagine:
+      quando la correzione cambia la sostanza di un consiglio lo segnaliamo nella pagina stessa e aggiorniamo la
+      data di revisione. Le richieste di rimozione di un contenuto vanno allo stesso indirizzo.
+    </p>
+
+    <h2 id="ai">Uso di sistemi di intelligenza artificiale</h2>
+    <p>
+      Lo diciamo chiaramente: nella produzione dei pack usiamo sistemi di intelligenza artificiale per la ricerca
+      preliminare, per le bozze dei testi, per le immagini di supporto e per il montaggio dei video. Nessun
+      contenuto viene pubblicato senza supervisione editoriale umana: la scelta dei cinque prodotti, le fasce di
+      prezzo, i consigli pratici e le avvertenze sono verificati e approvati da una persona della redazione, che se
+      ne assume la responsabilità. Dove il tema è delicato, come salute, bambini, animali e sicurezza, il tono è
+      prudente e rimandiamo sempre a un professionista.
+    </p>
+
+    <h2 id="indipendenza">Indipendenza</h2>
+    <p>
+      Nessun marchio paga per entrare in un pack e non accettiamo prodotti in cambio di una posizione in lista.
+      Guadagniamo con le commissioni di affiliazione Amazon: se acquisti tramite un nostro link riceviamo una
+      piccola percentuale, il prezzo per te resta identico. Questo influenza quanto incassiamo, non cosa
+      consigliamo, e per lo stesso motivo ogni pack contiene anche la lista di
+      <a href="/cosa-non-comprare">cosa non comprare</a>, che per noi vale zero commissioni. Se un contenuto fosse
+      sponsorizzato o concordato con un'azienda, lo troveresti etichettato in modo visibile in cima alla pagina.
+      I dettagli economici sono in <a href="/affiliazione">affiliazione</a>.
+    </p>
+
+    <h2 id="contatti">Contatti</h2>
+    <p>
+      Scrivici a <a href={`mailto:${SITE.email}`}>{SITE.email}</a> per correzioni, segnalazioni, proposte di nuovi
+      pack e richieste stampa. Siamo anche su <a href={SITE.instagram} rel="me noopener">Instagram</a> e
+      <a href={SITE.tiktok} rel="me noopener"> TikTok</a>.
+    </p>
+  </div></section>
+</Base>

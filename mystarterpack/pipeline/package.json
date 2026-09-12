@@ -7,7 +7,9 @@
     "generate": "node generate-pack.mjs",
     "tts": "node tts.mjs",
     "render": "node render-video.mjs",
+    "pin": "node render-pin.mjs",
     "publish": "node publish-instagram.mjs",
+    "indexnow": "node indexnow.mjs",
     "daily": "node daily.mjs"
   },
   "dependencies": {
