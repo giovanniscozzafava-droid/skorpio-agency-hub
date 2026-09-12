@@ -23,13 +23,19 @@ jobs:
     timeout-minutes: 35
     permissions: { contents: write }
     env:
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      # Accetta la chiave con uno qualsiasi dei nomi più probabili.
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || secrets.GOOGLE_API_KEY || secrets.GEMINI_KEY || secrets.GOOGLE_GEMINI_API_KEY || secrets.GEMINI_API || secrets.GOOGLE_GENAI_API_KEY || vars.GEMINI_API_KEY }}
       PLAYWRIGHT_BROWSERS_PATH: /home/runner/pw-browsers
       SLUGS: ${{ github.event.inputs.slugs || 'escursionismo,corsa,cucina-base' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
+
+      - name: Quali segreti e variabili vede questo repo (solo i nomi, i valori restano mascherati)
+        run: |
+          echo "SEGRETI:"; printf '%s' '${{ toJSON(secrets) }}' | jq -r 'keys[]' || echo "(nessuno)"
+          echo "VARIABILI:"; printf '%s' '${{ toJSON(vars) }}' | jq -r 'keys[]' || echo "(nessuna)"
 
       - name: Dipendenze
         working-directory: mystarterpack/pipeline

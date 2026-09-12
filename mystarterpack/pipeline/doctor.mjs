@@ -31,7 +31,10 @@ for (const c of ['ig', 'tt', 'yt', 'pin', 'nl']) {
 }
 
 lines.push('\n## Generazione (testo, voce, immagini)');
-check('GEMINI_API_KEY', { required: true, what: 'Gemini: testi dei pack, voce dei reel, immagini prodotto' });
+const GEMINI_KEYS = ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GEMINI_KEY', 'GOOGLE_GEMINI_API_KEY', 'GOOGLE_GENAI_API_KEY', 'GEMINI_API'];
+const geminiKey = GEMINI_KEYS.find(has);
+if (geminiKey) lines.push(ok(`${geminiKey} — Gemini: testi dei pack, voce dei reel, immagini prodotto: ${mask(geminiKey)}`));
+else { lines.push(ko(`chiave Gemini mancante (cercata come: ${GEMINI_KEYS.join(', ')})`)); blocking++; }
 
 lines.push('\n## Pubblicazione Instagram');
 check('IG_USER_ID', { what: 'ID account Instagram Business' });
