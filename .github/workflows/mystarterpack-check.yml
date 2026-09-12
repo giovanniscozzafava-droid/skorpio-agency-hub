@@ -32,10 +32,29 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
 
-      - name: Quali segreti e variabili vede questo repo (solo i nomi, i valori restano mascherati)
+      - name: Con che nome è salvata la chiave (stampa solo nome e lunghezza, mai il valore)
+        env:
+          K1: ${{ secrets.GEMINI_API_KEY }}
+          K2: ${{ secrets.GOOGLE_API_KEY }}
+          K3: ${{ secrets.GEMINI_KEY }}
+          K4: ${{ secrets.GOOGLE_GEMINI_API_KEY }}
+          K5: ${{ secrets.GEMINI_API }}
+          K6: ${{ secrets.GOOGLE_GENAI_API_KEY }}
+          K7: ${{ secrets.GEMINI_TOKEN }}
+          K8: ${{ secrets.GOOGLE_AI_API_KEY }}
+          V1: ${{ vars.GEMINI_API_KEY }}
         run: |
-          echo "SEGRETI:"; printf '%s' '${{ toJSON(secrets) }}' | jq -r 'keys[]' || echo "(nessuno)"
-          echo "VARIABILI:"; printf '%s' '${{ toJSON(vars) }}' | jq -r 'keys[]' || echo "(nessuna)"
+          set +e
+          names=(GEMINI_API_KEY GOOGLE_API_KEY GEMINI_KEY GOOGLE_GEMINI_API_KEY GEMINI_API GOOGLE_GENAI_API_KEY GEMINI_TOKEN GOOGLE_AI_API_KEY)
+          vals=("$K1" "$K2" "$K3" "$K4" "$K5" "$K6" "$K7" "$K8")
+          found=0
+          for i in "${!names[@]}"; do
+            v="${vals[$i]}"
+            if [ -n "$v" ]; then echo "segreto ${names[$i]}: presente, ${#v} caratteri"; found=1; fi
+          done
+          [ -n "$V1" ] && echo "variabile GEMINI_API_KEY: presente, ${#V1} caratteri (va spostata nei Secrets)"
+          [ "$found" = "0" ] && [ -z "$V1" ] && echo "nessuna chiave Gemini trovata con i nomi cercati"
+          exit 0
 
       - name: Dipendenze
         working-directory: mystarterpack/pipeline
