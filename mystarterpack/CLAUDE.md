@@ -7,8 +7,8 @@ Riporta a: **CFO/Amministratore Fuyue** (Giovanni Scozzafava). Il team opera in 
 - `site/` — blog Astro (statico, Vercel). Pack in `site/src/content/packs/*.md`, schema in `site/src/content.config.ts`, categorie in `site/src/data/categories.json`.
 - `pipeline/` — `generate-pack.mjs` (Gemini testo) → `product-image.mjs` (PNG) → `tts.mjs` (Gemini 2.5 TTS) → `render-video.mjs` (Chromium + ffmpeg, 1080×1920) → `publish-instagram.mjs` (Graph API). `daily.mjs` li orchestra; `topics.json` è la coda.
 - `brand/` — `BRAND-BOOK.md` e loghi. Il brand è vincolante per ogni output (sito, reel, caption).
-- `docs/` — `WRITER-BRIEF.md` (regole editoriali), `SETUP.md` (chiavi e account), `TEAM.md` (ruoli e rituali).
-- `.claude/agents/` — i ruoli del team. Il capo redazione (`editor-in-chief`) coordina gli altri.
+- `docs/` — `STRATEGY.md` (mercato, posizionamento, modello economico, SEO/AEO/GEO, piano marketing, KPI: è la bussola), `WRITER-BRIEF.md` (regole editoriali), `SETUP.md` (chiavi e account), `TEAM.md` (ruoli e rituali).
+- `.claude/agents/` — i ruoli del team. La CEO (`msp-ceo`) guida strategia e KPI; il capo redazione (`msp-editor-in-chief`) coordina i contenuti; `msp-head-of-search` la visibilità; `msp-growth-marketer` la distribuzione.
 - Automazione: `.github/workflows/mystarterpack-daily.yml` (root del repo) esegue `daily.mjs` ogni mattina.
 
 ## Regole non negoziabili

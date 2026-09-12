@@ -17,6 +17,13 @@ const voiceArg = args[args.indexOf('--voice') + 1];
 
 const ENERGETIC = new Set(['sport-outdoor', 'fitness-corpo', 'gaming-streaming', 'auto-moto-bici']);
 
+/** Override opzionale per i format alternativi ("Non comprare questo", "Quanto costa iniziare", "Starter pack di [persona]"):
+ *  out/<slug>/override.json = { "format": "quanto-costa", "hook": "...", "script": ["...", ...], "voice": "Kore" } */
+export function loadOverride(slug) {
+  const f = path.join(outDir(slug), 'override.json');
+  try { return fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : {}; } catch { return {}; }
+}
+
 export async function synthesizeLine(text, voice) {
   const { gemini, TTS_MODELS } = await import('./lib/gemini.mjs');
   const ai = gemini();
@@ -39,9 +46,10 @@ export async function synthesizeLine(text, voice) {
 export async function ttsForPack(slug, { voice, silent = false } = {}) {
   const pack = readPack(slug);
   const cat = categoryOf(pack);
-  voice ||= process.env.TTS_VOICE || (ENERGETIC.has(cat.slug) ? 'Puck' : 'Kore');
+  const override = loadOverride(slug);
+  voice ||= override.voice || process.env.TTS_VOICE || (ENERGETIC.has(cat.slug) ? 'Puck' : 'Kore');
   const dir = path.join(outDir(slug), 'audio'); fs.mkdirSync(dir, { recursive: true });
-  const lines = [pack.data.video.hook, ...pack.data.video.script];
+  const lines = [override.hook || pack.data.video.hook, ...(override.script || pack.data.video.script)];
   const timing = [];
   let t = 0;
   for (const [i, text] of lines.entries()) {

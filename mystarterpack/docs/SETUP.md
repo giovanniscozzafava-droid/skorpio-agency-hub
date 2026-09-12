@@ -39,8 +39,19 @@ Test manuale: `node publish-instagram.mjs escursionismo --dry-run` (solo caption
 Workflow `.github/workflows/mystarterpack-daily.yml`: ogni giorno alle 08:00 (Italia) genera un pack, il reel e pubblica; committa su `main`. Secrets richiesti: `GEMINI_API_KEY`, `IG_USER_ID`, `IG_ACCESS_TOKEN`, `MSP_SUPABASE_URL`, `MSP_SUPABASE_SERVICE_ROLE_KEY`. Variabile: `AMAZON_TAG`. Senza `IG_ACCESS_TOKEN` il workflow genera e renderizza ma non pubblica (reel salvato come artifact).
 Avvio manuale: *Actions → MyStarterPack → Run workflow* (opzionale: slug di un pack esistente).
 
-## 7. Email e dominio (facoltativo)
+## 6b. IndexNow (Bing, ChatGPT Search, Copilot)
+- Generare una chiave (32 caratteri esadecimali, es. `openssl rand -hex 16`), metterla nel secret GitHub `INDEXNOW_KEY` e creare il file `site/public/<KEY>.txt` con dentro la chiave (`cd pipeline && INDEXNOW_KEY=... node indexnow.mjs --write-key`). Nessuna registrazione necessaria.
+
+## 6c. Tag affiliato per canale (attribuzione)
+- In Amazon Associates creare gli ID di tracciamento `mystarterpack-ig-21`, `-tt-21`, `-yt-21`, `-pin-21`, `-nl-21` (Gestisci ID di tracciamento). Impostarli come variabili `AMAZON_TAG_IG`, `AMAZON_TAG_TT`, `AMAZON_TAG_YT`, `AMAZON_TAG_PIN`, `AMAZON_TAG_NL` (GitHub Variables e Vercel env con prefisso `PUBLIC_`). Così i report Amazon dicono quale canale vende.
+
+## 6d. Account social (stesso handle ovunque: mystarterpack.it o mystarterpack)
+- 👤 TikTok, YouTube (canale "MyStarterPack"), Pinterest Business (con dominio verificato), Facebook Page. Avatar `brand/logo/mark.svg` in PNG 1080×1080, bio dal brand book §7. Servono per il cross-posting della sezione 7 di `docs/STRATEGY.md`.
+- 👤 Amazon Influencer Program (`programma-affiliazione.amazon.it/influencers`) appena un account supera i 1.000 follower: storefront + Creator Connections.
+
+## 7. Email, newsletter e dominio
 - `ciao@`, `privacy@`, `social@mystarterpack.it` su Aruba o su Resend (connettore già disponibile in Skorpio) per le comunicazioni.
+- 👤 Newsletter "Il pack della settimana": dominio `mystarterpack.it` verificato su Resend (record DNS forniti da Resend), chiave API nel secret `RESEND_API_KEY` e come env Vercel; il modulo di iscrizione del sito e l'invio settimanale usano quella chiave.
 
 ## Checklist di attivazione (in ordine)
 1. Vercel project + DNS → sito online

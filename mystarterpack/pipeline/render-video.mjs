@@ -11,7 +11,7 @@ import { chromium } from 'playwright-core';
 import ffmpegPath from 'ffmpeg-static';
 import { readPack, outDir, categoryOf, buildCaption, SITE_DIR } from './lib/packs.mjs';
 import { wavToPcm, pcmToWav, silence } from './lib/wav.mjs';
-import { ttsForPack } from './tts.mjs';
+import { ttsForPack, loadOverride } from './tts.mjs';
 
 const args = process.argv.slice(2);
 const slug = args.find((a) => !a.startsWith('--'));
@@ -39,12 +39,13 @@ function productImage(pack, i) {
 
 function buildHtml(pack, timing) {
   const d = pack.data; const cat = categoryOf(pack);
+  const ov = loadOverride(pack.slug); const hook = ov.hook || d.video.hook;
   const L = timing.lines; const total = timing.total + 0.3;
   const scene = (i) => `--t0:${L[i].start.toFixed(3)}s;--dur:${(L[i].duration + (i === 0 ? 0.6 : 0.45)).toFixed(3)}s`;
   const cap = (t) => `<div class="caption"><span>${esc(t)}</span></div>`;
   const hookSub = `${d.activity} · ${d.products.length} prodotti · ${esc(d.budgetTotal)}`;
   let html = `<div class="progress"><i style="--total:${total.toFixed(3)}s"></i></div>`;
-  html += `<section class="scene hook" style="${scene(0)}"><div class="quincunx"></div><div class="brand display"><img class="mark" src="${MARK}" alt="">my<b>starterpack</b><i>.</i></div><div class="emoji">${d.emoji}</div><h1 class="display">${esc(d.video.hook).replace(/(\d+|cinque|5)/i, '<em>$1</em>')}</h1><div class="sub">${hookSub}</div></section>`;
+  html += `<section class="scene hook" style="${scene(0)}"><div class="quincunx"></div><div class="brand display"><img class="mark" src="${MARK}" alt="">my<b>starterpack</b><i>.</i></div><div class="emoji">${d.emoji}</div><h1 class="display">${esc(hook).replace(/(\d+|cinque|5)/i, '<em>$1</em>')}</h1><div class="sub">${hookSub}</div></section>`;
   d.products.forEach((p, i) => {
     const img = productImage(pack, i);
     html += `<section class="scene product" style="${scene(i + 1)};--tint:${cat.color}"><div class="top"><div class="pic">${img ? `<img src="${img}" alt="">` : `<span>${d.emoji}</span>`}</div><div class="chip display">${i + 1}</div><div class="counter display">${i + 1} / 5</div></div><div class="body"><div class="role display">${esc(p.role)}</div><h2 class="display">${esc(p.name)}</h2><div class="why">${esc(p.why.split(/(?<=[.!?])\s/)[0])}</div></div><div class="price display">${esc(p.priceRange)}</div>${cap(L[i + 1].text)}</section>`;
