@@ -4,7 +4,7 @@ Tutto ciò che serve perché il progetto giri da solo. Le voci con 👤 richiedo
 
 ## 1. Dominio e hosting
 - 👤 **mystarterpack.it** è su Aruba. Puntare il DNS a Vercel: record `A` `76.76.21.21` per la root e `CNAME` `cname.vercel-dns.com` per `www`.
-- **Vercel**: nuovo progetto collegato a questo repo, *Root Directory* = `mystarterpack/site`, framework Astro (rilevato da `vercel.json`). Env: `PUBLIC_AMAZON_TAG` (vedi §2). Il sito si ricostruisce a ogni push su `main`.
+- 👤 **Vercel** (la creazione del progetto richiede permessi da owner del team, non concessi al connettore): nuovo progetto `mystarterpack` collegato a questo repo, *Root Directory* = `mystarterpack/site`, framework Astro (rilevato da `vercel.json`). Env: `PUBLIC_AMAZON_TAG` (vedi §2). Il sito si ricostruisce a ogni push su `main`.
 
 ## 2. Amazon Associates (affiliazione)
 - 👤 Iscrizione su https://programma-affiliazione.amazon.it con il sito mystarterpack.it e il profilo Instagram. Il tag ha la forma `nome-21`.

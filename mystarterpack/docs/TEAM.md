@@ -15,7 +15,7 @@ CFO / Amministratore Fuyue (Giovanni)
 
 ## Rituali
 - **Ogni giorno (automatico, 08:00)**: il workflow GitHub esegue `pipeline/daily.mjs`: nuovo pack dalla coda → immagini → voce → reel → Instagram → commit. Nessun umano coinvolto.
-- **Ogni settimana (Routine Claude, lunedì 07:00)**: il capo redazione apre una sessione sul repo, controlla gli ultimi 7 run, revisiona i pack generati, rialimenta `topics.json` (≥ 60 argomenti), lancia i ruoli in parallelo per 5-10 pack "manuali" di qualità superiore, verifica la build e pusha su `main`. Scrive `docs/reports/YYYY-WW.md` per il CFO.
+- **Ogni settimana (Routine Claude `trig_01G4UadWwCTD7VrHJDSVkdvC`, lunedì 07:00 Italia, attiva)**: il capo redazione apre una sessione sul repo, controlla gli ultimi 7 run, revisiona i pack generati, rialimenta `topics.json` (≥ 60 argomenti), lancia i ruoli in parallelo per 5-10 pack "manuali" di qualità superiore, verifica la build e pusha su `main`. Scrive `docs/reports/YYYY-WW.md` per il CFO.
 - **Ogni mese**: SEO analyst controlla sitemap, dati strutturati, pack più visitati (Vercel Analytics) e propone aggiornamenti dei prezzi sui 20 pack più letti.
 
 ## Autonomia e limiti
