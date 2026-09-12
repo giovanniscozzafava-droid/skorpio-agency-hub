@@ -19,7 +19,9 @@ const tryRun = (script, ...a) => { try { run(script, ...a); return true; } catch
 
 async function main() {
   const count = Number(opt('--count') || 1);
-  let slugs = opt('--slug') ? [opt('--slug')] : [];
+  const silent = args.includes('--silent');
+  // --slugs a,b,c: renderizza pack che esistono già (es. la settimana del calendario social)
+  let slugs = opt('--slugs') ? opt('--slugs').split(',').map((s) => s.trim()).filter(Boolean) : (opt('--slug') ? [opt('--slug')] : []);
   if (!slugs.length) {
     for (let i = 0; i < count; i++) {
       const job = nextTopic();
@@ -35,7 +37,7 @@ async function main() {
     const pack = readPack(slug);
     if (pack.data.video.status === 'published') { console.log(`↩︎  ${slug} già pubblicato`); continue; }
     if (!args.includes('--no-images')) { try { run('product-image.mjs', slug); } catch { console.warn('immagini saltate'); } }
-    run('render-video.mjs', slug, '--retts');
+    run('render-video.mjs', slug, '--retts', ...(silent ? ['--silent'] : []));
     tryRun('render-pin.mjs', slug);
     if (!args.includes('--no-publish')) {
       run('publish-instagram.mjs', slug);

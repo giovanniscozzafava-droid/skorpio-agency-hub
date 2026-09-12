@@ -42,12 +42,21 @@ Avvio manuale: *Actions → MyStarterPack → Run workflow* (opzionale: slug di 
 ## 3b. Tre modi per avere la voce dei reel
 La pipeline accetta la voce da tre sorgenti, in ordine di preferenza:
 1. **Gemini 2.5 TTS** (produzione): `GEMINI_API_KEY` nei GitHub Secrets. È l'unica che funziona dentro GitHub Actions, quindi è quella che rende il progetto davvero autonomo.
+   **Il modo più veloce per metterla, senza che la chiave passi da nessuna parte:** dal Mac dove la chiave già esiste (o chiedendolo alla sessione Claude che ci lavora), un comando solo:
+   ```bash
+   env | grep -iE "gemini|google.*api.*key"        # trova il nome esatto della variabile
+   gh secret set GEMINI_API_KEY --repo giovanniscozzafava-droid/skorpio-agency-hub --body "$GEMINI_API_KEY"
+   ```
+   Da quel momento il ciclo giornaliero gira da solo su GitHub Actions, anche a Mac spento. La chiave resta sul tuo computer e dentro GitHub: non passa dalla chat e nessun agente la legge.
+
 2. **Esecuzione dal Mac**: se la chiave è nell'ambiente del tuo computer (dove girano le altre sessioni), la pipeline si esegue lì senza toccare i segreti:
    ```bash
    git clone -b claude/mystarterpack-blog-setup-x7ztsc https://github.com/giovanniscozzafava-droid/skorpio-agency-hub
    cd skorpio-agency-hub/mystarterpack/pipeline && npm install
    node doctor.mjs --live          # conferma che la chiave locale funziona
    node render-video.mjs escursionismo
+   # oppure i sette reel della prima settimana del calendario social:
+   node daily.mjs --no-publish --slugs corsa,home-gym,universita-fuori-sede,yoga,primo-giorno-di-scuola,escursionismo,cucina-base
    ```
 3. **Voce esterna** (ElevenLabs, una voce registrata, un export da un altro strumento): basta un file audio con hook e righe dello script separate da una pausa.
    ```bash
