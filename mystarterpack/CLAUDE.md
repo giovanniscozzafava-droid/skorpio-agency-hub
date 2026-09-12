@@ -29,4 +29,5 @@ node render-video.mjs <slug> [--silent]                      # --silent: senza T
 node publish-instagram.mjs <slug> [--dry-run]
 node daily.mjs [--no-publish]                                # ciclo completo
 node doctor.mjs [--live]                                     # cosa è configurato e cosa manca (--live prova le API)
+node import-voice.mjs <slug> voce.mp3                        # voce prodotta altrove: ricava i tempi e monta il reel
 ```

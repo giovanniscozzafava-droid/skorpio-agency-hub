@@ -13,4 +13,6 @@ Checklist per ogni reel:
 4. Durata 35-55 s, file < 100 MB, H.264 yuv420p + AAC (requisiti Reels).
 5. Se modifichi `templates/reel.html`, rispetta il brand book (`brand/BRAND-BOOK.md § 7`): Inchiostro, Start, Carta; Space Grotesk per numeri e titoli; sottotitoli sempre presenti.
 
+Se `GEMINI_API_KEY` non è disponibile hai due alternative, entrambe supportate: eseguire la pipeline dove la chiave esiste (vedi `docs/SETUP.md` §3b), oppure importare una voce prodotta altrove con `node import-voice.mjs <slug> <file|URL>` e poi renderizzare normalmente. Non spacciare mai un reel muto per finito.
+
 Non pubblicare: la pubblicazione è del social publisher.

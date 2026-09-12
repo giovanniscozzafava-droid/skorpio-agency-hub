@@ -39,6 +39,23 @@ Test manuale: `node publish-instagram.mjs escursionismo --dry-run` (solo caption
 Workflow `.github/workflows/mystarterpack-daily.yml`: ogni giorno alle 08:00 (Italia) genera un pack, il reel e pubblica; committa su `main`. Secrets richiesti: `GEMINI_API_KEY`, `IG_USER_ID`, `IG_ACCESS_TOKEN`, `MSP_SUPABASE_URL`, `MSP_SUPABASE_SERVICE_ROLE_KEY`. Variabile: `AMAZON_TAG`. Senza `IG_ACCESS_TOKEN` il workflow genera e renderizza ma non pubblica (reel salvato come artifact).
 Avvio manuale: *Actions → MyStarterPack → Run workflow* (opzionale: slug di un pack esistente).
 
+## 3b. Tre modi per avere la voce dei reel
+La pipeline accetta la voce da tre sorgenti, in ordine di preferenza:
+1. **Gemini 2.5 TTS** (produzione): `GEMINI_API_KEY` nei GitHub Secrets. È l'unica che funziona dentro GitHub Actions, quindi è quella che rende il progetto davvero autonomo.
+2. **Esecuzione dal Mac**: se la chiave è nell'ambiente del tuo computer (dove girano le altre sessioni), la pipeline si esegue lì senza toccare i segreti:
+   ```bash
+   git clone -b claude/mystarterpack-blog-setup-x7ztsc https://github.com/giovanniscozzafava-droid/skorpio-agency-hub
+   cd skorpio-agency-hub/mystarterpack/pipeline && npm install
+   node doctor.mjs --live          # conferma che la chiave locale funziona
+   node render-video.mjs escursionismo
+   ```
+3. **Voce esterna** (ElevenLabs, una voce registrata, un export da un altro strumento): basta un file audio con hook e righe dello script separate da una pausa.
+   ```bash
+   node import-voice.mjs <slug> voce.mp3   # ricava i tempi riga per riga
+   node render-video.mjs <slug>            # monta il reel su quella voce
+   ```
+   `import-voice.mjs` accetta anche un URL. Divide la traccia sui silenzi; se non ne trova abbastanza usa una divisione proporzionale ai caratteri (`--split proporzionale` per forzarla).
+
 ## 6b. IndexNow (Bing, ChatGPT Search, Copilot)
 - Generare una chiave (32 caratteri esadecimali, es. `openssl rand -hex 16`), metterla nel secret GitHub `INDEXNOW_KEY` e creare il file `site/public/<KEY>.txt` con dentro la chiave (`cd pipeline && INDEXNOW_KEY=... node indexnow.mjs --write-key`). Nessuna registrazione necessaria.
 
