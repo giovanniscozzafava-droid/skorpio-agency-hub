@@ -1,0 +1,17 @@
+[
+  { "slug": "sport-outdoor", "name": "Sport & Outdoor", "emoji": "🥾", "tagline": "Dalla prima uscita alla prima vetta.", "color": "#2F6B4F" },
+  { "slug": "fitness-corpo", "name": "Fitness & Corpo", "emoji": "🏋️", "tagline": "Allenarsi bene, spendendo il giusto.", "color": "#C2410C" },
+  { "slug": "casa-cucina", "name": "Casa & Cucina", "emoji": "🍳", "tagline": "Le prime 5 cose che rendono una casa tua.", "color": "#B45309" },
+  { "slug": "salute-benessere", "name": "Salute & Benessere", "emoji": "🧘", "tagline": "Prendersi cura di sé, senza esagerare.", "color": "#0F766E" },
+  { "slug": "tech-digitale", "name": "Tech & Digitale", "emoji": "💻", "tagline": "Postazioni, gadget e strumenti per partire.", "color": "#1D4ED8" },
+  { "slug": "hobby-creativita", "name": "Hobby & Creatività", "emoji": "🎨", "tagline": "Ogni passione inizia con un kit.", "color": "#7C3AED" },
+  { "slug": "bambini-famiglia", "name": "Bambini & Famiglia", "emoji": "🧸", "tagline": "Le prime cose che servono davvero.", "color": "#DB2777" },
+  { "slug": "animali", "name": "Animali", "emoji": "🐾", "tagline": "Accogliere un nuovo amico a quattro zampe.", "color": "#92400E" },
+  { "slug": "viaggi", "name": "Viaggi", "emoji": "🧳", "tagline": "Partire leggeri, tornare felici.", "color": "#0369A1" },
+  { "slug": "lavoro-studio", "name": "Lavoro & Studio", "emoji": "📚", "tagline": "Iniziare un percorso con gli strumenti giusti.", "color": "#374151" },
+  { "slug": "giardino-faidate", "name": "Giardino & Fai da te", "emoji": "🌱", "tagline": "Mani in pasta, dal balcone al garage.", "color": "#4D7C0F" },
+  { "slug": "moda-cura-persona", "name": "Moda & Cura della persona", "emoji": "🪒", "tagline": "Routine semplici che funzionano.", "color": "#9F1239" },
+  { "slug": "auto-moto-bici", "name": "Auto, Moto & Bici", "emoji": "🚲", "tagline": "Su due o quattro ruote, con la testa.", "color": "#1F2937" },
+  { "slug": "musica-audio", "name": "Musica & Audio", "emoji": "🎸", "tagline": "Il primo strumento, il primo suono.", "color": "#B91C1C" },
+  { "slug": "gaming-streaming", "name": "Gaming & Streaming", "emoji": "🎮", "tagline": "Setup da principiante, senza sprechi.", "color": "#4F46E5" }
+]

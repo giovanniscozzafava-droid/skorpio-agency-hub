@@ -1,0 +1,102 @@
+name: MyStarterPack · verifica chiavi e primi reel
+
+# Gira sul branch di sviluppo a ogni push, senza toccare main.
+# Serve a confermare che GEMINI_API_KEY funziona e a produrre i primi reel con la voce vera.
+on:
+  push:
+    branches: [claude/mystarterpack-blog-setup-x7ztsc]
+    paths:
+      - 'mystarterpack/pipeline/**'
+      - '.github/workflows/mystarterpack-check.yml'
+  workflow_dispatch:
+    inputs:
+      slugs:
+        description: "Pack da renderizzare, separati da virgola"
+        required: false
+        default: "escursionismo,corsa,cucina-base"
+
+concurrency: { group: mystarterpack-check, cancel-in-progress: true }
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions: { contents: write }
+    env:
+      # Accetta la chiave con uno qualsiasi dei nomi più probabili.
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || secrets.GOOGLE_API_KEY || secrets.GEMINI_KEY || secrets.GOOGLE_GEMINI_API_KEY || secrets.GEMINI_API || secrets.GOOGLE_GENAI_API_KEY || vars.GEMINI_API_KEY }}
+      PLAYWRIGHT_BROWSERS_PATH: /home/runner/pw-browsers
+      SLUGS: ${{ github.event.inputs.slugs || 'escursionismo,corsa,cucina-base' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+
+      - name: Con che nome è salvata la chiave (stampa solo nome e lunghezza, mai il valore)
+        env:
+          K1: ${{ secrets.GEMINI_API_KEY }}
+          K2: ${{ secrets.GOOGLE_API_KEY }}
+          K3: ${{ secrets.GEMINI_KEY }}
+          K4: ${{ secrets.GOOGLE_GEMINI_API_KEY }}
+          K5: ${{ secrets.GEMINI_API }}
+          K6: ${{ secrets.GOOGLE_GENAI_API_KEY }}
+          K7: ${{ secrets.GEMINI_TOKEN }}
+          K8: ${{ secrets.GOOGLE_AI_API_KEY }}
+          V1: ${{ vars.GEMINI_API_KEY }}
+        run: |
+          set +e
+          names=(GEMINI_API_KEY GOOGLE_API_KEY GEMINI_KEY GOOGLE_GEMINI_API_KEY GEMINI_API GOOGLE_GENAI_API_KEY GEMINI_TOKEN GOOGLE_AI_API_KEY)
+          vals=("$K1" "$K2" "$K3" "$K4" "$K5" "$K6" "$K7" "$K8")
+          found=0
+          for i in "${!names[@]}"; do
+            v="${vals[$i]}"
+            if [ -n "$v" ]; then echo "segreto ${names[$i]}: presente, ${#v} caratteri"; found=1; fi
+          done
+          [ -n "$V1" ] && echo "variabile GEMINI_API_KEY: presente, ${#V1} caratteri (va spostata nei Secrets)"
+          [ "$found" = "0" ] && [ -z "$V1" ] && echo "nessuna chiave Gemini trovata con i nomi cercati"
+          exit 0
+
+      - name: Dipendenze
+        working-directory: mystarterpack/pipeline
+        run: npm install --no-audit --no-fund && npx playwright-core install chromium --with-deps
+
+      - name: Configurazione (chiavi presenti e funzionanti)
+        working-directory: mystarterpack/pipeline
+        run: node doctor.mjs --live
+
+      - name: Voce e reel
+        working-directory: mystarterpack/pipeline
+        run: node daily.mjs --no-publish --no-images --slugs "$SLUGS"
+
+      - name: Conserva la voce generata (riutilizzabile, evita di rigenerarla)
+        working-directory: mystarterpack/pipeline
+        run: |
+          mkdir -p ../assets/voice
+          for d in out/*/; do
+            slug=$(basename "$d")
+            [ -f "$d/voice.wav" ] || continue
+            node -e "console.log(require('ffmpeg-static'))" > /tmp/ff && \
+            "$(cat /tmp/ff)" -y -loglevel error -i "$d/voice.wav" -c:a libmp3lame -b:a 96k "../assets/voice/$slug.mp3"
+          done
+          ls -la ../assets/voice
+
+      - name: Artifact con reel, cover e pin
+        uses: actions/upload-artifact@v4
+        with:
+          name: reel-check-${{ github.run_id }}
+          path: |
+            mystarterpack/pipeline/out/**/reel.mp4
+            mystarterpack/pipeline/out/**/pin.jpg
+            mystarterpack/pipeline/out/**/cover-post.jpg
+            mystarterpack/pipeline/out/**/caption.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Salva la voce sul branch
+        run: |
+          git config user.name "mystarterpack-bot"
+          git config user.email "bot@mystarterpack.it"
+          git add mystarterpack/assets/voice
+          git diff --cached --quiet || git commit -m "chore(mystarterpack): voce generata con Gemini per i primi pack [skip ci]"
+          git pull --rebase origin ${{ github.ref_name }} || true
+          git push origin HEAD:${{ github.ref_name }}

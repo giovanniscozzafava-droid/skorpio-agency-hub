@@ -1,0 +1,77 @@
+---
+import Base from '../layouts/Base.astro';
+import { getCollection } from 'astro:content';
+import categories from '../data/categories.json';
+import { categoryOf, notBuyFaq } from '../data/packData';
+
+const packs = await getCollection('packs');
+const items = packs
+  .map((p) => {
+    const faq = notBuyFaq(p.data.faq);
+    if (!faq) return null;
+    return {
+      slug: p.id,
+      emoji: p.data.emoji,
+      activity: p.data.activity,
+      title: p.data.title,
+      category: categoryOf(p.data.category),
+      q: faq.q,
+      a: faq.a,
+    };
+  })
+  .filter((x): x is NonNullable<typeof x> => x !== null);
+
+const groups = (categories as { slug: string; name: string; emoji: string }[])
+  .map((c) => ({ cat: c, list: items.filter((i) => i.category.slug === c.slug).sort((a, b) => a.activity.localeCompare(b.activity, 'it')) }))
+  .filter((g) => g.list.length > 0);
+
+const title = 'Cosa non comprare quando inizi';
+const description = `Per ${items.length} attività, la lista di ciò che ti venderebbero volentieri e che all'inizio non serve. Il risparmio più grande è l'acquisto che non fai.`;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  inLanguage: 'it',
+  mainEntity: items.map((i) => ({
+    '@type': 'Question',
+    name: `${i.activity}: cosa non comprare all'inizio?`,
+    acceptedAnswer: { '@type': 'Answer', text: i.a },
+  })),
+};
+---
+<Base title={title} description={description} jsonLd={jsonLd}>
+  <section class="section"><div class="wrap">
+    <div class="crumbs" style="color:var(--muted)"><a href="/">Home</a> › Cosa non comprare</div>
+    <h1>Cosa non comprare quando inizi</h1>
+    <div class="prose" style="max-width:760px">
+      <p>
+        Quasi tutte le guide ti dicono cosa comprare. Quasi nessuna ti dice cosa lasciare sullo scaffale, e
+        lì sta la parte più costosa degli errori da principiante. Chi parte da zero non sbaglia comprando poco:
+        sbaglia comprando troppo, attrezzatura da esperto che non sa ancora usare e accessori che finiscono in
+        un cassetto dopo due settimane.
+      </p>
+      <p>
+        Ogni starter pack si chiude con una lista di cose da non comprare. Le abbiamo raccolte qui, attività per
+        attività. Il criterio è sempre lo stesso: rimanda l'acquisto finché non hai capito, con le mani, di cosa
+        hai davvero bisogno. Fai le prime cinque uscite, poi decidi. È il consiglio che ci fa guadagnare meno e
+        che ti fa partire meglio.
+      </p>
+    </div>
+    {groups.map((g) => (
+      <section style="margin-top:36px">
+        <h2 id={g.cat.slug}>{g.cat.emoji} {g.cat.name}</h2>
+        {g.list.map((i) => (
+          <div class="nobuy">
+            <h3>{i.emoji} {i.activity}</h3>
+            <p class="src"><b>{i.q}</b></p>
+            <p>{i.a}</p>
+            <p class="src"><a href={`/pack/${i.slug}`}>Vedi lo starter pack {i.activity} →</a></p>
+          </div>
+        ))}
+      </section>
+    ))}
+    <p style="margin-top:28px;font-size:14px;color:var(--muted)">
+      Il metodo dietro queste scelte è spiegato in <a href="/come-scegliamo">come scegliamo</a>.
+      Chi scrive e chi revisiona è in <a href="/redazione">redazione</a>.
+    </p>
+  </div></section>
+</Base>

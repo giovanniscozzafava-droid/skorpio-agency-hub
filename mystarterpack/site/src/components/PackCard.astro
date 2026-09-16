@@ -1,0 +1,14 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import categories from '../data/categories.json';
+interface Props { pack: CollectionEntry<'packs'> }
+const { pack } = Astro.props;
+const d = pack.data;
+const cat = categories.find((c) => c.slug === d.category);
+---
+<a class="card" href={`/pack/${pack.id}`} style={`--tint:${cat?.color ?? '#1B1F3B'}1f`}>
+  <div class="emoji">{d.emoji}</div>
+  <h3>{d.activity}</h3>
+  <p style="margin:0;font-size:15px;color:var(--muted)">{d.description}</p>
+  <div class="meta"><span class="badge">{cat?.name ?? d.category}</span><span>Budget <b>{d.budgetTotal}</b></span></div>
+</a>

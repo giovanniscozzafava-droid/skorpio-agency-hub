@@ -1,0 +1,45 @@
+# MyStarterPack.it - https://mystarterpack.it
+# Contenuti liberamente indicizzabili e citabili. /go/ sono solo redirect affiliati.
+
+User-agent: *
+Allow: /
+Disallow: /go/
+
+# Motori di risposta e crawler AI: accesso consentito.
+User-agent: GPTBot
+Allow: /
+Disallow: /go/
+
+User-agent: OAI-SearchBot
+Allow: /
+Disallow: /go/
+
+User-agent: ChatGPT-User
+Allow: /
+Disallow: /go/
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /go/
+
+User-agent: anthropic-ai
+Allow: /
+Disallow: /go/
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /go/
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /go/
+
+User-agent: Bingbot
+Allow: /
+Disallow: /go/
+
+User-agent: Applebot
+Allow: /
+Disallow: /go/
+
+Sitemap: https://mystarterpack.it/sitemap-index.xml

@@ -1,0 +1,46 @@
+---
+import Base from '../layouts/Base.astro';
+import PackCard from '../components/PackCard.astro';
+import { getCollection } from 'astro:content';
+import categories from '../data/categories.json';
+import { SITE } from '../data/site';
+import Newsletter from '../components/Newsletter.astro';
+const packs = (await getCollection('packs')).sort((a, b) => b.data.publishedAt.valueOf() - a.data.publishedAt.valueOf());
+const latest = packs.slice(0, 9);
+const counts = Object.fromEntries(categories.map((c) => [c.slug, packs.filter((p) => p.data.category === c.slug).length]));
+const jsonLd = { '@context': 'https://schema.org', '@type': 'WebSite', name: SITE.name, url: SITE.url, description: SITE.description,
+  potentialAction: { '@type': 'SearchAction', target: `${SITE.url}/cerca?q={search_term_string}`, 'query-input': 'required name=search_term_string' } };
+---
+<Base title={`${SITE.name} · ${SITE.tagline}`} description={SITE.description} jsonLd={jsonLd}>
+  <section class="hero"><div class="quincunx"></div>
+    <div class="wrap">
+      <div class="kicker">{packs.length} starter pack · nuovo pack ogni giorno</div>
+      <h1>Le 5 cose per iniziare qualsiasi cosa.<br /><span style="color:var(--start)">Punto.</span></h1>
+      <p class="lead">Per ogni attività, hobby o momento della vita: i cinque prodotti giusti per partire, scelti e spiegati. Senza liste infinite. Con il budget chiaro e la lista di ciò che <em>non</em> devi comprare.</p>
+      <form class="search" action="/cerca" method="get" style="max-width:560px;margin-top:20px">
+        <input type="search" name="q" placeholder="Cosa vuoi iniziare? (es. correre, sushi, podcast, cucciolo...)" aria-label="Cerca uno starter pack" />
+        <button class="btn" type="submit">Cerca</button>
+      </form>
+    </div>
+  </section>
+  <section class="section"><div class="wrap">
+    <div class="section-head"><h2>Ultimi pack</h2><a href="/categorie">Tutte le categorie →</a></div>
+    <div class="grid">{latest.map((p) => <PackCard pack={p} />)}</div>
+  </div></section>
+  <section class="section"><div class="wrap">
+    <div class="section-head"><h2>Categorie</h2></div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">
+      {categories.map((c) => <a class="cat-tile" href={`/categorie/${c.slug}`}><span class="emoji">{c.emoji}</span><span>{c.name}<small>{counts[c.slug]} pack · {c.tagline}</small></span></a>)}
+    </div>
+  </div></section>
+  <section class="section"><div class="wrap" style="max-width:760px"><Newsletter src="home" /></div></section>
+  <section class="section"><div class="wrap" style="max-width:760px">
+    <h2>Come funziona</h2>
+    <ol>
+      <li><b>Un'attività, cinque prodotti.</b> Ogni pack copre le cinque esigenze reali di chi parte da zero: mai due prodotti per la stessa cosa.</li>
+      <li><b>Budget chiaro.</b> Fasce di prezzo realistiche e un totale. Sai prima quanto spendi.</li>
+      <li><b>Cosa non comprare.</b> Ogni pack dice anche cosa lasciare sullo scaffale all'inizio.</li>
+      <li><b>Link Amazon.it.</b> Compri dove compri già. Se acquisti tramite i nostri link riceviamo una piccola commissione, per te il prezzo non cambia. <a href="/affiliazione">Dettagli</a>.</li>
+    </ol>
+  </div></section>
+</Base>

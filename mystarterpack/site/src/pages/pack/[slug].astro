@@ -1,0 +1,98 @@
+---
+import Base from '../../layouts/Base.astro';
+import PackCard from '../../components/PackCard.astro';
+import Newsletter from '../../components/Newsletter.astro';
+import { getCollection, render } from 'astro:content';
+import categories from '../../data/categories.json';
+import { SITE, amazonLink } from '../../data/site';
+import { answerCapsule, itDate } from '../../data/packData';
+export async function getStaticPaths() {
+  const packs = await getCollection('packs');
+  return packs.map((p) => ({ params: { slug: p.id }, props: { pack: p, related: packs.filter((o) => o.data.category === p.data.category && o.id !== p.id).slice(0, 3) } }));
+}
+const { pack, related } = Astro.props;
+const d = pack.data;
+const { Content } = await render(pack);
+const cat = categories.find((c) => c.slug === d.category)!;
+const tint = `${cat.color}1f`;
+const pageUrl = `${SITE.url}/pack/${pack.id}`;
+const modified = (d.updatedAt ?? d.publishedAt);
+const capsule = answerCapsule(d);
+const jsonLd = [
+  { '@context': 'https://schema.org', '@type': 'Article', headline: d.title, description: d.description, datePublished: d.publishedAt.toISOString(),
+    dateModified: modified.toISOString(), inLanguage: 'it', isAccessibleForFree: true,
+    author: { '@type': 'Organization', name: SITE.name, url: SITE.url }, publisher: { '@type': 'Organization', name: SITE.publisher },
+    mainEntityOfPage: pageUrl, url: pageUrl, articleSection: cat.name,
+    speakable: { '@type': 'SpeakableSpecification', cssSelector: ['#in-breve p', 'h1'] } },
+  { '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Home', item: SITE.url },
+      { '@type': 'ListItem', position: 2, name: cat.name, item: `${SITE.url}/categorie/${cat.slug}` },
+      { '@type': 'ListItem', position: 3, name: d.activity, item: pageUrl },
+    ] },
+  { '@context': 'https://schema.org', '@type': 'ItemList', name: d.title, numberOfItems: 5,
+    itemListElement: d.products.map((p, i) => ({ '@type': 'ListItem', position: i + 1, name: p.name, url: amazonLink(p) })) },
+  { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: d.faq.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })) },
+];
+---
+<Base title={d.title} description={d.description} type="article" jsonLd={jsonLd}>
+  <section class="pack-hero"><div class="quincunx" style="opacity:.08;background-image:radial-gradient(#FAF7F2 2.2px, transparent 2.5px)"></div><div class="wrap">
+    <div class="crumbs"><a href="/">Home</a> › <a href={`/categorie/${cat.slug}`}>{cat.name}</a></div>
+    <div style="font-size:44px;line-height:1">{d.emoji}</div>
+    <h1>{d.title}</h1>
+    <p class="byline"><a href="/redazione">Redazione {SITE.name}</a> · aggiornato il {itDate(modified)}</p>
+    <p class="lead">{d.description}</p>
+    <div class="facts"><span class="fact">Budget totale <b>{d.budgetTotal}</b></span><span class="fact">Livello <b>{d.level}</b></span><span class="fact">Aggiornato <b>{itDate(modified)}</b></span></div>
+  </div></section>
+  <div class="wrap pack-layout">
+    <article>
+      <p class="disclosure">Questa pagina contiene link affiliati Amazon.it: se acquisti tramite questi link riceviamo una commissione, senza costi aggiuntivi per te. I prezzi sono fasce indicative e possono variare. <a href="/affiliazione">Come scegliamo e come guadagniamo</a>.</p>
+      <section class="answer" id="in-breve">
+        <h2>In breve</h2>
+        <p>{capsule}</p>
+        <div class="answer-table">
+          <table>
+            <caption>I 5 prodotti dello starter pack {d.activity}</caption>
+            <thead><tr><th scope="col">n.</th><th scope="col">Ruolo</th><th scope="col">Prodotto</th><th scope="col">Fascia prezzo</th></tr></thead>
+            <tbody>
+              {d.products.map((p, i) => (
+                <tr>
+                  <td>{i + 1}</td>
+                  <td>{p.role}</td>
+                  <td><a href={`#p${i + 1}`}>{p.name}</a></td>
+                  <td>{p.priceRange}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot><tr><td colspan="3">Budget totale indicativo</td><td>{d.budgetTotal}</td></tr></tfoot>
+          </table>
+        </div>
+      </section>
+      <h2 style="margin-top:28px">Le 5 cose</h2>
+      {d.products.map((p, i) => (
+        <section class="product" id={`p${i + 1}`} style={`--tint:${tint}`}>
+          <div class="pic">{p.image ? <img src={p.image} alt={p.name} loading="lazy" /> : <span>{d.emoji}</span>}</div>
+          <div>
+            <div class="head"><span class="chip">{i + 1}</span><span class="role">{p.role}</span></div>
+            <h3>{p.name}</h3>
+            <div class="price">{p.priceRange}{p.brand && p.brand !== 'Vari' && <span style="color:var(--muted);font-weight:500"> · {p.brand}</span>}</div>
+            <p style="margin-top:8px">{p.why}</p>
+            <ul class="pros">{p.pros.map((x) => <li>{x}</li>)}</ul>
+            {p.cons.length > 0 && <ul class="cons">{p.cons.map((x) => <li>{x}</li>)}</ul>}
+            {p.tip && <div class="tip">💡 {p.tip}</div>}
+            <div class="cta"><a class="btn amazon" href={amazonLink(p)} rel="sponsored nofollow noopener" target="_blank">Vedi su Amazon.it →</a><span>link affiliato</span></div>
+          </div>
+        </section>
+      ))}
+      <div class="prose"><Content /></div>
+      <Newsletter compact src="pack" />
+      {d.faq.length > 0 && <section class="faq"><h2>Domande frequenti</h2>{d.faq.map((f) => <details><summary>{f.q}</summary><p style="margin-top:8px">{f.a}</p></details>)}</section>}
+    </article>
+    <aside class="aside">
+      <div class="box"><h4>Il pack in breve</h4><ol>{d.products.map((p, i) => <li><a href={`#p${i + 1}`}>{p.role}</a> · {p.priceRange}</li>)}</ol><div style="margin-top:12px;font-size:13px;color:var(--muted)">Totale indicativo</div><div class="total">{d.budgetTotal}</div></div>
+      {d.video.instagramUrl && <div class="box"><h4>Il reel</h4><a href={d.video.instagramUrl} target="_blank" rel="noopener">Guarda i 60 secondi su Instagram →</a></div>}
+      <div class="box"><h4>Categoria</h4><a class="cat-tile" href={`/categorie/${cat.slug}`}><span class="emoji">{cat.emoji}</span><span>{cat.name}</span></a></div>
+      <div class="box"><h4>Dati aperti</h4><a href={`/pack/${pack.id}.json`}>Questo pack in JSON</a><br /><a href="/packs.json">Tutti i pack in JSON</a></div>
+    </aside>
+  </div>
+  {related.length > 0 && <section class="section"><div class="wrap"><div class="section-head"><h2>Altri pack in {cat.name}</h2></div><div class="grid">{related.map((p) => <PackCard pack={p} />)}</div></div></section>}
+</Base>

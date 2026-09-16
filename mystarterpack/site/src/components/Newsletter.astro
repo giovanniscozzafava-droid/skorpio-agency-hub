@@ -1,0 +1,28 @@
+---
+interface Props { compact?: boolean; src?: string }
+const { compact = false, src = 'web' } = Astro.props;
+---
+<div class={`nl ${compact ? 'compact' : ''}`}>
+  {!compact && <h2>Il pack della settimana</h2>}
+  <p>{compact ? 'Un pack a settimana e le offerte sui prodotti dei pack. Niente spam.' : 'Ogni giovedì: uno starter pack, tre offerte reali sui prodotti dei pack e una cosa da non comprare. Gratis, un click per disiscriverti.'}</p>
+  <form class="search" data-nl method="post" action="/api/subscribe">
+    <input type="email" name="email" required placeholder="la tua email" aria-label="Email" />
+    <input type="hidden" name="src" value={src} />
+    <button class="btn" type="submit">Iscrivimi</button>
+  </form>
+  <p class="nl-msg" hidden></p>
+</div>
+<script>
+  for (const f of document.querySelectorAll<HTMLFormElement>('form[data-nl]')) {
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = f.parentElement!.querySelector<HTMLElement>('.nl-msg')!; const btn = f.querySelector('button')!;
+      btn.disabled = true;
+      try {
+        const r = await fetch(f.action, { method: 'POST', body: new FormData(f) }); const j = await r.json();
+        msg.textContent = j.ok ? 'Fatto. Ci vediamo giovedì. Punto.' : (j.error === 'newsletter non ancora attiva' ? 'La newsletter parte a breve: intanto seguici su Instagram.' : `Ops: ${j.error}`);
+      } catch { msg.textContent = 'Connessione assente, riprova.'; }
+      msg.hidden = false; btn.disabled = false;
+    });
+  }
+</script>
