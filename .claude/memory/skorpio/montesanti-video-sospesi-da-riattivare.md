@@ -1,12 +1,15 @@
 ---
-title: DA FARE dopo il deploy del muxer: riattivare 4 video Montesanti
+title: DA FARE dopo il deploy del muxer: riattivare i video Montesanti
 tags: [monitor, montesanti, da-fare]
 importance: alta
 updated: 2026-09-29
 ---
-Il 29/09/2026 ho messo `attivo=false` su 4 video muti di Montesanti in `monitor_contenuti` (progetto Supabase skorpio), come rimedio temporaneo al bug del muxer (vedi `monitor-tv-dove-vive-il-codice`): "Ogni anno, migliaia di donne…", "Ma a chi ha Diabete tipo 2…", "Visite diabetologiche", "visite_endocrinologiche_1920x1080" (drive_file_id 1U4i-Qnliivn2vJXVoXX7uKsClGP-jna5, 1amZC11aN9b9gWbX95lhLb-PLNtq7bodD, 1k8SCln6xyvbICQSa39J-J6OJX0qrojiV, 1BGlNBH28P4Cf8X1FQKWm2NoBFXaKGKRo).
-Appena `muxer.mjs` corretto (branch claude/montesanti-monitor-freezing-621vu1 di skorpiov3) è copiato su stream.fuyue.it e il servizio è riavviato, rimetterli `attivo=true`.
+Programmazione di Montesanti fino a giugno 2026: la fascia "Giornaliera" (lun-ven 09-18) con 7 video: motivazionale, Longevità, frattaglia 1, "Ogni anno, migliaia di donne…", "Ma a chi ha Diabete tipo 2…", "Visite diabetologiche", "visite_endocrinologiche_1920x1080". La fascia è intatta in `monitor_fasce`.
 
-Sospesi lo stesso giorno anche 3 contenuti che non partivano mai e facevano perdere secondi al muxer a ogni giro: "Longevità" e "frattaglia 1" (drive_url nel vecchio formato `?id=`, 401) e "Longevità (1)" (teamId 48ac… con Drive scollegato, 409). Si riattivano solo dopo aver corretto il drive_url.
+Stato al 29/09/2026 in `monitor_contenuti` (progetto Supabase skorpio):
+- attivi: motivazionale, Longevità (drive_url riscritto dal vecchio `?id=` a `fileId=…&teamId=fd62…` di Giovanni, che è il proprietario su Drive).
+- sospesi per il bug del muxer sui video muti (vedi `monitor-tv-dove-vive-il-codice`): i 4 video muti (drive_file_id 1U4i-Qnliivn2vJXVoXX7uKsClGP-jna5, 1amZC11aN9b9gWbX95lhLb-PLNtq7bodD, 1k8SCln6xyvbICQSa39J-J6OJX0qrojiV, 1BGlNBH28P4Cf8X1FQKWm2NoBFXaKGKRo). Da rimettere `attivo=true` appena `muxer.mjs` corretto (PR #36 di skorpiov3) è copiato su stream.fuyue.it e il servizio è riavviato.
+- frattaglia 1: drive_url riscritto nel formato corretto ma lasciato spento. È un .MOV da iPhone, probabilmente HEVC: con `-c:v copy` la LG potrebbe non decodificarlo. Va controllato il codec (ffprobe sul VPS) prima di riattivarlo.
+- Longevità (1): Drive di Alessandro scollegato (409), non era nella fascia già a giugno.
 
-Provato e scartato lo stesso giorno: passare Montesanti al player normale (`device_profile_override='modern'`). Su quella LG NetCast i video restano in pausa e la radio non parte. Resta `legacy`.
+Provato e scartato: passare Montesanti al player normale (`device_profile_override='modern'`). Su quella LG NetCast i video restano in pausa e la radio non parte. Resta `legacy`.
