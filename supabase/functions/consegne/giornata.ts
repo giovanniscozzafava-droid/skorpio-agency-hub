@@ -7,7 +7,10 @@
 //   giornata          lun-ven 8:30, a ognuno la lista del giorno con gli orari
 //                     (WhatsApp + email, stesso testo), a Elisa anche gli scaduti
 //   avvisa_lavoro     subito, a chi riceve un lavoro nuovo o spostato
-//   smistamento       subito, a Elisa: un compito passato da Giovanni da dare ai ragazzi
+//   da_vidimare       subito, a Elisa: Alberto ha messo in calendario un lavoro
+//                     chiesto da Giovanni; il ragazzo lo riceve quando Elisa vidima
+//   smistamento       (vecchio passaggio) un compito da smistare, a Elisa
+//   chiedi_compiti    lun-ven 18:30, a Giovanni: i lavori per il prossimo giorno
 //   non_entra         a Giovanni ed Elisa, quando un lavoro non entra
 //   sera              lun-ven 18:00, lavori con consegna oggi non in Fatto
 //   promemoria_timbra lun-ven 9:15, a chi non ha timbrato l'Entrata
@@ -156,9 +159,11 @@ export async function testoGiornata(sb: Sb, c: Contatto, giorno: string, apertur
   const consegne: Riga[] = g?.consegne ?? [];
   const assenze: string[] = g?.assenze ?? [];
   const daSmistare: Riga[] = g?.da_smistare ?? [];
+  const daVidimare: Riga[] = g?.da_vidimare ?? [];
   const righe: string[] = [];
   if (apertura) righe.push(`Buongiorno ${c.nome}, ${inParole(giorno)}:`);
-  for (const a of agenda) {
+  // Il lavoro non ancora vidimato da Elisa il ragazzo non lo vede.
+  for (const a of agenda.filter((x) => !x.da_vidimare)) {
     const titolo = String(a.titolo ?? "").trim();
     righe.push(`${hhmm(a.ora)}${a.ora_fine ? `-${hhmm(a.ora_fine)}` : ""} ${titolo}${a.cliente && !titolo.toLowerCase().includes(String(a.cliente).toLowerCase()) ? ` (${a.cliente})` : ""}`);
   }
@@ -175,7 +180,10 @@ export async function testoGiornata(sb: Sb, c: Contatto, giorno: string, apertur
   if (daSmistare.length) {
     righe.push(`Da smistare ai ragazzi (${daSmistare.length}): ${daSmistare.map((d) => `${d.descrizione} [${d.id_display}]`).join("; ")}`);
   }
-  const vuota = !agenda.length && !consegne.length && !assenze.length && !daSmistare.length;
+  if (daVidimare.length) {
+    righe.push(`Da vidimare (${daVidimare.length}): ${daVidimare.map((d) => `${d.per}: ${d.cosa}, consegna ${inParole(String(d.scadenza), giorno)}${d.consegna_ora ? ` entro le ${d.consegna_ora}` : ""} [${d.id_display}]`).join("; ")}`);
+  }
+  const vuota = !agenda.some((x) => !x.da_vidimare) && !consegne.length && !assenze.length && !daSmistare.length && !daVidimare.length;
   if (vuota) righe.push("In agenda non hai niente di fissato. Se ti arriva lavoro nuovo te lo scrivo subito.");
   return { testo: righe.join("\n"), vuota };
 }
@@ -277,6 +285,73 @@ export async function azioneSmistamento(sb: Sb, input: Riga): Promise<Riga> {
   const esito = await aTutti(sb, c, `Da smistare: ${k.descrizione}`, testo);
   await segna(sb, giornoRoma(), c, "smistamento", `Da smistare: ${k.descrizione}`, testo, `${k.id_display} · ${esito}`);
   return { ok: true, esito };
+}
+
+// ─── Da vidimare, a Elisa ────────────────────────────────────────────────────
+
+export async function azioneDaVidimare(sb: Sb, input: Riga): Promise<Riga> {
+  const { data: k } = await sb.from("task").select("id, id_display, descrizione, cliente_nome, assegnato_a, assegnato_da, scadenza, consegna_ora, ore_stimate, stato, vidimato")
+    .eq("id", String(input.task_id ?? "")).maybeSingle();
+  if (!k) return { ok: false, errore: "task non trovato" };
+  if (k.vidimato || ["Fatto", "Archiviato"].includes(k.stato)) return { ok: true, saltato: "già vidimato o chiuso" };
+  const { data: conf } = await sb.schema("motore").from("config").select("valore").eq("chiave", "consegne_smistatore").maybeSingle();
+  const nomeSmistatore = String(conf?.valore || "Elisa");
+  const c = (await contatti(sb)).find((x) => x.nome.toLowerCase() === nomeSmistatore.toLowerCase());
+  if (!c) return { ok: false, errore: "smistatore non trovato" };
+  const oggi = giornoRoma();
+  const { data: blocchi } = await sb.from("calendario").select("data, ora, ora_fine").eq("blocco_task_id", k.id).gt("fine_ts", new Date().toISOString()).order("inizio_ts");
+  const orari = ((blocchi ?? []) as Riga[]).map((b) => `${inParole(String(b.data), oggi)} ${hhmm(b.ora)}-${hhmm(b.ora_fine)}`).join(", ");
+  const quando = `${inParole(String(k.scadenza), oggi)}${k.consegna_ora ? ` entro le ${hhmm(k.consegna_ora)}` : ""}`;
+  const testo = [
+    `${c.nome}, ${k.assegnato_da ?? "Giovanni"} ha chiesto per ${k.assegnato_a}: «${k.descrizione}»${k.cliente_nome ? ` (${k.cliente_nome})` : ""}${k.ore_stimate ? `, ${String(k.ore_stimate).replace(".", ",")} ore` : ""}, consegna ${quando}.`,
+    orari ? `L'ho messo in calendario e nel Kanban: ${orari}.` : "L'ho messo nel Kanban.",
+    `${k.assegnato_a} non lo sa ancora. Scrivimi «vidima» (o «vidima tutto») e glielo mando; oppure dimmi se spostarlo o darlo a un altro. [${k.id_display}]`,
+    `Apri: ${LINK_CALENDARIO}`,
+  ].join("\n");
+  const oggetto = `Da vidimare: ${k.descrizione} (${k.assegnato_a})`;
+  const esito = await aTutti(sb, c, oggetto, testo);
+  await segna(sb, oggi, c, "da_vidimare", oggetto, testo, `${k.id_display} · ${esito}`);
+  return { ok: true, esito };
+}
+
+// ─── La sera, a Giovanni: i compiti per il prossimo giorno ───────────────────
+
+function prossimoFeriale(g: string): string {
+  let d = new Date(Date.parse(`${g}T12:00:00Z`) + 86400000);
+  while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d = new Date(d.getTime() + 86400000);
+  return d.toISOString().slice(0, 10);
+}
+
+export async function azioneChiediCompiti(sb: Sb, input: Riga): Promise<Riga> {
+  const oggi = giornoRoma();
+  const prova = input.prova === true;
+  if (!prova && !allOraGiusta(input.alle)) return { ok: true, saltato: `non è l'ora (${oraRomaHHMM()} a Roma)` };
+  if (!prova && !feriale(oggi)) return { ok: true, saltato: "sabato o domenica" };
+  const tutti = await contatti(sb);
+  const g = (await contatti(sb)).find((x) => x.nome === "Giovanni");
+  if (!g) return { ok: false, errore: "Giovanni non trovato" };
+  if (!prova && await giaFatto(sb, oggi, g.nome, "chiedi_compiti")) return { ok: true, saltato: "già chiesto" };
+  const giorno = prossimoFeriale(oggi);
+  const quando = inParole(giorno, oggi);
+  const righe: string[] = [];
+  for (const c of tutti.filter((x) => x.mansione === "produzione")) {
+    const { data: gg } = await sb.rpc("consegne_giornata", { p_membro: c.nome, p_giorno: giorno });
+    if (!gg?.ok) continue;
+    const lavori = ((gg.agenda ?? []) as Riga[]).filter((a) => a.task).length;
+    righe.push(`- ${c.nome}: ${gg.orario === "non lavora" ? "non lavora" : `${String(gg.ore_libere ?? 0).replace(".", ",")} ore libere (${gg.orario})`}${lavori ? `, ${lavori} blocchi di lavoro già messi` : ""}`);
+  }
+  const { data: pendenti } = await sb.from("task").select("id").eq("vidimato", false).not("stato", "in", '("Fatto","Archiviato")');
+  const testo = [
+    `Giovanni, che lavori ci sono per ${quando}?`,
+    ...righe,
+    pendenti?.length ? `In attesa che Elisa vidimi: ${pendenti.length}.` : "",
+    "Scrivimi chi, cosa, quante ore e la consegna: li metto in calendario e nel Kanban e li passo a Elisa da vidimare. Puoi scrivermi anche più tardi o domattina.",
+  ].filter(Boolean).join("\n");
+  const w = await inviaWhatsapp(sb, g, testo);
+  await inChat(sb, g, testo);
+  const e = `${g.nome}: WhatsApp ${w.ok ? "ok" : `no (${w.errore})`}`;
+  if (!prova) await segna(sb, oggi, g, "chiedi_compiti", `Lavori per ${quando}`, testo, e);
+  return { ok: true, giorno, esito: e, testo };
 }
 
 // ─── Non entra ───────────────────────────────────────────────────────────────

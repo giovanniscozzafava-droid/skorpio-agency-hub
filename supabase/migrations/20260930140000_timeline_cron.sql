@@ -9,3 +9,5 @@ SELECT cron.alter_job((SELECT jobid FROM cron.job WHERE jobname = 'alberto-whats
 SELECT cron.schedule('consegne-sera', '0 16,17 * * 1-5', $$SELECT motore.chiama('consegne', '{"azione":"sera","da":"cron","alle":"18:00"}'::jsonb);$$);
 SELECT cron.schedule('consegne-promemoria-timbra', '15 7,8 * * 1-5', $$SELECT motore.chiama('consegne', '{"azione":"promemoria_timbra","da":"cron","alle":"09:15"}'::jsonb);$$);
 SELECT cron.schedule('consegne-timbratura-avvio', '30 6,7 1 10 *', $$SELECT motore.chiama('consegne', '{"azione":"timbratura_avvio","da":"cron","alle":"08:30"}'::jsonb);$$);
+-- La sera Alberto chiede a Giovanni i lavori del prossimo giorno feriale (lun-ven 18:30).
+SELECT cron.schedule('consegne-chiedi-compiti', '30 16,17 * * 1-5', $$SELECT motore.chiama('consegne', '{"azione":"chiedi_compiti","da":"cron","alle":"18:30"}'::jsonb);$$);

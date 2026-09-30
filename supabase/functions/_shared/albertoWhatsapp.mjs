@@ -2,10 +2,11 @@
 // Lo importano sia l'edge function (API di ripiego) sia il demone del Banco sul Mac
 // (server MCP locale). JavaScript puro, niente dipendenze: gira in Deno e in Node.
 //
-// 30/09/2026: il lavoro. Giovanni dà i compiti ad Alberto, Alberto li passa a
-// Elisa (assegna_lavoro → «Da smistare»), Elisa li dispensa ai ragazzi (smista,
-// o assegna_lavoro diretto): il pianificatore riempie le ore libere di chi deve
-// farlo. sposta_consegna sposta task e blocchi insieme, giornata_di legge la
+// 30/09/2026: il lavoro. Giovanni dà i compiti ad Alberto (la sera Alberto
+// glieli chiede, ma lui li aggiorna quando vuole); Alberto li mette subito in
+// calendario e nel Kanban (assegna_lavoro, da vidimare); Elisa vidima (vidima),
+// sposta (sposta_consegna) o riassegna (riassegna), e solo allora il ragazzo
+// riceve il lavoro. Il pianificatore riempie le ore libere di chi deve farlo. sposta_consegna sposta task e blocchi insieme, giornata_di legge la
 // giornata di una persona. Il
 // pianificatore sta nel database (consegne_assegna / consegne_sposta /
 // consegne_giornata): da qui si chiamano solo le RPC, come per gli appuntamenti.
@@ -79,16 +80,16 @@ COME SCRIVI
 - Italiano, brevissimo (una o due righe), diretto, senza emoji, senza elenchi lunghi, senza "certo!" o "ottimo!".
 - Le date relative ("domani", "giovedì", "venerdì prossimo") le calcoli sulla tabella qui sopra, sempre in ora di Roma. "Giovedì" senza altro = il prossimo giovedì, oggi compreso se è giovedì e l'ora non è passata.
 - Se manca l'ora di un appuntamento fai UNA domanda sola ("A che ora?"). Non inventarla mai. Non chiedere altro: durata di default 1 ora, luogo e note opzionali.
-- Nomi del team: Giovanni, Elisa, Luca, Alessandro, Stefano. Il cliente è il nome che ti dicono (lo cerca il sistema fra i clienti).
+- Nomi del team: Giovanni, Elisa, Luca, Alessandro. Il cliente è il nome che ti dicono (lo cerca il sistema fra i clienti).
 
-IL LAVORO (assegna_lavoro, smista, sposta_consegna, giornata_di)
-La catena è: Giovanni dà i compiti ad Alberto, Alberto li passa a Elisa, Elisa li dispensa ad Alessandro e Luca.
+IL LAVORO (assegna_lavoro, vidima, riassegna, sposta_consegna, giornata_di, smista)
+La catena è: Giovanni dà i compiti ad Alberto (la sera glieli chiedi tu, ma lui li scrive quando vuole), Alberto li mette in calendario e nel Kanban, Elisa li vidima, sposta o riassegna, e Alessandro e Luca li ricevono quando Elisa vidima.
 - Quando qualcuno ti dice che una persona deve FARE un lavoro ("Alessandro monta il reel di KALEA entro venerdì", "Luca gira da Roxy giovedì 15-18", "oggi Alessandro monta il CLP di Roxy, 3 ore, consegna entro le 17:30"), è un lavoro, non un appuntamento: usa assegna_lavoro, uno per ogni lavoro (due CLP = due chiamate). Con solo scadenza servono le ore stimate; con un orario preciso passa inizio e fine. "Entro le 17:30" = entro_ora 17:30. "Entro venerdì" = entro il venerdì, senza ora.
 - Se a chiederlo è Elisa, il lavoro va subito al ragazzo: task nel Kanban e ore nei buchi liberi del suo calendario, dentro il suo orario, prima della consegna. Se le ore non le dice, chiedile con UNA domanda.
-- Se a chiederlo è Giovanni (o chiunque non sia Elisa) per un ragazzo, lo strumento NON lo mette in calendario: lo passa a Elisa da smistare (risposta smistamento). Tu rispondi in una riga: "Passato a Elisa: <lavoro> per <persona>, <quando>." e aggiungi l'esito della verifica (entra con gli orari previsti, oppure non entra e perché). Le ore stimate da Giovanni non sono obbligatorie: se non le dice, lo passi lo stesso e le stima Elisa.
+- Se a chiederlo è Giovanni per un ragazzo, lo strumento lo mette SUBITO in calendario e nel Kanban, ma da vidimare (risposta da_vidimare): il ragazzo non lo sa finché Elisa non vidima; a Elisa arriva il messaggio da solo. Tu rispondi in una riga: "Messo, da vidimare per Elisa: <persona>, <lavoro>, <orari dei blocchi>, consegna <quando>. <TSK>". Servono le ore stimate (o l'orario preciso): se Giovanni non le dice, chiedile con UNA domanda. Se scrive più lavori in un messaggio, una chiamata per lavoro.
 - Se lo strumento risponde serve_conferma (fuori dall'orario di lavoro della persona o sopra un altro impegno), NON è fatto né passato: riporta il motivo in una riga e chiedi "Lo metto lo stesso?". Solo se ${mittente} risponde sì, richiami assegna_lavoro con gli stessi dati e conferma=true.
 - Se risponde non_entra, NON è fatto e non devi forzarlo: di' quante ore ha libere la persona e proponi le alternative in proposte (spostare la consegna alla prima_data_possibile o darlo a chi ha ore libere).
-- ELISA smista i compiti che le passa Giovanni con smista: "ok" / "mettilo" = smista con il codice del compito così com'è; "dallo a Luca", "3 ore", "per domani" = smista con per/ore/entro cambiati. Se c'è un solo compito aperto il codice si può omettere. Per vedere i compiti ancora da smistare usa giornata_di (campo da_smistare).
+- ELISA vidima con vidima: "ok" / "vidima" / "va bene" = vidima il lavoro di cui si parla (codice TSK); "vidima tutto" = vidima con lavoro "tutti". Per spostarlo usa sposta_consegna, per darlo a un altro riassegna (poi, se lei non dice altro, resta da vidimare: chiedi se lo vidima). Per vedere cosa aspetta la sua vidimazione usa giornata_di con membro Elisa (campo da_vidimare). I vecchi compiti «Da smistare» (campo da_smistare) si smistano ancora con smista.
 - Dopo un lavoro messo: una riga per lavoro con chi, cosa, consegna e gli orari dei blocchi (es. "Fatto: Alessandro, CLP KALEA, oggi 10:00-13:00, consegna entro le 17:30. TSK1234."). La persona riceve già da sola WhatsApp ed email con la sua giornata: non serve dirglielo.
 - Per spostare una consegna ("sposta il CLP KALEA a domani") usa sposta_consegna con il codice TSK o un pezzo della descrizione: task e blocchi si spostano insieme. Se non entra, di' perché e proponi.
 - Per sapere cosa fa qualcuno oggi o un altro giorno usa giornata_di.
@@ -213,6 +214,27 @@ export const STRUMENTI = [
     },
   },
   {
+    name: "vidima",
+    description: "Solo Elisa (o Giovanni): vidima un lavoro messo da Alberto su richiesta di Giovanni. Da quel momento il ragazzo riceve WhatsApp ed email con il lavoro e gli orari. «tutti» vidima tutto quello in attesa.",
+    input_schema: {
+      type: "object",
+      properties: { lavoro: { ...STR, description: "Codice TSK… o pezzo della descrizione; «tutti» per vidimare tutto" } },
+      required: ["lavoro"],
+    },
+  },
+  {
+    name: "riassegna",
+    description: "Solo Elisa o Giovanni: passa un lavoro già messo a un'altra persona. I blocchi si rifanno nel calendario della nuova persona (stesso orario se era a orario fisso). Se il lavoro era già vidimato, la nuova persona viene avvisata subito.",
+    input_schema: {
+      type: "object",
+      properties: {
+        lavoro: { ...STR, description: "Codice TSK… o pezzo della descrizione" },
+        per: { ...STR, description: "A chi passarlo: nome nel team" },
+      },
+      required: ["lavoro", "per"],
+    },
+  },
+  {
     name: "sposta_consegna",
     description: "Sposta la consegna di un lavoro già assegnato (task con blocchi): nuova data e/o ora e/o ore stimate. Task e blocchi in calendario si spostano insieme. Se alla nuova data non entra, non sposta niente e dice perché.",
     input_schema: {
@@ -290,6 +312,10 @@ export async function eseguiStrumento(rpc, mittente, nome, args = {}) {
           p_conferma: typeof args.conferma === "boolean" ? args.conferma : null,
           p_richiedente: mittente,
         });
+      case "vidima":
+        return await rpc("consegne_vidima", { p_task: args.lavoro || "tutti", p_richiedente: mittente });
+      case "riassegna":
+        return await rpc("consegne_riassegna", { p_task: args.lavoro, p_per: args.per, p_richiedente: mittente });
       case "sposta_consegna":
         return await rpc("consegne_sposta", {
           p_task: args.lavoro,

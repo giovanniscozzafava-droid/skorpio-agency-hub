@@ -2,11 +2,14 @@
 
 Ordine di Giovanni del 30/09/2026. La catena:
 
-**Giovanni → Alberto → Elisa → Alessandro e Luca.** Giovanni dà i compiti ad
-Alberto; Alberto li passa a Elisa con la verifica già fatta; Elisa li dispensa
-ai ragazzi; il pianificatore riempie le loro ore libere prima della consegna;
-ogni ragazzo riceve la lista del giorno con gli orari; a fine giornata
-consegna.
+**Giovanni → Alberto → calendario e Kanban → Elisa vidima → Alessandro e Luca.**
+La sera (lun-ven 18:30) Alberto chiede a Giovanni su WhatsApp i lavori del
+giorno dopo; Giovanni risponde, o scrive quando vuole. Alberto mette subito ogni
+lavoro nel Kanban e nelle ore libere del ragazzo prima della consegna, ma **da
+vidimare** (`task.vidimato = false`): il ragazzo non lo vede e non riceve
+niente. Elisa riceve il messaggio, e vidima, sposta o riassegna. Quando
+vidima, il ragazzo riceve WhatsApp ed email con il lavoro e gli orari. Alle 8:30
+ognuno riceve la lista del giorno; a fine giornata consegna.
 
 Questa cartella contiene i sorgenti **deployati in produzione** (progetto
 Supabase `skorpio`) il 30/09/2026 da una sessione cloud che non poteva
@@ -17,9 +20,11 @@ raggiungere il repo `skorpiov3`. Vanno portati lì così come sono: vedi in fond
 | Pezzo | Dove |
 |---|---|
 | Il pianificatore (unico) | SQL: `consegne_piazza`, `consegne_pianifica_task`, `consegne_riordina` |
-| Assegnare un lavoro | RPC `consegne_assegna` (smista: Elisa diretto, gli altri passano da lei) |
-| Passare un compito a Elisa | RPC `consegne_proponi` → task «Da smistare» con la proposta |
-| Elisa smista | RPC `consegne_smista` |
+| Assegnare un lavoro | RPC `consegne_assegna` (Elisa: diretto e già vidimato; Giovanni per un ragazzo: `consegne_proponi`) |
+| Lavoro chiesto da Giovanni | RPC `consegne_proponi` → task e blocchi veri, `vidimato = false`, messaggio a Elisa |
+| Elisa vidima | RPC `consegne_vidima` (un TSK o «tutti») → messaggio al ragazzo |
+| Elisa riassegna | RPC `consegne_riassegna` → blocchi rifatti nel calendario dell'altro |
+| Vecchi compiti «Da smistare» | RPC `consegne_smista` |
 | Spostare una consegna | RPC `consegne_sposta`, oppure dal Kanban (trigger `consegne_task_dopo`) |
 | La giornata di una persona | RPC `consegne_giornata` |
 | I messaggi (WhatsApp + email + chat) | edge function `consegne`, file `giornata.ts` |
@@ -39,7 +44,10 @@ che regge o chi ha le ore.
 
 Blocchi e task sono legati da `calendario.blocco_task_id`. Scadenza spostata →
 blocchi rifatti (e avvisati anche gli altri lavori che cambiano orario). Task in
-Fatto → blocchi futuri tolti.
+Fatto → blocchi futuri tolti, quello in corso chiuso adesso e Completato;
+task archiviato → come Fatto, ma il blocco in corso è Annullato.
+Finché un lavoro non è vidimato, `consegne_avvisa` non manda niente al ragazzo
+(né nuovo né spostato).
 
 Orario preciso fuori dall'orario di lavoro o sopra un impegno → `serve_conferma`,
 si mette solo dopo il sì.
@@ -50,10 +58,12 @@ si mette solo dopo il sì.
 |---|---|---|
 | lun-ven 8:30 | a ognuno la lista del giorno con gli orari (WhatsApp + email) | `alberto-whatsapp-giornaliero` |
 | subito | lavoro nuovo o spostato → a chi lo fa | da `consegne_avvisa` |
-| subito | compito da smistare → a Elisa | da `consegne_avvisa` |
+| subito | lavoro da vidimare → a Elisa | da `consegne_avvisa` |
+| subito | Elisa vidima → al ragazzo | da `consegne_vidima` |
+| lun-ven 18:30 | a Giovanni: i lavori per il prossimo giorno feriale, con le ore libere dei ragazzi | `consegne-chiedi-compiti` |
 | lun-ven 9:15 | promemoria a chi non ha timbrato | `consegne-promemoria-timbra` |
 | lun-ven 18:00 | consegne di oggi non in Fatto → Giovanni ed Elisa | `consegne-sera` |
-| 1/10/2026 8:30 | «Da oggi si timbra» a Luca, Alessandro, Stefano | `consegne-timbratura-avvio` |
+| 1/10/2026 8:30 | «Da oggi si timbra» a Luca e Alessandro | `consegne-timbratura-avvio` |
 
 WhatsApp: testo libero se la persona ha scritto nelle ultime 24 ore,
 altrimenti il template approvato `lavoro_di_oggi`. Esito in `whatsapp_messaggi`,
@@ -67,7 +77,7 @@ riepilogo in `consegne_invii`.
 2. Copiare le migrazioni `20260930*`.
 3. **Il Banco sul Mac** importa `albertoWhatsapp.mjs` da skorpiov3: finché non
    ha la nuova versione non conosce `assegna_lavoro`, `smista`,
-   `sposta_consegna`, `giornata_di`. Dopo il pull e il riavvio, dichiarare
+   `sposta_consegna`, `giornata_di`, `vidima`, `riassegna`. Dopo il pull e il riavvio, dichiarare
    versione `1.1.0` in `banco_stato` e mettere
    `motore.config.alberto_banco_versione_minima = '1.1.0'`.
 4. Frontend: aggiungere `"persone"` all'elenco dei tab apribili da URL
