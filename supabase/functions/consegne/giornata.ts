@@ -305,7 +305,7 @@ export async function azioneDaVidimare(sb: Sb, input: Riga): Promise<Riga> {
   const testo = [
     `${c.nome}, ${k.assegnato_da ?? "Giovanni"} ha chiesto per ${k.assegnato_a}: «${k.descrizione}»${k.cliente_nome ? ` (${k.cliente_nome})` : ""}${k.ore_stimate ? `, ${String(k.ore_stimate).replace(".", ",")} ore` : ""}, consegna ${quando}.`,
     orari ? `L'ho messo in calendario e nel Kanban: ${orari}.` : "L'ho messo nel Kanban.",
-    `${k.assegnato_a} non lo sa ancora. Scrivimi «vidima» (o «vidima tutto») e glielo mando; oppure dimmi se spostarlo o darlo a un altro. [${k.id_display}]`,
+    `${k.assegnato_a} non lo sa ancora. Scrivimi «vidima ${k.id_display}» (o «vidima tutto») e glielo mando. Per cambiarlo: «sposta ${k.id_display} a lunedì 12:00» oppure «dai ${k.id_display} a Luca».`,
     `Apri: ${LINK_CALENDARIO}`,
   ].join("\n");
   const oggetto = `Da vidimare: ${k.descrizione} (${k.assegnato_a})`;
@@ -345,7 +345,10 @@ export async function azioneChiediCompiti(sb: Sb, input: Riga): Promise<Riga> {
     `Giovanni, che lavori ci sono per ${quando}?`,
     ...righe,
     pendenti?.length ? `In attesa che Elisa vidimi: ${pendenti.length}.` : "",
-    "Scrivimi chi, cosa, quante ore e la consegna: li metto in calendario e nel Kanban e li passo a Elisa da vidimare. Puoi scrivermi anche più tardi o domattina.",
+    "Scrivimeli uno per messaggio, così:",
+    "lavoro Luca: montaggio reel Roxy, 3 ore, entro venerdì 17:30",
+    "lavoro Alessandro: riprese Roxy, giovedì 15-18",
+    "Li metto in calendario e nel Kanban e li passo a Elisa da vidimare. Puoi scrivermi anche più tardi o domattina.",
   ].filter(Boolean).join("\n");
   const w = await inviaWhatsapp(sb, g, testo);
   await inChat(sb, g, testo);

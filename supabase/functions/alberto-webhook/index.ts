@@ -6,6 +6,9 @@
 // il testo entra in alberto_coda: lo prende il Banco sul Mac se il suo battito è
 // fresco (< 60 s), altrimenti risponde subito l'API (riserva). Il watchdog pg_cron
 // copre il caso in cui il Banco sparisca a metà.
+// Prima della coda, i comandi di lavoro a sintassi fissa («lavoro Luca: …»,
+// «vidima», «sposta TSK… a …», «dai TSK… a …», «da vidimare») li esegue
+// direttamente il database (consegne_comando), senza modello.
 //
 // Auth: firma HMAC-SHA256(KAPSO_WEBHOOK_SECRET, raw body) in
 // X-Webhook-Signature, verificata sui byte grezzi prima del parse JSON.
@@ -17,7 +20,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 // @ts-ignore
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { lavoraCodaConApi } from "../_shared/albertoApi.ts";
-import { svegliaBanco } from "../_shared/albertoInvio.ts";
+import { inviaTestoKapso, svegliaBanco } from "../_shared/albertoInvio.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -77,6 +80,17 @@ async function gestisci(body: any): Promise<void> {
       tipo: "whatsapp_ricevuto",
       titolo: membro ? `WhatsApp da ${membro}` : `WhatsApp da ${numero}`,
       messaggio: testo || "(messaggio senza testo)",
+    });
+    return;
+  }
+
+  const { data: comando, error: erroreComando } = await supabase.rpc("consegne_comando", { p_mittente: membro, p_testo: testo });
+  if (erroreComando) console.error("[alberto-webhook] consegne_comando", erroreComando.message);
+  if (comando?.gestito && comando.risposta) {
+    const r = await inviaTestoKapso(numero, comando.risposta);
+    await supabase.from("whatsapp_messaggi").insert({
+      membro, numero, direzione: "uscita", testo: comando.risposta,
+      kapso_message_id: r.messageId ?? null, stato: r.ok ? "inviato" : "fallito",
     });
     return;
   }

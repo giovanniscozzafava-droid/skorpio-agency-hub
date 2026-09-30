@@ -32,6 +32,23 @@ raggiungere il repo `skorpiov3`. Vanno portati lì così come sono: vedi in fond
 
 Migrazioni: `supabase/migrations/20260930*_*.sql`, tutte applicate.
 
+## Comandi su WhatsApp (senza modello)
+
+Finché il Banco non ha gli strumenti nuovi e l'API di riserva è senza credito,
+i comandi di lavoro li riconosce ed esegue il database (`consegne_comando`),
+chiamato dal webhook prima della coda di Alberto. Tutto il resto va al Banco.
+
+| Scrivi | Succede |
+|---|---|
+| `lavoro Luca: montaggio reel Roxy, 3 ore, entro venerdì 17:30` | lavoro nei buchi liberi prima della consegna |
+| `lavoro Alessandro: riprese Roxy, giovedì 15-18` (o `dalle 15 alle 18`) | orario preciso; fuori orario → aggiungere `confermo` |
+| `da vidimare` | l'elenco in attesa |
+| `vidima TSK4040` / `vidima tutto` | il ragazzo riceve il lavoro |
+| `sposta TSK4040 a lunedì 12:00` | consegna e blocchi spostati |
+| `dai TSK4040 a Luca` | riassegnato |
+
+Giorni: oggi, domani, dopodomani, lunedì…domenica, 2/10, 2 ottobre.
+
 ## Come riempie le ore
 
 Ore libere = `team.orari_lavoro` − impegni in calendario − assenze − ore
