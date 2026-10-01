@@ -74,23 +74,27 @@ async function gestisci(body: any): Promise<void> {
     stato: "ricevuto",
   }).select("id").single();
 
+  // Comandi a sintassi fissa (timbratura, lavoro, vidima…) per chiunque sia nel
+  // team: i permessi li controllano le funzioni del database.
+  if (membro && testo.trim()) {
+    const { data: comando, error: erroreComando } = await supabase.rpc("consegne_comando", { p_mittente: membro, p_testo: testo });
+    if (erroreComando) console.error("[alberto-webhook] consegne_comando", erroreComando.message);
+    if (comando?.gestito && comando.risposta) {
+      const r = await inviaTestoKapso(numero, comando.risposta);
+      await supabase.from("whatsapp_messaggi").insert({
+        membro, numero, direzione: "uscita", testo: comando.risposta,
+        kapso_message_id: r.messageId ?? null, stato: r.ok ? "inviato" : "fallito",
+      });
+      return;
+    }
+  }
+
   if (!comanda) {
     await supabase.from("notifiche").insert({
       destinatario: "Giovanni",
       tipo: "whatsapp_ricevuto",
       titolo: membro ? `WhatsApp da ${membro}` : `WhatsApp da ${numero}`,
       messaggio: testo || "(messaggio senza testo)",
-    });
-    return;
-  }
-
-  const { data: comando, error: erroreComando } = await supabase.rpc("consegne_comando", { p_mittente: membro, p_testo: testo });
-  if (erroreComando) console.error("[alberto-webhook] consegne_comando", erroreComando.message);
-  if (comando?.gestito && comando.risposta) {
-    const r = await inviaTestoKapso(numero, comando.risposta);
-    await supabase.from("whatsapp_messaggi").insert({
-      membro, numero, direzione: "uscita", testo: comando.risposta,
-      kapso_message_id: r.messageId ?? null, stato: r.ok ? "inviato" : "fallito",
     });
     return;
   }

@@ -46,6 +46,14 @@ chiamato dal webhook prima della coda di Alberto. Tutto il resto va al Banco.
 | `vidima TSK4040` / `vidima tutto` | il ragazzo riceve il lavoro |
 | `sposta TSK4040 a lunedì 12:00` | consegna e blocchi spostati |
 | `dai TSK4040 a Luca` | riassegnato |
+| `entrata` / `uscita` (chiunque nel team) | timbratura in `presenze`, come il pulsante di Skorpio; risposta con la giornata |
+
+**Perché la timbratura su WhatsApp.** I messaggi che partono da Alberto
+verso chi non gli ha scritto nelle ultime 24 ore sono template Meta a
+pagamento (Kapso: «Your Kapso balance doesn't cover Meta's fee»). Le risposte
+entro 24 ore sono gratis: l'«uscita» della sera tiene aperta la finestra per
+la lista delle 8:30 del giorno dopo. Il lunedì la lista arriva per email
+(e su WhatsApp alla prima «entrata").
 
 Giorni: oggi, domani, dopodomani, lunedì…domenica, 2/10, 2 ottobre.
 
