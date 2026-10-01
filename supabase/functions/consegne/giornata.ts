@@ -86,8 +86,15 @@ async function kapso(corpo: Riga): Promise<{ ok: boolean; messageId?: string; er
       headers: { "Content-Type": "application/json", "X-API-Key": KAPSO_API_KEY },
       body: JSON.stringify({ messaging_product: "whatsapp", ...corpo }),
     });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) return { ok: false, errore: data?.error?.message ?? `HTTP ${resp.status}` };
+    const grezzo = await resp.text();
+    // deno-lint-ignore no-explicit-any
+    let data: any = {};
+    try { data = JSON.parse(grezzo); } catch { /* risposta non JSON */ }
+    if (!resp.ok) {
+      // Il motivo completo (es. 402 di Kapso o di Meta) resta in whatsapp_messaggi.errore.
+      const dettaglio = data?.error?.message ?? data?.message ?? data?.error ?? grezzo;
+      return { ok: false, errore: `HTTP ${resp.status}: ${typeof dettaglio === "string" ? dettaglio : JSON.stringify(dettaglio)}`.slice(0, 500) };
+    }
     return { ok: true, messageId: data?.messages?.[0]?.id };
   } catch (e) {
     return { ok: false, errore: e instanceof Error ? e.message : String(e) };
