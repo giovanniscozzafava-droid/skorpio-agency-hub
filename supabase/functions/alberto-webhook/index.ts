@@ -57,11 +57,12 @@ async function gestisci(body: any): Promise<void> {
     if (gia && gia.length > 0) return;
   }
 
-  const { data: contatto } = await supabase
-    .from("team_whatsapp")
-    .select("membro, comandi_alberto")
-    .eq("numero", numero)
-    .maybeSingle();
+  // Kapso manda il numero senza «+» (393…), in team_whatsapp è salvato con il «+»:
+  // si confrontano le sole cifre.
+  const cifre = numero.replace(/\D/g, "");
+  const { data: rubrica } = await supabase.from("team_whatsapp").select("membro, numero, comandi_alberto");
+  const contatto = ((rubrica ?? []) as { membro: string; numero: string; comandi_alberto: boolean }[])
+    .find((c) => String(c.numero ?? "").replace(/\D/g, "") === cifre) ?? null;
   const membro = contatto?.membro ?? null;
   const comanda = Boolean(contatto?.comandi_alberto) && testo.trim().length > 0;
 
