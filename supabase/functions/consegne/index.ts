@@ -38,7 +38,7 @@ import { chiChiama, eChiaveDiServizio } from "../_shared/chiamante.ts";
 import { inviaEmail } from "../_shared/emailProvider.ts";
 import { chiamaClaude, testoDi } from "./claude.ts";
 import {
-  azioneAvvisaLavoro, azioneChiediCompiti, azioneDaVidimare, azioneGiornata, azioneNonEntra, azioneSmistamento, azioneProvaWhatsapp, azionePromemoriaTimbra, azioneSera, azioneTimbraturaAvvio,
+  azioneAlbertoRitardi, azioneAlbertoScrivi, azioneAvvisaLavoro, azioneChiediCompiti, azioneDaVidimare, azioneGiornata, azioneNonEntra, azioneSmistamento, azioneProvaWhatsapp, azionePromemoriaTimbra, azioneSera, azioneTimbraturaAvvio,
 } from "./giornata.ts";
 
 const corsHeaders = {
@@ -547,8 +547,8 @@ serve(async (req: Request) => {
     const sb = createClient(SUPABASE_URL, SERVICE_KEY);
     const ctx = await contesto(sb);
     const azione = String(input.azione ?? "");
-    const dalCron = input.da === "cron" && ["ripianifica", "settimana", "verifica", "giornata", "sera", "promemoria_timbra", "timbratura_avvio", "chiedi_compiti"].includes(azione);
-    const inDifferita = ["avvisa_lavoro", "non_entra", "smistamento", "da_vidimare"].includes(azione) && input.attendi !== true;
+    const dalCron = input.da === "cron" && ["ripianifica", "settimana", "verifica", "giornata", "sera", "promemoria_timbra", "timbratura_avvio", "chiedi_compiti", "alberto_ritardi"].includes(azione);
+    const inDifferita = ["avvisa_lavoro", "non_entra", "smistamento", "da_vidimare", "alberto_scrivi"].includes(azione) && input.attendi !== true;
     if (dalCron) {
       // pg_net chiude la connessione dopo 20 secondi: si risponde subito e si
       // lavora dopo, come squadra-lavora. L'esito sta in consegne_invii e in chat.
@@ -561,6 +561,7 @@ serve(async (req: Request) => {
           else if (azione === "sera") await azioneSera(sb, input);
           else if (azione === "promemoria_timbra") await azionePromemoriaTimbra(sb, input);
           else if (azione === "chiedi_compiti") await azioneChiediCompiti(sb, input);
+          else if (azione === "alberto_ritardi") await azioneAlbertoRitardi(sb, input);
           else await azioneTimbraturaAvvio(sb, input);
         } catch (e) {
           console.error("[consegne cron]", azione, e);
@@ -574,7 +575,7 @@ serve(async (req: Request) => {
     if (inDifferita) {
       // Chiamate dal database (pg_net, 20 secondi): si risponde subito, i
       // messaggi partono dopo. L'esito resta in whatsapp_messaggi e consegne_invii.
-      const lavoro = (azione === "avvisa_lavoro" ? azioneAvvisaLavoro(sb, input) : azione === "smistamento" ? azioneSmistamento(sb, input) : azione === "da_vidimare" ? azioneDaVidimare(sb, input) : azioneNonEntra(sb, input))
+      const lavoro = (azione === "avvisa_lavoro" ? azioneAvvisaLavoro(sb, input) : azione === "smistamento" ? azioneSmistamento(sb, input) : azione === "da_vidimare" ? azioneDaVidimare(sb, input) : azione === "alberto_scrivi" ? azioneAlbertoScrivi(sb, input) : azioneNonEntra(sb, input))
         .catch((e) => console.error("[consegne]", azione, e));
       // @ts-ignore EdgeRuntime esiste nel runtime delle edge function
       if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(lavoro); else await lavoro;
@@ -599,8 +600,10 @@ serve(async (req: Request) => {
       case "timbratura_avvio": esito = await azioneTimbraturaAvvio(sb, input); break;
       case "da_vidimare": esito = await azioneDaVidimare(sb, input); break;
       case "chiedi_compiti": esito = await azioneChiediCompiti(sb, input); break;
+      case "alberto_ritardi": esito = await azioneAlbertoRitardi(sb, input); break;
+      case "alberto_scrivi": esito = await azioneAlbertoScrivi(sb, input); break;
       case "prova_whatsapp": esito = await azioneProvaWhatsapp(sb, input); break;
-      default: esito = { ok: false, errore: `Azione sconosciuta: «${azione}». Azioni: apri, pianifica, ripianifica, settimana, verifica, tocco, consegnato, lista, giornata, avvisa_lavoro, smistamento, non_entra, sera, promemoria_timbra, timbratura_avvio, da_vidimare, chiedi_compiti, prova_whatsapp.` };
+      default: esito = { ok: false, errore: `Azione sconosciuta: «${azione}». Azioni: apri, pianifica, ripianifica, settimana, verifica, tocco, consegnato, lista, giornata, avvisa_lavoro, smistamento, non_entra, sera, promemoria_timbra, timbratura_avvio, da_vidimare, chiedi_compiti, alberto_ritardi, alberto_scrivi, prova_whatsapp.` };
     }
     return json(esito, esito.ok ? 200 : 400);
   } catch (e) {

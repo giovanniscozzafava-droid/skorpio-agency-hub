@@ -78,7 +78,7 @@ async function gestisci(body: any): Promise<void> {
   // Comandi a sintassi fissa (timbratura, lavoro, vidima…) per chiunque sia nel
   // team: i permessi li controllano le funzioni del database.
   if (membro && testo.trim()) {
-    const { data: comando, error: erroreComando } = await supabase.rpc("consegne_comando", { p_mittente: membro, p_testo: testo });
+    const { data: comando, error: erroreComando } = await supabase.rpc("consegne_comando_log", { p_mittente: membro, p_testo: testo, p_messaggio_id: msg?.id ?? null });
     if (erroreComando) console.error("[alberto-webhook] consegne_comando", erroreComando.message);
     if (comando?.gestito && comando.risposta) {
       const r = await inviaTestoKapso(numero, comando.risposta);

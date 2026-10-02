@@ -470,3 +470,80 @@ export async function azioneProvaWhatsapp(sb: Sb, input: Riga): Promise<Riga> {
   const w = await inviaWhatsapp(sb, c, testo);
   return { ok: w.ok, errore: w.errore, whatsapp_messaggi_id: w.id };
 }
+
+// ─── Alberto: messaggi in ritardo, mai persi ─────────────────────────────────
+// Gira ogni minuto (cron `alberto-ritardi`):
+//  1. ripesca i messaggi in entrata dei membri abilitati che non sono mai entrati in coda
+//     (dal momento in cui è stata fissata `alberto_ripesca_dal`: i più vecchi si recuperano con l'elenco da confermare);
+//  2. dopo 1 minuto senza risposta scrive a chi ha scritto «ho ricevuto, ci sto lavorando» (una volta ogni 10 minuti);
+//  3. dopo 30 minuti chiude la riga in errore e avvisa Giovanni (WhatsApp, o email se la finestra è chiusa) e chi ha scritto.
+export const ACK_TESTO = "Ho ricevuto il tuo messaggio e ci sto lavorando: ti scrivo appena ho fatto.";
+
+export async function azioneAlbertoRitardi(sb: Sb, _input: Riga): Promise<Riga> {
+  const ora = Date.now();
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const esiti: string[] = [];
+  const rubrica = await contatti(sb);
+
+  // 1. ripescaggio
+  const { data: wa } = await sb.from("team_whatsapp").select("membro, comandi_alberto");
+  const abilitati = new Set(((wa ?? []) as Riga[]).filter((c) => c.comandi_alberto).map((c) => String(c.membro)));
+  const { data: cfg } = await sb.schema("motore").from("config").select("valore").eq("chiave", "alberto_ripesca_dal").maybeSingle();
+  const dal = String(cfg?.valore || iso(ora));
+  const { data: orfani } = await sb.from("whatsapp_messaggi").select("id, membro, testo")
+    .eq("direzione", "entrata").eq("stato", "ricevuto").gt("created_at", dal).lt("created_at", iso(ora - 120_000)).order("created_at").limit(50);
+  for (const r of (orfani ?? []) as Riga[]) {
+    if (!r.membro || !abilitati.has(String(r.membro)) || !String(r.testo ?? "").trim()) continue;
+    const { data: gia } = await sb.from("alberto_coda").select("id").eq("messaggio_id", r.id).limit(1);
+    if (gia?.length) continue;
+    await sb.from("alberto_coda").insert({ messaggio_id: r.id, mittente: r.membro, testo: r.testo });
+    esiti.push(`ripescato il messaggio di ${r.membro}`);
+  }
+
+  // 2. conferma dopo 1 minuto
+  const { data: attese } = await sb.from("alberto_coda").select("id, mittente")
+    .in("stato", ["in_attesa", "preso"]).is("ack_alle", null)
+    .lt("creato_alle", iso(ora - 60_000)).gt("creato_alle", iso(ora - 30 * 60_000));
+  const perPersona = new Map<string, string[]>();
+  for (const r of (attese ?? []) as Riga[]) perPersona.set(String(r.mittente), [...(perPersona.get(String(r.mittente)) ?? []), String(r.id)]);
+  for (const [nome, ids] of perPersona) {
+    const { data: recenti } = await sb.from("alberto_coda").select("id").eq("mittente", nome).gt("ack_alle", iso(ora - 10 * 60_000)).limit(1);
+    if (!recenti?.length) {
+      const c = rubrica.find((x) => x.nome === nome);
+      if (c?.numero) {
+        const w = await inviaWhatsapp(sb, c, ACK_TESTO);
+        esiti.push(`conferma a ${nome}: ${w.ok ? "ok" : `no (${w.errore})`}`);
+      }
+    }
+    await sb.from("alberto_coda").update({ ack_alle: new Date().toISOString() }).in("id", ids);
+  }
+
+  // 3. dopo 30 minuti: errore e avviso a Giovanni
+  const { data: scadute } = await sb.from("alberto_coda").select("id, mittente, testo")
+    .neq("stato", "fatto").is("avvisato_alle", null).lt("creato_alle", iso(ora - 30 * 60_000)).limit(20);
+  for (const r of (scadute ?? []) as Riga[]) {
+    await sb.from("alberto_coda").update({ stato: "errore", avvisato_alle: new Date().toISOString() }).eq("id", r.id).neq("stato", "fatto");
+    const testo = `Alberto non riesce a rispondere a ${r.mittente}: «${String(r.testo ?? "").slice(0, 300)}»`;
+    const giovanni = rubrica.find((x) => x.nome === "Giovanni");
+    if (giovanni) {
+      const w = await inviaWhatsapp(sb, giovanni, testo);
+      if (!w.ok) await inviaMail(sb, giovanni, `Alberto non risponde a ${r.mittente}`, testo);
+      esiti.push(`avviso a Giovanni per ${r.mittente}: WhatsApp ${w.ok ? "ok" : "no, email"}`);
+    }
+    await sb.from("notifiche").insert({ destinatario: "Giovanni", tipo: "alberto_errore", titolo: `Alberto non risponde a ${r.mittente}`, messaggio: testo });
+    const mitt = rubrica.find((x) => x.nome === String(r.mittente));
+    if (mitt?.numero && mitt.nome !== "Giovanni") await inviaWhatsapp(sb, mitt, "Non sono riuscito a elaborare il tuo messaggio. Ho avvisato Giovanni.");
+  }
+  return { ok: true, esiti };
+}
+
+/** Una risposta scritta a mano (dalla pagina WhatsApp di Skorpio) a un membro del team. */
+export async function azioneAlbertoScrivi(sb: Sb, input: Riga): Promise<Riga> {
+  const c = (await contatti(sb)).find((x) => x.nome.toLowerCase() === String(input.membro ?? "").toLowerCase());
+  const testo = String(input.testo ?? "").trim();
+  if (!c?.numero) return { ok: false, errore: "membro senza numero WhatsApp attivo" };
+  if (!testo) return { ok: false, errore: "testo vuoto" };
+  const w = await inviaWhatsapp(sb, c, testo);
+  if (w.id) await sb.from("whatsapp_messaggi").update({ azione: { risposta_manuale: true, da: String(input.da ?? "") } }).eq("id", w.id);
+  return { ok: w.ok, errore: w.errore };
+}

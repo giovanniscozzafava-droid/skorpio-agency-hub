@@ -71,8 +71,9 @@ export async function elaboraConApi(supabase: any, riga: RigaCoda): Promise<{ ok
   } catch (e) {
     const errore = e instanceof Error ? e.message : String(e);
     console.error("[alberto-api]", errore);
-    await rispondiECHiudi(supabase, riga, "Adesso non riesco a rispondere. Riprova tra un minuto.", "api");
-    await supabase.from("alberto_coda").update({ errore }).eq("id", riga.id);
+    // Il messaggio non si perde e non si scrive «riprova»: la riga torna in coda fra un minuto
+    // (per 30 minuti dal messaggio); la conferma e l'avviso a Giovanni li manda alberto_ritardi.
+    await supabase.rpc("alberto_coda_chiudi", { p_id: riga.id, p_ok: false, p_errore: errore.slice(0, 300) });
     return { ok: false, errore };
   }
 }
