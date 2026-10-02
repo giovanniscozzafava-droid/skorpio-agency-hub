@@ -545,5 +545,8 @@ export async function azioneAlbertoScrivi(sb: Sb, input: Riga): Promise<Riga> {
   if (!testo) return { ok: false, errore: "testo vuoto" };
   const w = await inviaWhatsapp(sb, c, testo);
   if (w.id) await sb.from("whatsapp_messaggi").update({ azione: { risposta_manuale: true, da: String(input.da ?? "") } }).eq("id", w.id);
-  return { ok: w.ok, errore: w.errore };
+  // WhatsApp non parte (finestra di 24 ore chiusa, credito Kapso): lo stesso testo va per email.
+  let email: boolean | null = null;
+  if (!w.ok) { const m = await inviaMail(sb, c, "Messaggio da Alberto", testo); email = m.ok; }
+  return { ok: w.ok || email === true, whatsapp: w.ok, email, errore: w.ok ? undefined : w.errore };
 }
