@@ -60,6 +60,10 @@ BEGIN
   m := regexp_match(t, '^(luca|alessandro|elisa|giovanni)\s+(?:deve|dovrebbe|dovr[àa]|può|puo|puoi)\s+(.{3,})$', 'i');
   IF m IS NOT NULL THEN
     v_per := initcap(m[1]); v_resto := m[2];
+    -- due ordini nella stessa frase («Alessandro deve …, Luca deve …»): non indovino, li legge il cervello
+    IF v_resto ~* '(^|[,;.]|\se\s)\s*(luca|alessandro|elisa|giovanni)\s+(deve|dovrebbe|dovr[àa]|può|puo|puoi)\M' THEN
+      RETURN jsonb_build_object('gestito', false);
+    END IF;
     mm := regexp_match(v_resto, '(\d+(?:[.,]\d+)?)\s*(?:h|ore|ora)\M', 'i');
     IF mm IS NOT NULL THEN
       v_ore := replace(mm[1], ',', '.')::numeric;
