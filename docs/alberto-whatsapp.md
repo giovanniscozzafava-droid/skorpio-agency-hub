@@ -52,6 +52,26 @@ Cosa **non** si può fare senza un cervello: capire frasi libere
 (riparato) o API con credito. Finché non c'è, i messaggi restano in coda, chi ha
 scritto riceve la conferma dopo 1 minuto e Giovanni l'avviso dopo 30.
 
+## Ordini in italiano senza cervello (`consegne_ordine_libero`)
+
+Finché Banco/API non rispondono, il database capisce da solo tre cose (migrazione
+`20261002120000_alberto_ordini_liberi_e_pagina.sql`):
+
+- «Luca deve montare il reel di Roxy entro venerdì» → se mancano ore o scadenza chiede
+  UNA cosa (tabella `alberto_pendenti`, valida 30 minuti), poi crea il lavoro con
+  `consegne_assegna` (Giovanni → da vidimare per Elisa).
+- «3 ore» / «entro martedì alle 17:30» → risposta alla domanda in sospeso.
+- «spostalo a lunedì» → l'ultimo lavoro messo da chi scrive nelle ultime 6 ore.
+
+Una frase con **due ordini** («Alessandro deve…, Luca deve…») non viene indovinata:
+va al cervello (caso reale del 2/10, quando le regole fondevano le due persone).
+
+## Chi è abilitato
+
+`team_whatsapp.comandi_alberto` è vero solo per Elisa e Giovanni. I messaggi di Luca e
+Alessandro restano «ricevuto»: non entrano in coda, non vengono ripescati e non
+avvisano nessuno (es. «sono malato» di Luca, 6/10). Abilitarli è una scelta di Giovanni.
+
 ## Recupero dei messaggi persi
 
 Tabella `alberto_recupero` (lotto, n, tipo, dati, stato). Le proposte nascono con
